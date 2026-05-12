@@ -59,7 +59,8 @@ Install into a project's `.claude/` instead of your user profile:
 npm install -g @drunkcoding/agents-and-skills
 
 # Or via npx skills (https://github.com/vercel-labs/skills)
-npx skills add @drunkcoding/agents-and-skills
+# Use the GitHub shorthand (owner/repo) — `npx skills` does not resolve npm scopes.
+npx skills add baoduy/agents-and-skills
 ```
 
 ## Layout
