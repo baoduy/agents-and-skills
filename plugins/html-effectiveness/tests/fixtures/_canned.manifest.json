@@ -1,0 +1,18 @@
+{
+  "_meta": { "upstream_repo": "test", "upstream_sha": "test", "extracted_at": "test" },
+  "_canned": {
+    "title": "Canned",
+    "use_cases": ["test"],
+    "pattern": "test",
+    "tmpl": "tests/fixtures/_canned.html.tmpl",
+    "slots": {
+      "title": { "type": "string", "required": true },
+      "items": {
+        "type": "array",
+        "of": { "name": "string", "html": "html" }
+      }
+    },
+    "asset_bundles": ["base", "components"],
+    "extra_js": null
+  }
+}
