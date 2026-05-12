@@ -1,0 +1,8 @@
+.git
+.gitnexus
+.gitignore
+node_modules
+*.log
+.DS_Store
+.vscode
+.idea

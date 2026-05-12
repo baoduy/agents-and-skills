@@ -1,0 +1,38 @@
+{
+  "name": "@drunkcoding/agents-and-skills",
+  "version": "0.1.0",
+  "description": "Personal collection of Claude Code skills and agents, installable via `npx skills`.",
+  "keywords": [
+    "claude-code",
+    "claude-skills",
+    "agent-skills",
+    "skills",
+    "gitnexus",
+    "npx-skills"
+  ],
+  "author": "Steven Hoang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drunkcoding/agents-and-skills.git"
+  },
+  "homepage": "https://github.com/drunkcoding/agents-and-skills#readme",
+  "bugs": {
+    "url": "https://github.com/drunkcoding/agents-and-skills/issues"
+  },
+  "files": [
+    ".claude/skills/**",
+    ".claude-plugin/**",
+    "skills/**",
+    "agents/**",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "Karpathy-CLAUDE.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}
