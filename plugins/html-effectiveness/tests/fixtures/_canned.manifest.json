@@ -4,7 +4,7 @@
     "title": "Canned",
     "use_cases": ["test"],
     "pattern": "test",
-    "tmpl": "tests/fixtures/_canned.html.tmpl",
+    "tmpl": "fixtures/_canned.html.tmpl",
     "slots": {
       "title": { "type": "string", "required": true },
       "items": {
@@ -12,7 +12,7 @@
         "of": { "name": "string", "html": "html" }
       }
     },
-    "asset_bundles": ["base", "components"],
+    "asset_bundles": [],
     "extra_js": null
   }
 }
