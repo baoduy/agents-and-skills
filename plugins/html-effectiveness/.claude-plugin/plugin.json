@@ -4,5 +4,11 @@
   "version": "0.1.0",
   "description": "Generate self-contained interactive HTML reports from 20 upstream templates via a conversational agent.",
   "author": { "name": "Steven Hoang" },
-  "keywords": ["html", "report", "status", "incident", "slide-deck", "decision-matrix"]
+  "keywords": ["html", "report", "status", "incident", "slide-deck", "decision-matrix"],
+  "skills": [
+    "skills/html-effectiveness"
+  ],
+  "agents": [
+    "agents/report-builder.md"
+  ]
 }
