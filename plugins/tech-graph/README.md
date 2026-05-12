@@ -7,8 +7,8 @@ Step-by-step wizard for generating technical diagrams (architecture, flowchart, 
 From inside Claude Code:
 
 ```text
-/plugin marketplace add <user>/neptune
-/plugin install tech-graph@neptune
+/plugin marketplace add <user>/agents-and-skills
+/plugin install tech-graph@drunkcoding
 ```
 
 Then run `/tech-graph` (or `/tech-graph "auth flow"` to seed a topic).

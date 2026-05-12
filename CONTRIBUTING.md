@@ -1,4 +1,4 @@
-# Contributing — neptune marketplace
+# Contributing — drunkcoding marketplace
 
 ## Adding a new plugin
 
@@ -38,5 +38,5 @@ Then in Claude Code:
 
 ```text
 /plugin marketplace add file://$(pwd)
-/plugin install tech-graph@neptune
+/plugin install tech-graph@drunkcoding
 ```
