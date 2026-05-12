@@ -49,7 +49,7 @@ function lookup(ctxStack, name) {
     let cur = ctxStack[i];
     let ok = true;
     for (const p of parts) {
-      if (cur == null || typeof cur !== 'object' || !(p in cur)) { ok = false; break; }
+      if (cur == null || typeof cur !== 'object' || !Object.prototype.hasOwnProperty.call(cur, p)) { ok = false; break; }
       cur = cur[p];
     }
     if (ok) return cur;
@@ -71,7 +71,7 @@ function emit(nodes, ctxStack) {
       const v = lookup(ctxStack, n.name);
       if (Array.isArray(v)) {
         for (const item of v) out += emit(n.children, [...ctxStack, item]);
-      } else if (v && (typeof v !== 'object' || Object.keys(v).length > 0 || !Array.isArray(v))) {
+      } else if (v && (typeof v !== 'object' || Object.keys(v).length > 0)) {
         out += emit(n.children, [...ctxStack, v]);
       }
     } else if (n.type === 'inverted') {
