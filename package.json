@@ -21,13 +21,8 @@
     "url": "https://github.com/drunkcoding/agents-and-skills/issues"
   },
   "files": [
-    ".claude/skills/**",
-    ".claude-plugin/**",
-    "skills/**",
-    "agents/**",
-    "AGENTS.md",
-    "CLAUDE.md",
-    "Karpathy-CLAUDE.md",
+    "plugins/**",
+    ".claude-plugin/marketplace.json",
     "README.md",
     "LICENSE"
   ],

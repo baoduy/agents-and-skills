@@ -1,8 +1,14 @@
 .git
 .gitnexus
+.claude
 .gitignore
 node_modules
 *.log
 .DS_Store
 .vscode
 .idea
+docs
+CLAUDE.md
+AGENTS.md
+Karpathy-CLAUDE.md
+CONTRIBUTING.md
