@@ -51,6 +51,28 @@ If `/resume` drops the team mid-feature (the platform doesn't restore in-process
 
 The lead reads the checkpoint, respawns the right teammates, and continues from the next unchecked phase. Completed phases are not redone. A resume-log entry is appended to the checkpoint for the audit trail.
 
+## Cleanup model
+
+The lead is the only thing that knows when a team's work is done. There is no `TeamShutdown` hook event, so cleanup is driven by the slash commands:
+
+- **Automatic**, the happy path: `/team-feature` runs cleanup immediately after `FINISH_DONE`. The lead verifies all phases complete, all expected commits in place, every teammate idle, then invokes the canonical "clean up the team" primitive and confirms with a final scan. A `## Closing` block is appended to the checkpoint.
+- **Manual**, the orphan path: if a lead crashed and left `~/.claude/teams/superpower-<slug>/` behind, run `/team-cleanup <slug>` from a fresh session. The slash command dry-runs first, prints what would be removed, asks for confirmation, then applies. The heartbeat file (`docs/superpowers/sessions/<slug>.heartbeat`) protects against wiping a live team — if it was touched in the last 10 minutes, cleanup refuses unless you explicitly confirm with `--ignore-heartbeat`.
+
+Project-side artefacts (`specs/`, `plans/`, `reviews/`, and the checkpoint itself) are **always preserved**. Only platform-side state under `~/.claude/teams/superpower-<slug>/` and `~/.claude/tasks/superpower-<slug>/` is removed, plus any matching tmux session.
+
+## Heartbeat protocol
+
+The lead touches `docs/superpowers/sessions/<slug>.heartbeat` at every phase boundary. Future sessions read its mtime to decide whether a previous lead is still alive:
+
+- mtime < 10 minutes → lead is likely alive; cleanup refuses without explicit override.
+- mtime ≥ 10 minutes (or file missing) → safe to clean up.
+
+If you ever want to confirm liveness manually:
+
+```bash
+bash plugins/team-superpower/scripts/team-state.sh scan <slug>
+```
+
 ## Troubleshooting
 
 | Symptom | What it usually means | First thing to check |
@@ -62,6 +84,9 @@ The lead reads the checkpoint, respawns the right teammates, and continues from 
 | Lead refuses to ping the owner | The teammate's request to escalate didn't use the §7 template | Same as above |
 | Teammate ran a non-Superpowers approximation of a skill | Teammate paraphrased the SKILL.md instead of following it | The agent's system prompt requires the canonical skill — re-spawn and remind it explicitly |
 | Two implementers want the same file | Plan didn't capture file-scope metadata for the overlapping tasks | Serialize by holding one; planner should backfill file-scope on the plan |
+| `REFUSED: heartbeat ... is Ns old` from cleanup | Heartbeat is fresh — cleanup script thinks a lead is alive | Verify nothing's running; if certain the previous lead is dead, run with `--ignore-heartbeat` |
+| `/team-feature` halts at preflight | Stale team config left over from a previous run | Run `/team-cleanup <slug>` (or resume via `/team-feature-resume`) |
+| Auto-cleanup skipped after FINISH_DONE | One of Step A's preconditions failed (missing commits, in-progress tasks, etc.) | Read the lead's halt reason; once resolved, run `/team-cleanup <slug>` |
 | Hook log noise | Hooks write tuning data to `.claude/hooks/log.jsonl` | Inspect the file; trim or refine matchers if a hook is over-triggering |
 
 ## Emergency bypass

@@ -13,7 +13,8 @@
   ],
   "commands": [
     "commands/team-feature.md",
-    "commands/team-feature-resume.md"
+    "commands/team-feature-resume.md",
+    "commands/team-cleanup.md"
   ],
   "hooks": "hooks/hooks.json"
 }
