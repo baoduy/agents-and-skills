@@ -1,0 +1,15 @@
+{
+  "name": "neptune",
+  "owner": { "name": "steven", "email": "steven.hoang@transwap.com" },
+  "metadata": { "description": "Personal agents and skills marketplace" },
+  "plugins": [
+    {
+      "name": "tech-graph",
+      "source": "./plugins/tech-graph",
+      "description": "6-step wizard for technical diagrams (SVG/PNG) via fireworks-tech-graph",
+      "version": "0.1.0",
+      "category": "diagram",
+      "keywords": ["diagram", "svg", "architecture", "uml", "flowchart"]
+    }
+  ]
+}
