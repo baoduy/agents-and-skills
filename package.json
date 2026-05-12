@@ -14,11 +14,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/drunkcoding/agents-and-skills.git"
+    "url": "git+https://github.com/baoduy/agents-and-skills.git"
   },
-  "homepage": "https://github.com/drunkcoding/agents-and-skills#readme",
+  "homepage": "https://github.com/baoduy/agents-and-skills#readme",
   "bugs": {
-    "url": "https://github.com/drunkcoding/agents-and-skills/issues"
+    "url": "https://github.com/baoduy/agents-and-skills/issues"
   },
   "files": [
     "plugins/**",
