@@ -18,7 +18,7 @@ Published on npm as [`@drunkcoding/agents-and-skills`](https://www.npmjs.com/pac
 Add the marketplace once:
 
 ```text
-/plugin marketplace add drunkcoding/agents-and-skills
+/plugin marketplace add baoduy/agents-and-skills
 ```
 
 Then install any plugin individually:
