@@ -1,0 +1,7 @@
+{
+  "name": "tech-graph",
+  "version": "0.1.0",
+  "description": "Step-by-step wizard for generating technical diagrams as SVG+PNG.",
+  "author": { "name": "steven" },
+  "keywords": ["diagram", "svg", "architecture", "uml", "flowchart", "sequence", "er"]
+}
