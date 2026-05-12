@@ -1,7 +1,0 @@
-{
-  "title": "Demo <Report>",
-  "items": [
-    { "name": "alpha", "html": "<b>bold</b>" },
-    { "name": "beta", "html": "<i>italic</i>" }
-  ]
-}
