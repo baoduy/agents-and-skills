@@ -10,5 +10,8 @@
   ],
   "agents": [
     "agents/report-builder.md"
+  ],
+  "commands": [
+    "commands/html-report.md"
   ]
 }
