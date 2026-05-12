@@ -1,0 +1,7 @@
+<main class="report">
+  <header><h1>{{title}}</h1></header>
+  <ul>
+    {{#items}}<li>{{name}}: {{{html}}}</li>{{/items}}
+  </ul>
+  {{^items}}<p>No items.</p>{{/items}}
+</main>

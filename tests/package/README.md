@@ -25,7 +25,7 @@ Then install any plugin individually:
 
 ```text
 /plugin install tech-graph@drunkcoding
-/plugin install html-effectiveness@drunkcoding --scope local
+/plugin install html-effectiveness@drunkcoding
 ```
 
 Reload after install:
