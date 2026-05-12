@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "validate-skills": {
+      "source": "callstackincubator/agent-skills",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/validate-skills/SKILL.md",
+      "computedHash": "aff52c5f1470ceedfa83c6bd7936b5bf70d347d72724585e3a2911d6d009caf4"
+    }
+  }
+}
