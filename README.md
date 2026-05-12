@@ -9,17 +9,48 @@ Published on npm as [`@drunkcoding/agents-and-skills`](https://www.npmjs.com/pac
 | Plugin | Description |
 |--------|-------------|
 | [`tech-graph`](plugins/tech-graph) | 6-step wizard for technical diagrams (SVG + PNG). |
+| [`html-effectiveness`](plugins/html-effectiveness) | Conversational agent that generates self-contained interactive HTML reports from 20 templates. |
 
 ## Install
 
 ### Claude Code marketplace
 
+Add the marketplace once:
+
 ```text
 /plugin marketplace add drunkcoding/agents-and-skills
-/plugin install <plugin-name>@neptune
+```
+
+Then install any plugin individually:
+
+```text
+/plugin install tech-graph@drunkcoding
+/plugin install html-effectiveness@drunkcoding
+```
+
+Reload after install:
+
+```text
+/reload-plugins
 ```
 
 Only the plugin you install loads; others stay dormant.
+
+#### Project-scoped install
+
+Install into a project's `.claude/` instead of your user profile:
+
+```text
+/plugin install tech-graph@drunkcoding --scope project
+```
+
+#### Manage installed plugins
+
+```text
+/plugin list                 # see installed plugins
+/plugin uninstall <name>     # remove
+/plugin marketplace update   # pull latest manifest
+```
 
 ### npm / npx
 
