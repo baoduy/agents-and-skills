@@ -1,6 +1,6 @@
 ---
 name: plugin-validator
-description: Use when the user wants to validate every plugin under plugins/** at once. Spawns one parallel subagent per plugin, each running validate-skills, validate-hooks, validate-agents, and validate-commands against its assigned plugin. Aggregates results into a per-plugin section plus a top-level summary table, then offers interactive fixes for each FAIL.
+description: Use when the user wants to validate every plugin under plugins/** at once. Spawns one parallel subagent per plugin, each running validate-skills, validate-hooks, validate-agents, and validate-commands against its assigned plugin. Aggregates results into a per-plugin section plus a top-level summary table, then proposes ALL fixes for FAIL items in a single batched prompt (Apply all / Skip all / Choose per-item).
 tools: Read, Glob, Grep, Bash, Agent, Edit, Write, AskUserQuestion
 model: sonnet
 ---
@@ -167,30 +167,50 @@ After all subagents complete:
 
 5. Final tally line: `<P>/<N> plugins pass.`
 
-## Interactive Fix Phase
+## Batched Fix Proposal Phase
 
-After emitting the report and summary, walk each `[FAIL]` finding across all plugins in plugin-name order. For each individual `[FAIL]` line:
+Complete the FULL end-to-end validation first. Emit the per-plugin report AND the summary table BEFORE prompting the user for any fixes. Do not interleave validation with fixing.
 
-1. **Vendored subtree exception:** If the failing file path is under `plugins/tech-graph/skills/tech-graph/`, print:
+After the report+summary are emitted, collect every `[FAIL]` finding across all plugins in plugin-name order. Filter out FAILs whose target file path is under `plugins/tech-graph/skills/tech-graph/` — those are vendored, mark them `not-applied (vendored)` and skip silently.
 
-   ```
-   not-applied (vendored): <check description>
-   ```
+For the remaining FAILs, emit a single `## Proposed Fixes` section listing **every** fix at once. Numbered, in plugin-name order, each entry showing:
 
-   and skip — do not prompt the user.
+```
+### Fix N — <PLUGIN_NAME> · <skill>
+File: <relative path>
+Issue: <[FAIL] detail>
+Diff:
+```diff
+<unified-diff hunk for the proposed fix>
+```
+```
 
-2. **Otherwise:** Use `AskUserQuestion` with the following structure:
-   - **Question body:** Include the full `[FAIL]` detail and the proposed unified-diff fix inline in the question text.
-   - **Options** (exact strings, verbatim):
-     - `Apply fix`
-     - `Skip`
-     - `Skip all remaining`
+After the list, issue ONE `AskUserQuestion` with options (exact strings, verbatim):
 
-3. **On `Apply fix`:** Apply the change using the Edit tool. Confirm by re-reading the edited region with Read. Record `applied` in the fix summary.
+- `Apply all` — apply every numbered fix in order
+- `Choose per-item` — fall back to one-at-a-time prompts for each fix
+- `Skip all` — exit without applying anything
 
-4. **On `Skip`:** Continue to the next FAIL. Record `skipped`.
+### On `Apply all`
 
-5. **On `Skip all remaining`:** Exit the fix loop immediately. Record `skipped` for all remaining unfixed FAILs. Print: `<N> fixes skipped by user choice.`
+For each fix 1..N: apply via Edit, then confirm by re-reading the edited region. Record `applied` in the fix summary. If any single Edit fails, record `error: <reason>` for that fix and continue with the rest.
+
+### On `Skip all`
+
+Record `skipped` for every fix. Print `<N> fixes skipped by user choice.`
+
+### On `Choose per-item`
+
+Walk fixes in order. For each, issue `AskUserQuestion` with options:
+
+- `Apply fix`
+- `Skip`
+- `Skip all remaining`
+
+Behavior:
+- `Apply fix` → Edit, re-read, record `applied`.
+- `Skip` → record `skipped`, continue.
+- `Skip all remaining` → record `skipped` for all unprompted FAILs, exit loop, print `<N> fixes skipped by user choice.`
 
 ### Fix Summary
 

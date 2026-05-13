@@ -24,6 +24,7 @@ For each skill directory, verify:
 | `name` matches directory | Directory name must equal `name` field |
 | `description` length | 1-1024 characters, non-empty |
 | Optional fields valid | `license`, `metadata`, `compatibility` if present |
+| `skills` key in plugin.json | If `plugin.json` declares `skills`, it must be a string directory path (e.g. `"./skills/"`). Array-of-paths form is unverified and likely rejected by the loader — flag as `[WARN]` and recommend either a string path or omitting the key entirely (skills are auto-discovered from `<plugin>/skills/*/SKILL.md`). Reference: `context-mode` plugin uses `"skills": "./skills/"`; Anthropic official plugins omit the key. |
 
 ### Best Practices (Claude Code)
 
@@ -38,12 +39,15 @@ For each skill directory, verify:
 
 ## How to Run
 
-1. Find all skill directories. This repo nests skills under plugins, so scan both:
+1. Find all skill directories under `plugins/`:
    ```bash
-   fd -t f -g 'SKILL.md' plugins/ .claude/skills/
+   fd -t f -g 'SKILL.md' plugins/
    ```
+   (Per project memory: scope is `plugins/**` only — skip `.claude/skills/`.)
 
-2. For each `SKILL.md`, read it and check against the rules above.
+2. Parse each `plugins/*/.claude-plugin/plugin.json`. If `skills` key is present and not a string path (e.g., array of paths), emit `[WARN]` for that plugin with recommendation to switch to `"./skills/"` or omit.
+
+3. For each `SKILL.md`, read it and check against the rules above.
 
 3. Report issues in this format:
    ```

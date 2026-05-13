@@ -15,7 +15,10 @@ Validate plugin slash commands under `plugins/**/commands/*.md` against the Clau
 
 ```bash
 find plugins -path '*/commands/*.md'
+find plugins -path '*/.claude-plugin/plugin.json'
 ```
+
+For each `plugin.json`, parse and check whether the `commands` key is present (any shape). Emit one `[FAIL]` per plugin that declares it. Then validate every command `.md` file as below.
 
 ## Spec Compliance Checks
 
@@ -28,7 +31,7 @@ find plugins -path '*/commands/*.md'
 | `model` optional | One of `sonnet`, `opus`, `haiku`, `inherit` |
 | Filename → command | Filename minus `.md` is lowercase alphanumeric + hyphens; produces `/<filename>` |
 | Body non-empty | At least one non-blank line after frontmatter |
-| Manifest reference | If plugin.json `commands` array lists this file, the path must resolve |
+| No `commands` key in plugin.json | The plugin loader rejects any `commands` field with `commands: Invalid input`. Command files are auto-discovered from `<plugin>/commands/*.md`. If `plugin.json` declares a `commands` array (or any other shape), flag as `[FAIL]` and recommend deleting the key. Confirmed against `anthropics/claude-code` official plugins (`pr-review-toolkit`, `frontend-design`, `commit-commands`, `hookify`) — none declare `commands`. |
 
 ### Valid tool names (Claude Code ≥ 2.1.139)
 
