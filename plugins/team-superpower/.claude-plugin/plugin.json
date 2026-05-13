@@ -5,6 +5,20 @@
   "description": "Coordination layer that runs the obra/superpowers skill chain across a Claude Code agent team — one /team-feature command takes an idea through brainstorming, plan, TDD implementation, review, and finish with at most 4 owner touchpoints.",
   "author": { "name": "Steven Hoang" },
   "keywords": ["agent-teams", "superpowers", "tdd", "orchestration", "workflow", "brainstorming", "code-review"],
+  "agents": [
+    "designer.md",
+    "planner.md",
+    "implementer.md",
+    "reviewer.md",
+    "software-architect.md",
+    "backend-developer.md",
+    "frontend-developer.md",
+    "qa-engineer.md",
+    "security-engineer.md",
+    "devops-engineer.md",
+    "technical-writer.md",
+    "minimal-change-engineer.md"
+  ],
   "hooks": {
     "TeammateIdle": [
       {

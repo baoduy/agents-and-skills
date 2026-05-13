@@ -22,7 +22,7 @@
     {
       "name": "team-superpower",
       "source": "./plugins/team-superpower",
-      "description": "Coordination layer that runs the obra/superpowers skill chain across a Claude Code agent team — one /team-feature command takes an idea through brainstorming, plan, TDD implementation, review, and finish with at most 4 owner touchpoints.",
+      "description": "Full-stack engineering team that runs the Superpowers skill chain across designer, planner, implementer, reviewer, and 8 discipline roles — architect, backend, frontend, QA, security, devops, technical-writer, and minimal-change-engineer.",
       "version": "0.1.0",
       "category": "workflow",
       "keywords": ["agent-teams", "superpowers", "tdd", "orchestration", "workflow", "brainstorming", "code-review"]
