@@ -55,7 +55,7 @@ Reviewer (Hat 2, phase 7) posts this when the finishing-a-development-branch ski
 ### Lead behaviour on `FINISH_BLOCKED`
 
 1. Stash `<reason>` and the verbatim git output from the reviewer's mailbox message.
-2. Update checkpoint: `phase: finish, status: merge_blocked, reason: <reason>, retry_attempts: K/3` where K is the count of prior retry attempts in this run.
+2. Update checkpoint: `phase: finish, status: merge_blocked, reason: <reason>, merge_retries: K/3` where K is the count of prior retry attempts in this run.
 3. Touch heartbeat.
 4. Present the 5-option menu to the owner. This is the existing finish-branch touchpoint continued; it does NOT exceed the 3-touchpoint cap.
 5. Translate the owner's choice and re-engage the reviewer per the table below.
@@ -64,7 +64,7 @@ Reviewer (Hat 2, phase 7) posts this when the finishing-a-development-branch ski
 
 | Choice | Action | Re-spawn reviewer? | Expected next signal |
 |---|---|---|---|
-| **A — Retry merge** | Owner has resolved conflicts externally or upstream has stabilised. Lead instructs reviewer to re-run the merge step. Increments `retry_attempts`. | No, reuse same reviewer | `FINISH_DONE merged <ref>` or `FINISH_BLOCKED <reason>` |
+| **A — Retry merge** | Owner has resolved conflicts externally or upstream has stabilised. Lead instructs reviewer to re-run the merge step. Increments `merge_retries`. | No, reuse same reviewer | `FINISH_DONE merged <ref>` or `FINISH_BLOCKED <reason>` |
 | **B — Switch to pr_opened** | Reviewer re-runs `finishing-a-development-branch` with `decision=pr_opened`. | No | `FINISH_DONE pr_opened <ref>` |
 | **C — Switch to kept** | Reviewer posts `FINISH_DONE kept <branch>` directly. | No | `FINISH_DONE kept <ref>` |
 | **D — Switch to discarded** | Reviewer runs the discard path of finishing-a-development-branch. | No | `FINISH_DONE discarded <ref>` |
@@ -72,7 +72,7 @@ Reviewer (Hat 2, phase 7) posts this when the finishing-a-development-branch ski
 
 ### Retry cap
 
-`retry_attempts` is bounded at 3. After the 3rd `FINISH_BLOCKED`, option A is removed from the menu; the owner must pick B / C / D / E. The counter persists across `/resume` via the checkpoint.
+`merge_retries` is bounded at 3. After the 3rd `FINISH_BLOCKED`, option A is removed from the menu; the owner must pick B / C / D / E. The counter persists across `/resume` via the checkpoint.
 
 ## Auto-cleanup — new Step D.5 (worktree removal)
 
@@ -114,10 +114,10 @@ Inserted between Step D (manual platform-state sweep) and Step E (final checkpoi
 - [x] implementation (N/N tasks complete)
 - [x] qa → docs/superpowers/reviews/...
 - [x] review → docs/superpowers/reviews/...
-- [ ] finish (blocked: <reason>, retry-attempts: K/3)
+- [ ] finish (blocked: <reason>, merge_retries: K/3)
 ```
 
-The `finish` row stays unchecked until `FINISH_DONE` posts. `/team-feature-resume` reads this row to know it must respawn the reviewer and re-present the 5-option menu.
+The `finish` row stays unchecked until `FINISH_DONE` posts. `/team-feature-resume` reads this row to know it must respawn the reviewer and re-present the 5-option menu, with option A removed if `merge_retries` already hit 3.
 
 ### Closing block (after Step E completes)
 
@@ -127,8 +127,8 @@ The `finish` row stays unchecked until `FINISH_DONE` posts. `/team-feature-resum
 - decision: <merged|pr_opened|kept|discarded>
 - cleanup: complete
 - worktree: <removed | already-absent | removal-skipped:<reason> | removed (after manual fix) | force-removed | kept-by-owner | escalated>
-- worktree_path: <path>            # only when state ∈ {kept-by-owner, escalated, removal-skipped (with worktree on disk)}
-- merge_retries: K                 # only when K > 0
+- worktree_path: <path>            # present whenever the worktree directory still exists on disk after cleanup (states: kept-by-owner, escalated, or removal-skipped where the path exists)
+- merge_retries: K                 # only when K > 0; matches the final value of the mid-phase counter
 - dropped_files: [<path>, ...]     # only when state == force-removed
 ```
 
