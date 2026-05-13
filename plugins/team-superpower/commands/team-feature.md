@@ -135,6 +135,31 @@ After preflight clears AND phase 0 has decided the shape:
 3. Ensure `docs/superpowers/sessions/<slug>.shape` was written in phase 0.4 and is committed.
 4. Write checkpoint updates atomically: write to `<file>.tmp` then `mv -f <file>.tmp <file>`. Half-written checkpoints corrupt recovery.
 
+## Spawn prompt template (use verbatim — do NOT improvise per role)
+
+Every teammate spawn MUST hand over the same minimum context. A teammate inherits project context (`CLAUDE.md`, MCP servers, skills) automatically but does NOT inherit your conversation history — anything implicit on your side is invisible on theirs. Use this template:
+
+```
+You are the <role> teammate for feature `<slug>`.
+
+Stack shape: <full-stack | be-only | fe-only>   (read docs/superpowers/sessions/<slug>.shape if you need to confirm)
+Worktree:    <absolute path>                    (planner records this in WORKTREE_READY)
+Resume:      <yes | no>                         (yes when spawned by /team-feature-resume; pick up at the next pending task)
+
+Read first:
+  - CLAUDE.md (free-form prose AND the `team-superpower` block)
+  - Your role brief: <relative path to plugins/team-superpower/agents/<role>.md>
+  - <role-relevant artefact paths — list them all; e.g. design doc, plan, ARCH/SEC reports, QA report>
+
+Open escalations:
+  <one-line summary per open escalation in the checkpoint, or "(none)">
+
+Your task: <one sentence describing the specific phase work the role is being spawned for>
+Mailbox signal expected back: <e.g. DESIGN_APPROVED <path>, PLAN_READY <path>, ARCH_PASSED <path>, BE_DONE <task-id>, etc.>
+```
+
+Fill every field. If a field is genuinely N/A for a role (e.g. there is no QA report when spawning the designer), write `n/a` rather than omitting the line — the template's stability is what keeps respawns deterministic.
+
 ## Phase chain (strict order — no skipping, no inlining)
 
 1. **Design (designer).** Spawn the `designer` teammate. Hand it `<slug>` and the owner's request. Wait for `DESIGN_APPROVED <path>` in your mailbox. If the designer asks a clarifying question, answer from project context if unambiguous; otherwise batch with any open questions and use the §7 escalation template to the owner. Checkpoint: `phase: design, status: complete`. Touch heartbeat.
@@ -359,6 +384,20 @@ Remove the `<slug>.heartbeat` file. Commit the checkpoint. Confirm to the owner:
 
 Tell the owner exactly which step failed, include the script output verbatim, and instruct them to run `/team-cleanup <slug>` once they have confirmed nothing else is running. Do **not** retry cleanup loops automatically — the safety check is the heartbeat, and you cannot meaningfully refresh it from outside the lead process.
 
+## Within-phase stall watchdog
+
+Heartbeat at phase boundaries is not enough — a teammate can hang silently mid-phase and you'd never notice. Run a watchdog:
+
+1. Read `limits.phase_stall_minutes` from CLAUDE.md (`bash ${CLAUDE_PLUGIN_ROOT}/scripts/parse-claudemd.sh get limits.phase_stall_minutes CLAUDE.md`). Default to **30** if unset.
+2. Inside any phase, if the watchdog window elapses with **no mailbox message AND no shared-task-list state transition** from the active teammate(s):
+   - Send a ping to the teammate's mailbox: `STATUS_CHECK <slug> — no activity for <N> minutes; reply with current status or progress note.`
+   - Start a second watchdog window of the same length.
+3. If a second watchdog window also elapses with no reply: surface a §7 escalation to the owner with the teammate's last-known status, the elapsed wall time, and the current phase. Halt — do NOT silently respawn or force-cancel; the owner decides.
+
+The watchdog is **not** an owner touchpoint by itself — pinging the teammate is internal. Escalation step 3 is what reaches the owner, and only via the §7 template (so it doesn't count against the 3 allowed touchpoints either).
+
+Reset the watchdog on every received mailbox message and every task transition. Touch the heartbeat each time you reset.
+
 ## Owner touchpoints (the ONLY allowed pings to the owner)
 
 1. Design sign-off (phase 1, the brainstorming skill's built-in step).
@@ -440,5 +479,8 @@ stack_shape: full-stack | be-only | fe-only
 - **Never** release an `impl:fe-*` task before `CONTRACT_PUBLISHED` arrives (full-stack with `contracts.source_of_truth != none`).
 - **Never** release a second `impl:be-migration-*` task while one is `in_progress`. The hook is a backstop; you are the primary control.
 - **Never** present the finish-branch menu before the CI gate either passes or is explicitly bypassed (CI red → menu with "Show CI logs"; CI timeout → 3-option menu; `ci.provider: none` → skip the gate entirely but still push).
+- **Never** wait passively on a teammate for longer than `limits.phase_stall_minutes` (default 30) without running the within-phase stall watchdog above. Two consecutive stall windows with no teammate activity must escalate via §7.
+- **Never** improvise a spawn prompt. Use the **Spawn prompt template** verbatim — leave fields as `n/a` rather than omitting them.
+- **Never** spawn more than 5 teammates concurrently. The plugin defines up to 8 lifetime roles but phase-gating must keep ≤ 5 active at any moment. If a future change would break this, halt and escalate.
 
 Begin with the prechecks, then preflight, then run phase 0 (stack detection / shape decision / version pin / shape marker), then spawn `designer`.

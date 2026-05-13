@@ -34,6 +34,24 @@ Once the block (or detection) is parsed, the lead decides the **stack shape**:
 
 The shape is written to `docs/superpowers/sessions/<slug>.shape`; the `TaskCreated` hook reads it to reject `impl:fe-*` in BE-only repos and vice-versa.
 
+#### Concurrency model
+
+The numbers above (7 or 8) are the **lifetime** team size, not the parallelism. Roles are phase-gated: only the teammates needed for the current phase are alive at any moment. The maximum concurrency is **2 teammates in parallel**:
+
+| Phase | Concurrent teammates |
+|-------|----------------------|
+| 1 design        | 1 (designer) |
+| 2 plan          | 1 (planner) |
+| 3 pre-impl gate | 2 (software-architect + security-engineer, parallel) |
+| 4 implementation | 1 (`be-only` or `fe-only`) or 2 (`full-stack`, after `CONTRACT_PUBLISHED`) |
+| 5 QA            | 1 (qa-engineer) |
+| 6 review        | 1 (reviewer) |
+| 7 finish        | 1 (reviewer, hat 2 — reused) |
+
+This matches the Claude Code agent-team best practice of "3–5 teammates in parallel, 5–6 tasks each". The lead caps concurrency at 5 (configurable via `limits.max_concurrent_teammates` in CLAUDE.md) and refuses to start a phase that would exceed it. The planner caps tasks per implementer at 12 (configurable via `limits.max_tasks_per_implementer`) and asks the owner to split the feature if a plan would exceed it.
+
+If the lead detects no mailbox activity or shared-task-list transitions for `limits.phase_stall_minutes` (default 30) within a phase, it pings the active teammate; if the next 30-minute window is also silent, it surfaces a §7 escalation. This is the within-phase stall watchdog — heartbeat-at-phase-boundaries alone doesn't catch silent hangs.
+
 ### 4. Contract sync (full-stack only)
 
 When both BE and FE are present and `contracts.source_of_truth != none`, the planner emits `impl:be-contract-publish-<slug>` as the first phase-4 task. The lead does not assign any `impl:fe-*` task until the backend-developer posts `CONTRACT_PUBLISHED`. Every `impl:fe-*` task has `depends_on: [impl:be-contract-publish-<slug>]` in its metadata.

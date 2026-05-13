@@ -68,6 +68,17 @@ Read `docs/superpowers/sessions/<slug>.shape` (lead wrote it in phase 0):
 
 If the design doc implies a missing side (e.g. design talks about a UI but shape is `be-only`, or talks about a server but shape is `fe-only`), halt and escalate — the stack info in `CLAUDE.md` is inconsistent with the design.
 
+### Task-count cap (split the feature if too big)
+
+Read `limits.max_tasks_per_implementer` from CLAUDE.md (`bash ${CLAUDE_PLUGIN_ROOT}/scripts/parse-claudemd.sh get limits.max_tasks_per_implementer CLAUDE.md`). Default to **12** if unset. The agent-team best-practice target is 5–6 tasks per teammate; 12 is the hard cap before quality degrades.
+
+Before posting `PLAN_READY`, count the `impl:` tasks per implementer:
+
+- `impl:be-*` + `impl:be-migration-*` + `impl:be-contract-publish-*` + `impl:contract-update-*` → backend-developer's load.
+- `impl:fe-*` → frontend-developer's load.
+
+If either count exceeds the cap, halt and escalate via the §7 template asking the owner to either (a) split the feature into smaller scopes that can be sequenced as separate `/team-feature` runs, or (b) explicitly raise `limits.max_tasks_per_implementer` in CLAUDE.md. Do NOT silently truncate or batch tasks — the cap exists to keep teammate context manageable.
+
 ### Database migrations
 
 When a task touches database schema, emit it as `impl:be-migration-<topic>` AND ensure no two such tasks can be in-flight simultaneously (set `depends_on` on every subsequent migration to chain them). The lead also enforces this serialization; the `TaskCompleted` hook is a final backstop.
