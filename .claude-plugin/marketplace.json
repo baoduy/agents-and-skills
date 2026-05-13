@@ -26,6 +26,14 @@
       "version": "0.1.0",
       "category": "workflow",
       "keywords": ["agent-teams", "superpowers", "tdd", "orchestration", "workflow", "brainstorming", "code-review"]
+    },
+    {
+      "name": "plugin-validator",
+      "source": "./plugins/plugin-validator",
+      "description": "Orchestrated validator for Claude Code plugins — validates skills, agents, commands, and hooks across every plugin under plugins/**.",
+      "version": "0.1.0",
+      "category": "tooling",
+      "keywords": ["validation", "linting", "plugin-authoring", "skills", "agents", "commands", "hooks"]
     }
   ]
 }
