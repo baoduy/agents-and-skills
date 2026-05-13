@@ -1,39 +1,73 @@
 {
   "name": "drunkcoding",
-  "owner": { "name": "steven", "email": "steven.hoang@transwap.com" },
-  "metadata": { "description": "Personal agents and skills marketplace" },
+  "owner": {
+    "name": "steven",
+    "email": "steven.hoang@transwap.com"
+  },
+  "metadata": {
+    "description": "Personal agents and skills marketplace"
+  },
   "plugins": [
     {
       "name": "tech-graph",
       "source": "./plugins/tech-graph",
       "description": "6-step wizard for technical diagrams (SVG/PNG) via fireworks-tech-graph",
-      "version": "0.1.0",
+      "version": "0.0.13",
       "category": "diagram",
-      "keywords": ["diagram", "svg", "architecture", "uml", "flowchart"]
+      "keywords": [
+        "diagram",
+        "svg",
+        "architecture",
+        "uml",
+        "flowchart"
+      ]
     },
     {
       "name": "html-effectiveness",
       "source": "./plugins/html-effectiveness",
       "description": "Generate self-contained interactive HTML reports from 20 upstream templates via a conversational agent.",
-      "version": "0.1.0",
+      "version": "0.0.13",
       "category": "reports",
-      "keywords": ["html", "report", "status", "incident", "slide-deck", "decision-matrix"]
+      "keywords": [
+        "html",
+        "report",
+        "status",
+        "incident",
+        "slide-deck",
+        "decision-matrix"
+      ]
     },
     {
       "name": "team-superpower",
       "source": "./plugins/team-superpower",
       "description": "Coordination layer that runs the obra/superpowers skill chain across a Claude Code agent team — one /team-feature command takes an idea through brainstorming, plan, TDD implementation, review, and finish with at most 4 owner touchpoints.",
-      "version": "0.1.0",
+      "version": "0.0.13",
       "category": "workflow",
-      "keywords": ["agent-teams", "superpowers", "tdd", "orchestration", "workflow", "brainstorming", "code-review"]
+      "keywords": [
+        "agent-teams",
+        "superpowers",
+        "tdd",
+        "orchestration",
+        "workflow",
+        "brainstorming",
+        "code-review"
+      ]
     },
     {
       "name": "plugin-validator",
       "source": "./plugins/plugin-validator",
       "description": "Orchestrated validator for Claude Code plugins — validates skills, agents, commands, and hooks across every plugin under plugins/**.",
-      "version": "0.1.0",
+      "version": "0.0.13",
       "category": "tooling",
-      "keywords": ["validation", "linting", "plugin-authoring", "skills", "agents", "commands", "hooks"]
+      "keywords": [
+        "validation",
+        "linting",
+        "plugin-authoring",
+        "skills",
+        "agents",
+        "commands",
+        "hooks"
+      ]
     }
   ]
 }
