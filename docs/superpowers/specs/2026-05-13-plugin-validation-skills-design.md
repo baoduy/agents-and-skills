@@ -145,6 +145,73 @@ Each `SKILL.md` follows the existing `validate-skills/SKILL.md` template: frontm
 1. **Hooks field shape.** Does the current Claude Code plugin loader accept `"hooks": "hooks/hooks.json"` (string path) or only inline object? Plan task: confirm against Claude Code source or docs, then encode result as a hard `[FAIL]` vs soft `[WARN]` in `validate-hooks`.
 2. **Tool name list.** Need an authoritative list of valid Claude Code tool names for `tools` / `allowed-tools` checks. Plan task: identify source, decide whether to inline the list or fetch.
 
+## Resolutions
+
+### Resolution 1: Hooks field shape
+
+**Outcome: B — string path is the bug. The Claude Code plugin loader requires `hooks` to be an inline object.**
+
+**Evidence:**
+
+1. **caveman plugin** (`~/.claude/plugins/cache/caveman/caveman/ef6050c5e184/.claude-plugin/plugin.json`) — installs and runs successfully. Its `hooks` field is an inline object:
+   ```json
+   {
+     "hooks": {
+       "SessionStart": [{ "hooks": [{ "type": "command", "command": "..." }] }],
+       "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "..." }] }]
+     }
+   }
+   ```
+
+2. **team-superpower plugin** — install fails with `hooks: Invalid input`. Its `hooks` field is a string path:
+   ```json
+   { "hooks": "hooks/hooks.json" }
+   ```
+
+3. **context-mode plugin** — installs fine. Its `.claude-plugin/plugin.json` has **no `hooks` field at all**. The string-path form (`"hooks": "./hooks/cursor/hooks.json"`) only appears in its `.cursor-plugin/plugin.json` (Cursor-specific variant, not loaded by Claude Code).
+
+4. The Claude binary at `~/.local/bin/claude` contains the string `validateObject(hook, "hook")`, consistent with Zod/schema validation that rejects non-object types.
+
+**Source:** Local plugin cache inspection (`~/.claude/plugins/cache/`). No public documentation URL is available — `docs.claude.com` URLs were unreachable in this session (DNS sandbox restriction) and Context7 quota was exhausted. The evidence from installed plugins is conclusive.
+
+**Implication for plan:**
+- `validate-hooks` must flag `"hooks": "<string>"` in `plugin.json` as a hard `[FAIL]`, not a `[WARN]`.
+- The correct shape is an inline object keyed by event name (`PreToolUse`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, `PreCompact`, `Stop`, `SubagentStop`, `Notification`).
+- Fixing `team-superpower` (separate task) requires inlining the hooks object from `hooks/hooks.json` directly into `plugin.json`, or removing the `hooks` field and configuring hooks via `settings.json` instead.
+
+---
+
+### Resolution 2: Tool-name list
+
+**Finding: The list is stable enough to inline. Prefer linking to docs for the definitive reference, but include the known list in the skill body with a version stamp.**
+
+**Authoritative tool names (as of Claude Code ≥ 2.1.139), extracted from the installed context-mode plugin's PostToolUse matcher and confirmed against agent frontmatter in this repo:**
+
+Core file/shell tools: `Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `NotebookEdit`
+
+Task/agent tools: `Task`, `Agent`, `Skill`, `AskUserQuestion`
+
+Worktree/plan tools: `EnterWorktree`, `ExitWorktree`, `EnterPlanMode`, `ExitPlanMode`
+
+Todo/tracking tools: `TodoWrite`, `TodoRead`, `TaskCreate`, `TaskUpdate`
+
+Web/network tools: `WebFetch`, `WebSearch`
+
+MCP tools: `mcp__<server>__<tool>` (prefix match; any MCP tool name is valid)
+
+**Sources:**
+- context-mode plugin PostToolUse hook matcher (extracted from `~/.claude/plugins/cache/context-mode/context-mode/1.0.121/server.bundle.mjs`): `Bash|Read|Write|Edit|NotebookEdit|Glob|Grep|TodoWrite|TaskCreate|TaskUpdate|EnterPlanMode|ExitPlanMode|Skill|Agent|AskUserQuestion|EnterWorktree|mcp__`
+- Existing agent frontmatter in `plugins/team-superpower/agents/*.md`: `Read, Write, Edit, Bash, Glob, Grep`
+- Claude Code changelog `~/.claude/cache/changelog.md` (versions 2.1.136–2.1.140)
+- Reference URL (verify current list): `https://docs.claude.com/en/docs/claude-code/sub-agents`
+
+**Implication for plan:**
+- `validate-agents` and `validate-commands` should inline the known list above with a comment citing the Claude Code version and the docs URL.
+- Unknown tool names (including `mcp__*` prefixed names) should produce `[WARN]` (not `[FAIL]`), since MCP tool names are dynamic and user-defined.
+- The list should be refreshed whenever a new Claude Code major version is released. Document this in each skill's References section.
+
+---
+
 ## Risks
 
 - Tool-name lists drift as Claude Code adds tools — validation will need periodic refresh.
