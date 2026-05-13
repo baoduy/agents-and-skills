@@ -59,6 +59,27 @@ Read all the artefacts the next phase depends on:
 - If next phase is `review` or later: QA report (`QA_PASSED`).
 - If next phase is `finish`: code-review report (`REVIEW_PASSED`).
 
+### Step 4.a — Mid-phase 7 resume (merge_blocked)
+
+If the checkpoint's `## Phases` block shows `- [ ] finish (blocked: <reason>, merge_retries: K/3)`, the previous lead crashed inside phase-7 merge-failure handling. Resume protocol:
+
+1. Read `<reason>` and `K` from the checkpoint line.
+2. Re-spawn the reviewer (Hat 2 only; reviewer is reused).
+3. Re-present the 5-option menu from `/team-feature` § Phase 7 merge-failure handling, with option A dropped if `K == 3`.
+4. The owner's choice is translated and reviewer continues per the same translation table.
+5. On the next `FINISH_DONE`, normal auto-cleanup runs (including Step D.5 if decision is `merged`).
+
+Do NOT re-run earlier phases. Their checkpoints stand.
+
+### Step 4.b — Mid-Step-D.5 resume (worktree removal in flight)
+
+If the checkpoint's `## Closing` block exists but is incomplete (has `decision:` and `cleanup: complete` but is missing the `worktree:` line) AND the recorded decision is `merged`, the previous lead crashed inside Step D.5. Resume protocol:
+
+1. Verify Step A–D conditions still hold by running `bash ${CLAUDE_PLUGIN_ROOT}/scripts/team-state.sh scan <slug>` — all states must be `absent`. If anything is `present`, halt and instruct the owner to run `/team-cleanup <slug>` before resuming.
+2. Re-run Step D.5 from the top: read `**Worktree:**`, `cd` to repo root, check `git worktree list --porcelain`, attempt non-forced remove. The procedure is idempotent — if the worktree was already removed in the prior session it'll be recorded as `already-absent`.
+3. On remove failure, re-enter the 4-option remove-failure menu fresh (no carry-over retry count — the prior session's count was not persisted because Step D.5 retries are per-session, not per-run; this is intentional, the owner sees a fresh menu).
+4. On completion, write the missing Closing-block fields (`worktree`, `worktree_path` if applicable, `dropped_files` if applicable) and commit.
+
 ### Step 5 — Reconstruct context
 
 - `cd` into the worktree path recorded in the checkpoint. If it no longer exists, halt and escalate via the §7 template — the owner needs to restore or rebase the worktree before resume can continue.
@@ -78,6 +99,7 @@ For the next phase, spawn the relevant role(s) using the agent definitions shipp
 | `qa` | `qa-engineer` |
 | `review` | `reviewer` |
 | `finish` | `reviewer` |
+| `finish (blocked: ...)` | `reviewer` (Hat 2) — same reviewer instance; re-present the 5-option menu, honour the persisted `merge_retries` count |
 
 Hand each respawned teammate:
 - the slug
@@ -107,7 +129,7 @@ Append to the checkpoint (atomic write — tmp + rename) and commit:
 ### Step 9 — Resume the phase chain
 
 Continue per the same rules as `/team-feature`:
-- three allowed owner touchpoints (design sign-off, plan approval, finish-branch decision), nothing else without §7 template
+- three allowed owner touchpoints (design sign-off, plan approval, finish-branch decision — `FINISH_BLOCKED` follow-up menus count as the same finish-branch touchpoint continued), nothing else without §7 template
 - checkpoint after every phase boundary, atomic writes
 - heartbeat touched at every phase boundary
 - automatic cleanup after `FINISH_DONE`
