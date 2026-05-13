@@ -45,3 +45,17 @@ Options:
 Recommendation: A — the design doc was approved first and the discrepancy reads as a plan-writing slip, not a design change. But this is a load-bearing decision and we won't move without your call.
 Need from you: choose A/B/C.
 ```
+
+## Worked example 3 — lead-to-owner (`FINISH_BLOCKED` option E)
+
+```
+BLOCKED: Merge of feature/user-search into main failed: push rejected because origin/main advanced. Owner picked option E (escalate) from the 5-option menu rather than retrying inline.
+Phase: finish
+Context: Reviewer attempted `git push` after a clean local merge. Push was rejected: "Updates were rejected because the remote contains work that you do not have locally." The remote moved between phase 6 and phase 7. The lead's 5-option menu was presented; owner chose E because they want to coordinate the rebase manually rather than have the team retry blind.
+Options:
+  A. Owner rebases the feature branch locally onto origin/main, signals "ready to retry"; lead instructs reviewer to retry merge (counts as 1/3 retries).
+  B. Owner pulls latest origin/main into trunk first, then signals; lead retries.
+  C. Owner switches the decision to pr_opened and merges via GitHub UI.
+Recommendation: A — the conflict surface is small and a clean rebase plus retry is the cheapest path. We won't move until you say which.
+Need from you: choose A/B/C.
+```
