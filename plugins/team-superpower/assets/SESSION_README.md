@@ -52,6 +52,22 @@ This matches the Claude Code agent-team best practice of "3–5 teammates in par
 
 If the lead detects no mailbox activity or shared-task-list transitions for `limits.phase_stall_minutes` (default 30) within a phase, it pings the active teammate; if the next 30-minute window is also silent, it surfaces a §7 escalation. This is the within-phase stall watchdog — heartbeat-at-phase-boundaries alone doesn't catch silent hangs.
 
+#### Worktree reuse
+
+If you launch `/team-feature` from inside a linked git worktree on a feature branch, the planner reuses that worktree instead of nesting a new one inside it. The signal `WORKTREE_READY <path> <branch> <origin>` carries `origin: reused` and the checkpoint records `**Worktree origin:** reused`.
+
+Detection is automatic — no config needed:
+
+| Where `/team-feature` is launched | Branch                                                    | Behavior |
+|---|---|---|
+| Linked worktree                   | feature branch (anything not protected)                   | **Reuse** the current worktree. |
+| Linked worktree                   | `main`, `master`, `develop`, `dev`, `release/*`, `releases/*` | **Halt.** Switch to a feature branch (`git checkout -b feature/<slug>`) and re-run. |
+| Main repo                         | any                                                       | **Create** a fresh worktree via Superpowers `using-git-worktrees`. |
+
+A reused worktree is owned by you, not the team — Step D.5 auto-removal after merge **does not run** when origin is `reused`; the Closing block records `worktree: removal-skipped:reused-existing-worktree` and the worktree stays on disk. Created worktrees are removed after a successful merge as before.
+
+The clean-test-baseline check still runs in both modes. If you reused a worktree with uncommitted changes that break the baseline, the planner halts with a §7 escalation asking you to stash or commit first.
+
 ### 4. Contract sync (full-stack only)
 
 When both BE and FE are present and `contracts.source_of_truth != none`, the planner emits `impl:be-contract-publish-<slug>` as the first phase-4 task. The lead does not assign any `impl:fe-*` task until the backend-developer posts `CONTRACT_PUBLISHED`. Every `impl:fe-*` task has `depends_on: [impl:be-contract-publish-<slug>]` in its metadata.

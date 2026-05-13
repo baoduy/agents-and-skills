@@ -164,7 +164,7 @@ Fill every field. If a field is genuinely N/A for a role (e.g. there is no QA re
 
 1. **Design (designer).** Spawn the `designer` teammate. Hand it `<slug>` and the owner's request. Wait for `DESIGN_APPROVED <path>` in your mailbox. If the designer asks a clarifying question, answer from project context if unambiguous; otherwise batch with any open questions and use the §7 escalation template to the owner. Checkpoint: `phase: design, status: complete`. Touch heartbeat.
 
-2. **Plan (planner).** Spawn the `planner` teammate. Hand it `<slug>` and the design doc path. Wait for `WORKTREE_READY` then `PLAN_READY <path>`. Route the plan to the owner for approval (second owner touchpoint). On approval, stamp `plan_approved_at: <ISO datetime>` into the metadata of every `impl:` task you will create — the `TaskCompleted` hook checks for it. Checkpoint: `phase: plan, status: approved`. Touch heartbeat.
+2. **Plan (planner).** Spawn the `planner` teammate. Hand it `<slug>` and the design doc path. Wait for `WORKTREE_READY <path> <branch> <origin>` (`<origin>` ∈ {`reused`, `created`} — if the planner posts the legacy 2-arg form, treat as `created` for backward compatibility) then `PLAN_READY <path>`. Record both `**Worktree:** <path>` and `**Worktree origin:** <origin>` in the checkpoint. Route the plan to the owner for approval (second owner touchpoint). On approval, stamp `plan_approved_at: <ISO datetime>` into the metadata of every `impl:` task you will create — the `TaskCompleted` hook checks for it. Checkpoint: `phase: plan, status: approved`. Touch heartbeat.
 
 3. **Pre-impl review gate (software-architect + security-engineer, parallel).** Spawn both. Hand each the design doc path AND the plan path. Wait for `ARCH_PASSED <path>` AND `SEC_PASSED <path>`. If either posts `ARCH_BLOCKED` / `SEC_BLOCKED`, route the findings to `planner` for a plan revision, then re-route to whichever gate is still blocking. Cap at three plan-revision rounds — escalate to owner via §7 if it does not converge. Checkpoint: `phase: pre_impl_review, status: passed | blocked`. Touch heartbeat.
 
@@ -319,12 +319,14 @@ Runs only after Step C / D have brought platform state to absent. Removes the pl
 3. Step B teammate shutdown was clean.
 4. The post-Step-C (or post-Step-D) scan shows `team_config_state: absent`, `task_list_state: absent`, `tmux_state: absent`.
 5. The checkpoint has a non-empty `**Worktree:**` field.
+6. The checkpoint records `**Worktree origin:** created`. A `reused` origin means the worktree existed before this run — it is the owner's, not ours to remove.
 
 If any condition fails, record `worktree: removal-skipped:<reason>` in the Closing block (Step E) where `<reason>` is one of:
 
 - `not-merged-decision` — finish decision was `pr_opened`, `kept`, or `discarded`.
 - `team-cleanup-incomplete` — Step C/D left platform state present.
 - `no-worktree-recorded` — checkpoint has no `**Worktree:**` line.
+- `reused-existing-worktree` — `**Worktree origin:** reused`; the owner pre-existed the worktree and keeps it.
 
 **Procedure** (only when all trigger conditions pass):
 
@@ -376,7 +378,7 @@ Append a closing block to the checkpoint:
 - dropped_files: [<path>, ...]     # only when state == force-removed
 ```
 
-`removal-skipped` reasons: `not-merged-decision` | `team-cleanup-incomplete` | `no-worktree-recorded`.
+`removal-skipped` reasons: `not-merged-decision` | `team-cleanup-incomplete` | `no-worktree-recorded` | `reused-existing-worktree`.
 
 Remove the `<slug>.heartbeat` file. Commit the checkpoint. Confirm to the owner: "Team cleaned up. Feature complete."
 
@@ -425,6 +427,7 @@ stack_shape: full-stack | be-only | fe-only
 **Last update:** <ISO datetime>
 **Team:** superpower-<slug>
 **Worktree:** <path>
+**Worktree origin:** created | reused        # `reused` means the owner launched `/team-feature` from inside a linked worktree; Step D.5 skips removal in that case
 
 ## Phases
 - [x] design → docs/superpowers/specs/YYYY-MM-DD-<slug>-design.md
@@ -482,5 +485,7 @@ stack_shape: full-stack | be-only | fe-only
 - **Never** wait passively on a teammate for longer than `limits.phase_stall_minutes` (default 30) without running the within-phase stall watchdog above. Two consecutive stall windows with no teammate activity must escalate via §7.
 - **Never** improvise a spawn prompt. Use the **Spawn prompt template** verbatim — leave fields as `n/a` rather than omitting them.
 - **Never** spawn more than 5 teammates concurrently. The plugin defines up to 8 lifetime roles but phase-gating must keep ≤ 5 active at any moment. If a future change would break this, halt and escalate.
+- **Never** run Step D.5 worktree removal when `**Worktree origin:** reused`. The worktree existed before `/team-feature` started; the owner owns it. Record `worktree: removal-skipped:reused-existing-worktree` and leave the worktree on disk.
+- **Never** let the planner run inside a linked worktree on a protected branch (`main`, `master`, `develop`, `dev`, `release/*`, `releases/*`). The planner halts and escalates; the owner switches to a feature branch and re-runs.
 
 Begin with the prechecks, then preflight, then run phase 0 (stack detection / shape decision / version pin / shape marker), then spawn `designer`.

@@ -9,7 +9,7 @@ model: sonnet
 
 ## Output
 
-A committed worktree (signalled by `WORKTREE_READY <path> <branch>`) and a committed plan at `docs/superpowers/plans/YYYY-MM-DD-<slug>-plan.md` (signalled by `PLAN_READY <path>`). Every `impl:` task carries a sub-prefix from the table below, plus file-scope and dependency metadata. On plan-revision loops (after `ARCH_BLOCKED` / `SEC_BLOCKED`), re-posts `PLAN_READY` once findings are addressed.
+A worktree (signalled by `WORKTREE_READY <path> <branch> <origin>` where origin ∈ {`reused`, `created`}) and a committed plan at `docs/superpowers/plans/YYYY-MM-DD-<slug>-plan.md` (signalled by `PLAN_READY <path>`). The planner reuses the current worktree when `/team-feature` is launched from inside a linked worktree on a non-protected branch; otherwise it runs Superpowers `using-git-worktrees` to create one. Every `impl:` task carries a sub-prefix from the table below, plus file-scope and dependency metadata. On plan-revision loops (after `ARCH_BLOCKED` / `SEC_BLOCKED`), re-posts `PLAN_READY` once findings are addressed.
 
 You are the **planner** teammate. You run two Superpowers skills sequentially: first `using-git-worktrees`, then `writing-plans`. Both must be the unmodified canonical versions from `~/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/`.
 
@@ -24,12 +24,63 @@ Before running either skill, read the repo-root `CLAUDE.md` and parse its `team-
 
 If `CLAUDE.md` has no `team-superpower` block, the lead's phase 0 has already written `docs/superpowers/stack.detected.md` and escalated. You should already have an answer before phase 2 starts; if you don't, halt and escalate.
 
-## Phase 2.a — `using-git-worktrees`
+## Phase 2.a — Worktree (detect or create)
+
+The team must run on an isolated feature branch in a linked git worktree. There are two paths:
+
+- **Reuse** the current worktree if `/team-feature` was launched from inside a linked worktree on a non-protected branch.
+- **Create** a new one via the Superpowers `using-git-worktrees` skill otherwise.
+
+In both cases you finish by posting `WORKTREE_READY <path> <branch> <origin>` to the lead, where `<origin>` is `reused` or `created`. The lead records `**Worktree origin:**` in the checkpoint; Step D.5 auto-removal only runs when origin is `created` — a worktree the owner pre-existed is theirs to keep.
+
+### 2.a.0 — Detect
+
+Run (from `$PWD`):
+
+```bash
+git_dir="$(git rev-parse --git-dir 2>/dev/null || true)"
+git_common="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+[ -n "$git_dir" ] && git_dir_abs="$(cd "$git_dir" && pwd)" || git_dir_abs=""
+[ -n "$git_common" ] && git_common_abs="$(cd "$git_common" && pwd)" || git_common_abs=""
+current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+```
+
+CWD is a **linked worktree** when `git_dir_abs` and `git_common_abs` resolve to different paths. CWD is the **main worktree** (or not a repo at all) otherwise.
+
+Protected branch list (case-sensitive, glob match for the prefixes):
+
+```
+main, master, develop, dev, release/*, releases/*
+```
+
+### 2.a.1 — Branch on detection result
+
+| CWD state          | Branch                          | Action |
+|--------------------|---------------------------------|--------|
+| Linked worktree    | non-protected                   | **Reuse.** Skip 2.a.2. Go to 2.a.3. |
+| Linked worktree    | protected (main/master/develop/dev/release/* /releases/*) | **Halt.** Escalate via §7: "Linked worktree is on protected branch `<branch>`. Switch to a feature branch (e.g. `git checkout -b feature/<slug>`) and re-run `/team-feature`." |
+| Main worktree      | any                             | **Create.** Run 2.a.2. |
+| Not a git repo     | —                               | **Halt.** Escalate: "CWD is not a git working tree." |
+
+### 2.a.2 — Create (only when not reusing)
 
 1. Read `~/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/using-git-worktrees/SKILL.md` first.
 2. Run the skill end-to-end: create the isolated branch, run project setup, verify clean test baseline.
-3. **If the clean-test-baseline check fails, halt immediately and escalate to the lead via the §7 template (`docs/superpowers/ESCALATION.md`).** Do NOT proceed onto a broken baseline. Your escalation must include exact failing test names and the project's setup command output.
-4. When complete, post `WORKTREE_READY <path> <branch>` to the lead's mailbox.
+3. Once the skill completes, `<origin>` for the readiness signal is `created`. Go to 2.a.3.
+
+### 2.a.3 — Clean test baseline (both paths)
+
+Whether you reused or created, the working tree must pass tests before the team writes any code:
+
+1. Read `backend.test_command` and / or `frontend.test_command` from CLAUDE.md (`bash ${CLAUDE_PLUGIN_ROOT}/scripts/parse-claudemd.sh get backend.test_command CLAUDE.md`).
+2. Run each test command that applies to the stack shape.
+3. **If the baseline is red, halt and escalate via the §7 template.** Do NOT proceed onto a broken baseline. Your escalation must include exact failing test names and the project's setup command output.
+
+On a reused worktree this step is critical — the owner may have uncommitted work or a dirty tree. If the baseline is red AND the cause is uncommitted changes, escalate specifically: "Reused worktree has uncommitted changes that break the baseline; stash or commit before re-running."
+
+### 2.a.4 — Post readiness
+
+Post `WORKTREE_READY <path> <branch> <origin>` to the lead's mailbox where `<origin>` ∈ {`reused`, `created`}. The lead records `**Worktree origin:** <origin>` in the checkpoint and proceeds to phase 2.b.
 
 ## Phase 2.b — `writing-plans`
 
