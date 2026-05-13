@@ -15,12 +15,91 @@ You are a **conductor**, not an implementer. Spawn teammates and coordinate them
 
 ## Required prechecks (run these first, in order)
 
-1. Confirm Superpowers plugin is installed: `claude plugin list | grep superpowers`. If missing, **halt** and instruct the owner: `/plugin install superpowers@claude-plugins-official`.
+1. Confirm Superpowers plugin is installed: `claude plugin list | grep superpowers`. If missing, **halt** and instruct the owner: `/plugin install superpowers@claude-plugins-official`. Capture the version string from `claude plugin list --json` (e.g. `5.0.7`) — you'll write it to the checkpoint in phase 0 step 5 below.
 2. Confirm Claude Code version is `2.1.32` or later: `claude --version`. If older, halt.
 3. Confirm `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is set in the environment. If not, halt and instruct the owner to add it to `~/.claude/settings.json` under `env`.
 4. Generate a kebab-case `<slug>` from the owner's request. Use it in every artifact filename for the rest of the run. The team you create MUST be named exactly `superpower-<slug>` — every cleanup and resume primitive depends on that convention.
 5. Create directories if missing: `docs/superpowers/{sessions,specs,plans,reviews}`.
 6. Seed `docs/superpowers/ESCALATION.md` from `${CLAUDE_PLUGIN_ROOT}/assets/ESCALATION.md` if it does not already exist. Seed `docs/superpowers/README.md` from `${CLAUDE_PLUGIN_ROOT}/assets/SESSION_README.md` if missing. Commit any seeded files.
+
+## Phase 0 — Stack detection, version pinning, shape decision
+
+This phase runs **after** preflight clears (see the next section) and **before** spawning any teammate. It decides which teammates to spawn and pins the Superpowers version so a mid-feature skill update can't corrupt recovery.
+
+### 0.1 — Read CLAUDE.md, or detect
+
+1. Check whether `CLAUDE.md` exists at the repo root AND contains a fenced `team-superpower` block:
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/parse-claudemd.sh extract CLAUDE.md
+   ```
+   - Exit 0: a block was extracted. Parse it. Skip to 0.2.
+   - Exit 1 (file missing or no block): run detection.
+
+2. Run detection:
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/detect-stack.sh "$PWD" > /tmp/team-superpower-detected.yaml
+   ```
+   - Exit 0 (confident): write the detected YAML (plus a one-line header) to `docs/superpowers/stack.detected.md` and commit. Halt with this message to the owner (via §7 escalation): "I detected this stack — `docs/superpowers/stack.detected.md`. Review the `# CONFIRM:` lines, paste the corrected block into a `team-superpower` fenced section of your CLAUDE.md (or create CLAUDE.md from `${CLAUDE_PLUGIN_ROOT}/assets/CLAUDE.md.template`), then re-run `/team-feature`." **Do NOT auto-edit CLAUDE.md — the spec forbids it.**
+   - Exit 1 (no signal): halt. Escalate to the owner: "No backend or frontend signal found in the repo. Create a CLAUDE.md from `${CLAUDE_PLUGIN_ROOT}/assets/CLAUDE.md.template` and re-run."
+   - Exit 2 (ambiguous): write the detected YAML to `docs/superpowers/stack.detected.md` with both candidate BE languages marked; halt and escalate so the owner picks one.
+
+### 0.2 — Determine stack shape
+
+Use the parser:
+
+```bash
+shape="$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/parse-claudemd.sh shape CLAUDE.md)"
+```
+
+`$shape` is one of `full-stack` | `be-only` | `fe-only` | `none`. If `none` (the block has `backend: none` AND `frontend: none`), halt and escalate — that combination is non-sensical.
+
+### 0.3 — Cross-validate: claimed stack vs. filesystem
+
+For every claimed component, verify at least one corresponding source file exists. Example checks:
+
+- `backend.language: csharp` → at least one `*.csproj` or `*.sln` exists.
+- `backend.language: node-ts` → `package.json` exists and declares a server dep (`express`, `fastify`, `koa`, `@nestjs/core`, etc.).
+- `frontend.framework: react` → `package.json` declares `react`.
+- `contracts.source_of_truth: openapi` → an OpenAPI file exists at `contracts.openapi_path` if specified.
+
+If any claimed component has no file evidence, halt and escalate. CLAUDE.md is the contract, but a contract that contradicts the filesystem is a bug to flag, not a configuration to act on.
+
+### 0.4 — Write the shape marker
+
+Write the resolved shape to a marker file the hooks read:
+
+```bash
+mkdir -p docs/superpowers/sessions
+echo "$shape" > docs/superpowers/sessions/<slug>.shape
+git add docs/superpowers/sessions/<slug>.shape
+```
+
+The `TaskCreated` hook reads this marker to enforce shape-appropriate `impl:` sub-prefixes.
+
+### 0.5 — Decide team composition (shape-adaptive spawn)
+
+| Shape         | Teammates to spawn |
+|---------------|--------------------|
+| `full-stack`  | designer, planner, software-architect, security-engineer, backend-developer, frontend-developer, qa-engineer, reviewer (**8 total**) |
+| `be-only`     | designer, planner, software-architect, security-engineer, backend-developer, qa-engineer, reviewer (**7 total**) |
+| `fe-only`     | designer, planner, software-architect, security-engineer, frontend-developer, qa-engineer, reviewer (**7 total**) |
+
+`software-architect`, `security-engineer`, `qa-engineer`, and `reviewer` are stack-agnostic and ALWAYS spawn. Designer, planner, and the implementers adapt.
+
+Spawning happens at phase boundaries (you don't spawn implementers until phase 4 starts; you don't spawn the reviewer until phase 6) — this section just decides which teammates the team will EVER spawn for this feature. Record the list in the checkpoint.
+
+### 0.6 — Pin the Superpowers version
+
+Read the installed Superpowers version (from precheck step 1) and write it to the checkpoint frontmatter. This pins the skill-set for this feature. `/team-feature-resume` reads it back and refuses to continue if the installed version has drifted.
+
+The frontmatter format is in the **Checkpointing** section below; the relevant added fields are:
+
+```yaml
+superpowers_version: <e.g. 5.0.7>
+plugin_version: <team-superpower plugin version>
+claude_code_version: <e.g. 2.1.32>
+stack_shape: full-stack | be-only | fe-only
+```
 
 ## Preflight — detect stale or orphaned state
 
@@ -49,11 +128,12 @@ Same-session check: if the current Claude Code session already manages an agent 
 
 ## Initial checkpoint and heartbeat
 
-After preflight clears:
+After preflight clears AND phase 0 has decided the shape:
 
-1. Write the initial checkpoint `docs/superpowers/sessions/YYYY-MM-DD-<slug>.md` per the format in the **Checkpointing** section and commit it.
+1. Write the initial checkpoint `docs/superpowers/sessions/YYYY-MM-DD-<slug>.md` per the format in the **Checkpointing** section — including the v2 frontmatter fields (`superpowers_version`, `plugin_version`, `claude_code_version`, `stack_shape`) — and commit it.
 2. `touch docs/superpowers/sessions/<slug>.heartbeat` and commit (or leave uncommitted — the file is intentionally ephemeral; either is fine). **Touch this heartbeat at every phase boundary** and any time you remain active for more than ~10 minutes inside a phase. The cleanup script uses its mtime to decide whether a future session is allowed to wipe state.
-3. Write checkpoint updates atomically: write to `<file>.tmp` then `mv -f <file>.tmp <file>`. Half-written checkpoints corrupt recovery.
+3. Ensure `docs/superpowers/sessions/<slug>.shape` was written in phase 0.4 and is committed.
+4. Write checkpoint updates atomically: write to `<file>.tmp` then `mv -f <file>.tmp <file>`. Half-written checkpoints corrupt recovery.
 
 ## Phase chain (strict order — no skipping, no inlining)
 
@@ -63,19 +143,49 @@ After preflight clears:
 
 3. **Pre-impl review gate (software-architect + security-engineer, parallel).** Spawn both. Hand each the design doc path AND the plan path. Wait for `ARCH_PASSED <path>` AND `SEC_PASSED <path>`. If either posts `ARCH_BLOCKED` / `SEC_BLOCKED`, route the findings to `planner` for a plan revision, then re-route to whichever gate is still blocking. Cap at three plan-revision rounds — escalate to owner via §7 if it does not converge. Checkpoint: `phase: pre_impl_review, status: passed | blocked`. Touch heartbeat.
 
-4. **Implementation (backend-developer + frontend-developer, parallel).** Read the approved plan. Create one shared-task-list entry per plan task with title `impl:be-<short-name>` or `impl:fe-<short-name>` per the prefix the planner assigned, body = full task text including verification, and dependency + file-scope metadata from the plan. Spawn one `backend-developer` and one `frontend-developer`. They self-claim by prefix. **You must verify no two active implementer tasks overlap in file scope** — if a conflict appears, serialize by holding the second task. Watch for `BE_DONE` / `FE_DONE`. Checkpoint after each task transition: `phase: implementation, tasks_complete: M/N`. Touch heartbeat at every transition.
+4. **Implementation (shape-adaptive, parallel where allowed).** Read the approved plan. Create one shared-task-list entry per plan task with the planner's assigned title (`impl:be-*`, `impl:fe-*`, `impl:be-migration-*`, `impl:be-contract-publish-*`), body = full task text including verification, and `depends_on` + `files` + `tests` + `estimated_minutes` + `plan_approved_at` metadata from the plan.
+
+   **Spawn rule (shape-adaptive):**
+   - `full-stack`: spawn one `backend-developer` AND one `frontend-developer`.
+   - `be-only`: spawn one `backend-developer` only. Do NOT spawn `frontend-developer`.
+   - `fe-only`: spawn one `frontend-developer` only. Do NOT spawn `backend-developer`.
+
+   **Contract publish (full-stack only).** If the planner emitted `impl:be-contract-publish-<slug>` as the first task, the backend-developer claims it first. Do NOT release any `impl:fe-*` task to the frontend-developer until you see `CONTRACT_PUBLISHED <task-id>` in your mailbox. The plan tasks already encode `depends_on: [impl:be-contract-publish-<slug>]` on every FE task, but you enforce the gate at the assignment level too.
+
+   **Mid-implementation contract drift.** If you receive `CONTRACT_DRIFT_DETECTED` from frontend-developer, or backend-developer files an `impl:contract-update-*` task on its own, pause all `impl:fe-*` in-flight work (post a "pause" message to frontend-developer's mailbox; it will idle on its current task). Wait for `CONTRACT_UPDATED <task-id>` from backend-developer, then unpause FE. Frontend-developer re-pulls the contract hash on resume.
+
+   **Migration serialization.** `impl:be-migration-*` tasks must run one at a time. The planner chains them via `depends_on`, the `TaskCompleted` hook is a backstop with `MIGRATION_RACE`, and you enforce it at assignment: do not release a second migration task while one is `in_progress`.
+
+   **File-scope conflict check.** Verify no two active implementer tasks overlap in file scope — if a conflict appears, serialize by holding the second task. Watch for `BE_DONE` / `FE_DONE`.
+
+   Checkpoint after each task transition: `phase: implementation, tasks_complete: M/N`. Touch heartbeat at every transition.
 
 5. **QA gate (qa-engineer).** Once every `impl:` task is complete, spawn `qa-engineer`. Wait for `QA_PASSED <path>` or `QA_BLOCKED <path>`. If blocked, the QA report contains `impl:qa-fix-be-` / `impl:qa-fix-fe-` tasks — file them in the shared task list and loop to phase 4. Checkpoint: `phase: qa, status: passed | blocked`. Touch heartbeat.
 
 6. **Code review (reviewer).** Once `QA_PASSED`, file a `review:` task and spawn the `reviewer` teammate. Wait for `REVIEW_PASSED <path>`. If critical issues come back instead, the reviewer report names the responsible implementer (`backend-developer` or `frontend-developer`) and the failing task — file `impl:review-fix-be-` / `impl:review-fix-fe-` tasks and loop to phase 4. Checkpoint: `phase: review, status: pass | critical_issues_returned`. Touch heartbeat.
 
-7. **Finish (reviewer).** Same reviewer runs `finishing-a-development-branch`. The owner makes the merge / PR / keep / discard decision (third and last owner touchpoint). On `FINISH_DONE <decision> <ref>`, checkpoint: `phase: finish, status: <merged|pr_opened|kept|discarded>`. Touch heartbeat. If the reviewer posts `FINISH_BLOCKED <reason>` instead, follow **Phase 7 merge-failure handling** below.
+7. **Finish (reviewer, with CI gate).** Same reviewer runs `finishing-a-development-branch`. Before presenting the finish menu, the reviewer pushes the branch and (if `ci.provider != none`) polls CI per the `ci` block in CLAUDE.md until all `required_checks` go green, time out, or fail. On CI red, the reviewer posts `FINISH_BLOCKED ci-red <failed-checks>` and you surface the merge-failure menu with an added option F **"Show CI logs"**. On CI timeout, the reviewer posts `FINISH_BLOCKED ci-timeout` and you surface a 3-option menu (re-poll / switch to `pr_opened` / escalate). The CI gate is the **same finish-branch touchpoint** — no new touchpoint.
+
+   The owner makes the merge / PR / keep / discard decision (third and last owner touchpoint). On `FINISH_DONE <decision> <ref>`, checkpoint: `phase: finish, status: <merged|pr_opened|kept|discarded>`. Touch heartbeat. If the reviewer posts `FINISH_BLOCKED <reason>` (any reason — merge or CI), follow **Phase 7 merge-failure handling** below.
 
 ## Phase 7 merge-failure handling
 
-When the reviewer posts `FINISH_BLOCKED <reason>` (instead of `FINISH_DONE`), the merge step of `finishing-a-development-branch` failed for the `merged` decision. Handle it inline — this is the same owner touchpoint as the finish-branch decision continued, NOT a new touchpoint.
+When the reviewer posts `FINISH_BLOCKED <reason>` (instead of `FINISH_DONE`), the merge step or the CI gate failed. Handle it inline — this is the same owner touchpoint as the finish-branch decision continued, NOT a new touchpoint.
 
-`<reason>` is one of `conflict` / `non-ff` / `dirty-worktree` / `push-rejected` / `other:<short-string>` (see `agents/reviewer.md` § Hat 2 for the full enum and what each reason means).
+`<reason>` is one of `conflict` / `non-ff` / `dirty-worktree` / `push-rejected` / `ci-red <failed-checks>` / `ci-timeout` / `other:<short-string>` (see `agents/reviewer.md` § Hat 2 for the full enum and what each reason means).
+
+### CI-specific menus
+
+For `ci-red <failed-checks>` use the standard 5-option merge-failure menu **plus an option F: Show CI logs**, which runs `gh run view --log-failed` (or the provider equivalent the reviewer is using) and pipes the output into the conversation, then re-presents the menu.
+
+For `ci-timeout` use a 3-option menu:
+
+> **CI did not finish within the poll window.** Pick one:
+> - **A. Re-poll** — wait another `ci.poll_timeout_minutes` for CI to finish.
+> - **B. Switch to pr_opened** — open a PR; the owner deals with CI on the PR side.
+> - **E. Escalate** — §7 escalation, full reviewer status appended.
+
+Re-poll is the same finish-branch touchpoint continued. The `merge_retries` counter does NOT apply to CI re-polls (it tracks merge attempts, not CI polls); cap re-polls at 3 instead, recorded as `ci_repolls: K/3` in the checkpoint.
 
 1. Read the mailbox message. Stash `<reason>` and the verbatim git stderr.
 2. Update the checkpoint: `phase: finish, status: merge_blocked, reason: <reason>, merge_retries: K/3` where `K` is the count of prior retry attempts in this run (start at 0).
@@ -262,6 +372,15 @@ Tell the owner exactly which step failed, include the script output verbatim, an
 After every phase boundary, write `docs/superpowers/sessions/YYYY-MM-DD-<slug>.md` atomically (tmp + rename) per this format and commit it. This is the only way the workflow survives a `/resume` failure:
 
 ```markdown
+---
+slug: <slug>
+started: <ISO datetime>
+superpowers_version: <e.g. 5.0.7>
+plugin_version: <team-superpower plugin version>
+claude_code_version: <e.g. 2.1.32>
+stack_shape: full-stack | be-only | fe-only
+---
+
 # Session: <slug>
 **Started:** <ISO datetime>
 **Last update:** <ISO datetime>
@@ -279,12 +398,13 @@ After every phase boundary, write `docs/superpowers/sessions/YYYY-MM-DD-<slug>.m
 - [ ] finish — when `FINISH_BLOCKED <reason>` is in flight, this line reads `- [ ] finish (blocked: <reason>, merge_retries: K/3)` instead, and stays unchecked until `FINISH_DONE` arrives.
 
 ## Teammates
+(list reflects stack_shape — omit the implementer that doesn't exist for be-only / fe-only)
 - designer (agent-id: ...) — idle
 - planner (agent-id: ...) — idle
 - software-architect (agent-id: ...) — idle
 - security-engineer (agent-id: ...) — idle
-- backend-developer (agent-id: ...) — active on task impl:be-<name>
-- frontend-developer (agent-id: ...) — idle
+- backend-developer (agent-id: ...) — active on task impl:be-<name>    # full-stack | be-only
+- frontend-developer (agent-id: ...) — idle                              # full-stack | fe-only
 - qa-engineer (agent-id: ...) — idle
 - reviewer (agent-id: ...) — idle
 
@@ -313,4 +433,12 @@ After every phase boundary, write `docs/superpowers/sessions/YYYY-MM-DD-<slug>.m
 - **Never** retry merge more than 3 times. After the 3rd `FINISH_BLOCKED`, drop option A from the 5-option menu and require B/C/D/E.
 - **Never** treat the `FINISH_BLOCKED` menu as a new owner touchpoint. It is the same finish-branch touchpoint continued — the 3-touchpoint cap stays at 3.
 
-Begin with the prechecks, then preflight, then spawn `designer`.
+## Hard rules (v2 additions)
+
+- **Never** spawn `frontend-developer` in a `be-only` shape, or `backend-developer` in a `fe-only` shape. The shape was decided in phase 0.5 from CLAUDE.md (or the auto-detection fallback the owner has confirmed); deviating means a different team than the owner agreed to.
+- **Never** auto-edit the user's `CLAUDE.md`. Phase 0 writes to `docs/superpowers/stack.detected.md` only and asks the owner to paste/edit. The user's CLAUDE.md is theirs.
+- **Never** release an `impl:fe-*` task before `CONTRACT_PUBLISHED` arrives (full-stack with `contracts.source_of_truth != none`).
+- **Never** release a second `impl:be-migration-*` task while one is `in_progress`. The hook is a backstop; you are the primary control.
+- **Never** present the finish-branch menu before the CI gate either passes or is explicitly bypassed (CI red → menu with "Show CI logs"; CI timeout → 3-option menu; `ci.provider: none` → skip the gate entirely but still push).
+
+Begin with the prechecks, then preflight, then run phase 0 (stack detection / shape decision / version pin / shape marker), then spawn `designer`.
