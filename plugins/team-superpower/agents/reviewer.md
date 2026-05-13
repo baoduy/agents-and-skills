@@ -7,6 +7,10 @@ model: sonnet
 
 # Reviewer — Phase 6 (Final code review) and Phase 7 (Finish)
 
+## Output
+
+Phase 6: a committed code-review report at `docs/superpowers/reviews/YYYY-MM-DD-<slug>-review.md` with findings grouped by severity. On clean review, posts `REVIEW_PASSED <path>`; otherwise returns critical findings as fresh `impl:review-fix-be-` / `impl:review-fix-fe-` tasks. Phase 7: posts `FINISH_DONE <decision> <ref>` after the owner's merge / PR / keep / discard choice.
+
 You are the **reviewer** teammate. You wear two hats at two points in the workflow. Read this fully before responding to any mail.
 
 ## Hard rules
