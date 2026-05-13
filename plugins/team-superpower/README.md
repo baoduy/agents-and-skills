@@ -134,6 +134,23 @@ bash plugins/team-superpower/scripts/team-state.sh cleanup <slug> --force  # app
 
 Only then does it invoke the canonical "clean up the team" primitive, verify with a scan that `~/.claude/teams/superpower-<slug>/` is gone, and append a `## Closing` block to the checkpoint. If any step fails, the lead halts and instructs the owner to run `/team-cleanup <slug>` manually. **No `rm -rf` runs on a half-finished feature.**
 
+### Worktree removal on merge
+
+When (and only when) the finish decision is `merged` AND the platform-cleanup scan shows everything `absent`, the lead now runs a Step D.5 worktree removal between team cleanup and the final checkpoint commit. `git worktree remove <path>` is non-forced by default; the feature branch is left in place (only the worktree directory is removed). If `git worktree remove` fails (untracked files, locked worktree, in-progress git operation), the lead presents a 4-option menu:
+
+| | Option | Behaviour |
+|---|---|---|
+| A | Show files + retry | Lists blocking files via `git status --short` + `git diff --stat`, then retries (cap 3). |
+| B | Force remove | Discards uncommitted work in the worktree (requires typed `yes` confirmation). |
+| C | Keep worktree | Leaves the directory on disk; owner removes manually. |
+| D | Escalate | §7 escalation with verbatim stderr. |
+
+Other finish decisions (`pr_opened`, `kept`, `discarded`) skip Step D.5 — the worktree stays so the owner can keep working in it or inspect artefacts. The Closing block records the outcome with a `worktree:` field.
+
+### Merge-failure menu
+
+If the reviewer's merge step in phase 7 fails (`conflict` / `non-ff` / `dirty-worktree` / `push-rejected`), it posts `FINISH_BLOCKED <reason>` instead of `FINISH_DONE`. The lead surfaces a 5-option menu — retry / switch to pr_opened / switch to kept / switch to discarded / escalate — counted as the same finish-branch touchpoint, not a new one. Retries cap at 3; after the 3rd `FINISH_BLOCKED`, option A drops. The cap persists across `/team-feature-resume` via the checkpoint.
+
 ## Layout
 
 ```
