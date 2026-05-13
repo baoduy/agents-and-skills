@@ -89,6 +89,6 @@ Preserved from upstream `ThariqS/html-effectiveness`:
 - **Missing slot data**: ask one question at a time; respect the cap of 6 questions before forcing render with best-guess defaults plus a note of what was assumed.
 - **Render error**: surface `template:slot expected <type> got <type>` to the user; fix the slot value; retry.
 
-## Sync
+## Vendored templates
 
-Generated from upstream `ThariqS/html-effectiveness@<sha pinned in manifest>`. To refresh: `node plugins/html-effectiveness/scripts/sync-upstream.js check`. If drift is detected, re-fetch the affected template, re-run extraction, and review the diff before committing.
+Templates are vendored, not auto-synced. The pinned upstream SHA lives at `templates/manifest.json` → `_meta.upstream_sha`. To refresh a single template: `node plugins/html-effectiveness/scripts/extract.js fetch <id>.html` then `split <id>.html`. Files land in `.tmp/html-effectiveness/extract/` (gitignored). Hand-merge the diff back into `templates/<id>.html.tmpl` and update `_meta.upstream_sha` if pinning a new revision.
