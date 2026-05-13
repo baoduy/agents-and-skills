@@ -42,6 +42,10 @@ On every run:
 5. On success: print the absolute path; offer `snip render --format html < <path>` to preview in the browser.
 6. On render error: surface stderr; locate the offending slot from the `template:slot` prefix; ask the user to fix; retry.
 
+## Output
+
+A self-contained interactive HTML report at `<reportDir>/YYYY-MM-DD-<slug>.html` plus a `<slug>.html.data.json` sidecar for later re-rendering. The absolute path is printed to the user on success, with an offer to preview via `snip render --format html`.
+
 ## Regen path
 
 If the user invokes the agent on an existing `<name>.data.json`:

@@ -10,7 +10,7 @@ Published on npm as [`@drunkcoding/agents-and-skills`](https://www.npmjs.com/pac
 |--------|-------------|
 | [`tech-graph`](plugins/tech-graph) | 6-step wizard for technical diagrams (SVG + PNG). |
 | [`html-effectiveness`](plugins/html-effectiveness) | Conversational agent that generates self-contained interactive HTML reports from 20 templates. |
-| [`team-superpower`](plugins/team-superpower) | Agent-team conductor that runs the obra/superpowers skill chain end-to-end with at most 4 owner touchpoints. |
+| [`team-superpower`](plugins/team-superpower) | Full-stack engineering team running the Superpowers skill chain — 8 roles (designer, planner, software-architect, security-engineer, backend-developer, frontend-developer, qa-engineer, reviewer) with a pre-impl arch+security gate and a post-impl QA gate. |
 | [`plugin-validator`](plugins/plugin-validator) | Orchestrated validator that checks every plugin's skills, agents, commands, and hooks for spec compliance — runs in parallel and proposes batched fixes. |
 
 ## Install

@@ -18,7 +18,7 @@ find plugins -path '*/commands/*.md'
 find plugins -path '*/.claude-plugin/plugin.json'
 ```
 
-For each `plugin.json`, parse and check whether the `commands` key is present (any shape). Emit one `[FAIL]` per plugin that declares it. Then validate every command `.md` file as below.
+For each `plugin.json`, parse the optional `commands` field if present (see "`commands` field rule" below). Then validate every command `.md` file as below.
 
 ## Spec Compliance Checks
 
@@ -31,7 +31,7 @@ For each `plugin.json`, parse and check whether the `commands` key is present (a
 | `model` optional | One of `sonnet`, `opus`, `haiku`, `inherit` |
 | Filename → command | Filename minus `.md` is lowercase alphanumeric + hyphens; produces `/<filename>` |
 | Body non-empty | At least one non-blank line after frontmatter |
-| No `commands` key in plugin.json | The plugin loader rejects any `commands` field with `commands: Invalid input`. Command files are auto-discovered from `<plugin>/commands/*.md`. If `plugin.json` declares a `commands` array (or any other shape), flag as `[FAIL]` and recommend deleting the key. Confirmed against `anthropics/claude-code` official plugins (`pr-review-toolkit`, `frontend-design`, `commit-commands`, `hookify`) — none declare `commands`. |
+| `commands` field rule | Optional. Per https://code.claude.com/docs/en/plugins-reference#component-path-fields, value is `string` or `array`. Each entry must be a relative path starting with `./` (per "Path behavior rules"). If field is absent, commands are auto-discovered from `<plugin>/commands/*.md`. **Failure modes**: (a) value type other than string/array → `[FAIL]`. (b) entry does not start with `./` → `[FAIL]` (loader rejects with `commands: Invalid input` for bare filenames). (c) entry points outside plugin root (contains `..`) → `[FAIL]`. (d) entry path does not exist on disk → `[FAIL]`. (e) field present and replaces the default `commands/` directory while files there exist that are not listed → `[WARN]` (loader silently drops them; v2.1.140+ shows `/doctor` warning). |
 
 ### Valid tool names (Claude Code ≥ 2.1.139)
 

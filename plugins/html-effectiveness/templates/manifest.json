@@ -1,7 +1,441 @@
 {
   "_meta": {
     "upstream_repo": "ThariqS/html-effectiveness",
-    "upstream_sha": "PENDING",
-    "extracted_at": "PENDING"
+    "upstream_sha": "a1fb5673c26f87be9b833e1876cf4fd0f30f5f2d",
+    "fetched_at": "2026-05-13",
+    "note": "Templates vendored. Re-fetch is manual; see scripts/fetch-upstream.js."
+  },
+  "11-status-report": {
+    "title": "Status Report",
+    "use_cases": [
+      "weekly status",
+      "project update",
+      "team digest",
+      "monthly recap",
+      "engineering status"
+    ],
+    "pattern": "interactive_report",
+    "tmpl": "templates/11-status-report.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      },
+      "auto_pill": {
+        "type": "string"
+      },
+      "date_range": {
+        "type": "string",
+        "required": true
+      },
+      "repo": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "array",
+        "of": {
+          "num": "string",
+          "label": "string",
+          "delta": "string",
+          "delta_kind": "string",
+          "warn": "boolean"
+        }
+      },
+      "highlights": {
+        "type": "object"
+      },
+      "shipped": {
+        "type": "object"
+      },
+      "velocity_svg": {
+        "type": "html"
+      },
+      "velocity_caption": {
+        "type": "string"
+      },
+      "carryover": {
+        "type": "object"
+      },
+      "footer": {
+        "type": "html"
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "01-exploration-code-approaches": {
+    "title": "Code-Approaches Exploration",
+    "use_cases": [
+      "compare implementations",
+      "approach trade-offs",
+      "design alternatives"
+    ],
+    "pattern": "comparison_board",
+    "tmpl": "templates/01-exploration-code-approaches.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "02-exploration-visual-designs": {
+    "title": "Visual Design Exploration",
+    "use_cases": [
+      "compare designs",
+      "UI alternatives",
+      "visual options"
+    ],
+    "pattern": "comparison_board",
+    "tmpl": "templates/02-exploration-visual-designs.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "03-code-review-pr": {
+    "title": "PR Code Review Board",
+    "use_cases": [
+      "PR review",
+      "code review",
+      "diff review"
+    ],
+    "pattern": "code_review_board",
+    "tmpl": "templates/03-code-review-pr.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "04-code-understanding": {
+    "title": "Code Walkthrough",
+    "use_cases": [
+      "explain code",
+      "walk through architecture",
+      "trace logic"
+    ],
+    "pattern": "knowledge_explorer",
+    "tmpl": "templates/04-code-understanding.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "05-design-system": {
+    "title": "Design System Sheet",
+    "use_cases": [
+      "design tokens",
+      "color palette",
+      "typography"
+    ],
+    "pattern": "design_system_sheet",
+    "tmpl": "templates/05-design-system.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "06-component-variants": {
+    "title": "Component Variant Matrix",
+    "use_cases": [
+      "component variants",
+      "states gallery"
+    ],
+    "pattern": "design_system_sheet",
+    "tmpl": "templates/06-component-variants.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "07-prototype-animation": {
+    "title": "Animation Prototype",
+    "use_cases": [
+      "animation prototype",
+      "motion preview"
+    ],
+    "pattern": "interactive_report",
+    "tmpl": "templates/07-prototype-animation.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "08-prototype-interaction": {
+    "title": "Interaction Prototype",
+    "use_cases": [
+      "interaction prototype",
+      "ux flow"
+    ],
+    "pattern": "interactive_report",
+    "tmpl": "templates/08-prototype-interaction.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "09-slide-deck": {
+    "title": "Slide Deck",
+    "use_cases": [
+      "slide deck",
+      "presentation",
+      "pitch"
+    ],
+    "pattern": "slide_deck",
+    "tmpl": "templates/09-slide-deck.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "10-svg-illustrations": {
+    "title": "SVG Illustration Gallery",
+    "use_cases": [
+      "illustrate concept",
+      "svg gallery"
+    ],
+    "pattern": "knowledge_explorer",
+    "tmpl": "templates/10-svg-illustrations.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "12-incident-report": {
+    "title": "Incident Report",
+    "use_cases": [
+      "incident report",
+      "post-mortem",
+      "outage writeup"
+    ],
+    "pattern": "interactive_report",
+    "tmpl": "templates/12-incident-report.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "13-flowchart-diagram": {
+    "title": "Flowchart Diagram",
+    "use_cases": [
+      "flowchart",
+      "process diagram",
+      "decision tree"
+    ],
+    "pattern": "knowledge_explorer",
+    "tmpl": "templates/13-flowchart-diagram.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "14-research-feature-explainer": {
+    "title": "Feature Explainer",
+    "use_cases": [
+      "explain feature",
+      "feature deep-dive"
+    ],
+    "pattern": "knowledge_explorer",
+    "tmpl": "templates/14-research-feature-explainer.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "15-research-concept-explainer": {
+    "title": "Concept Explainer",
+    "use_cases": [
+      "explain concept",
+      "tutorial",
+      "primer"
+    ],
+    "pattern": "knowledge_explorer",
+    "tmpl": "templates/15-research-concept-explainer.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "16-implementation-plan": {
+    "title": "Implementation Plan",
+    "use_cases": [
+      "implementation plan",
+      "phased rollout",
+      "roadmap"
+    ],
+    "pattern": "annotated_timeline",
+    "tmpl": "templates/16-implementation-plan.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "17-pr-writeup": {
+    "title": "PR Writeup",
+    "use_cases": [
+      "PR description",
+      "release notes",
+      "change writeup"
+    ],
+    "pattern": "interactive_report",
+    "tmpl": "templates/17-pr-writeup.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "18-editor-triage-board": {
+    "title": "Triage Board",
+    "use_cases": [
+      "bug triage",
+      "issue board",
+      "kanban"
+    ],
+    "pattern": "kanban_board",
+    "tmpl": "templates/18-editor-triage-board.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "19-editor-feature-flags": {
+    "title": "Feature Flags Matrix",
+    "use_cases": [
+      "feature flags",
+      "rollout matrix"
+    ],
+    "pattern": "decision_matrix",
+    "tmpl": "templates/19-editor-feature-flags.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
+  },
+  "20-editor-prompt-tuner": {
+    "title": "Prompt Tuner",
+    "use_cases": [
+      "prompt tuning",
+      "LLM config"
+    ],
+    "pattern": "interactive_report",
+    "tmpl": "templates/20-editor-prompt-tuner.html.tmpl",
+    "slots": {
+      "title": {
+        "type": "string",
+        "required": true
+      }
+    },
+    "asset_bundles": [
+      "base"
+    ],
+    "extra_js": null
   }
 }

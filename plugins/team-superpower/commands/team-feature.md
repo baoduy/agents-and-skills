@@ -1,5 +1,5 @@
 ---
-description: Launch a Superpowers-compliant agent team to deliver a feature end-to-end with at most 4 owner touchpoints, with automatic team cleanup after the finish phase.
+description: Launch a Superpowers-compliant agent team to deliver a feature end-to-end with at most 3 owner touchpoints, with automatic team cleanup after the finish phase.
 argument-hint: <one-line feature idea>
 ---
 
@@ -11,7 +11,7 @@ $ARGUMENTS
 
 ## Your job
 
-You are a **conductor**, not an implementer. Spawn teammates and coordinate them through the canonical Superpowers skill chain. Do not run skills yourself — delegate every skill to the correct teammate. The team-superpower agent definitions (`designer`, `planner`, `implementer`, `reviewer`) shipped with this plugin tell each teammate exactly which Superpowers skill to run.
+You are a **conductor**, not an implementer. Spawn teammates and coordinate them through the canonical Superpowers skill chain. Do not run skills yourself — delegate every skill to the correct teammate. The team-superpower agent definitions (`designer`, `planner`, `software-architect`, `security-engineer`, `backend-developer`, `frontend-developer`, `qa-engineer`, `reviewer`) shipped with this plugin tell each teammate exactly which Superpowers skill to run.
 
 ## Required prechecks (run these first, in order)
 
@@ -57,35 +57,91 @@ After preflight clears:
 
 ## Phase chain (strict order — no skipping, no inlining)
 
-1. **Brainstorming (designer).** Spawn the `designer` teammate. Hand it `<slug>` and the owner's request. Wait for `DESIGN_APPROVED <path>` in your mailbox. If the designer asks a clarifying question, answer from project context if unambiguous; otherwise batch with any open questions and use the §7 escalation template to the owner. Checkpoint: `phase: brainstorming, status: complete`. Touch heartbeat.
-2. **Worktree + plan (planner).** Spawn the `planner` teammate. Hand it `<slug>` and the design doc path. Wait for `WORKTREE_READY` then `PLAN_READY <path>`. Route the plan to the owner for approval (third owner touchpoint). On approval, stamp `plan_approved_at: <ISO datetime>` into the metadata of every `impl:` task you will create — the `TaskCompleted` hook checks for it. Checkpoint: `phase: plan, status: approved`. Touch heartbeat.
-3. **Implementation (implementers, 1–3 in parallel).** Read the approved plan. Create one shared-task-list entry per plan task with title `impl:<short-name>`, body = full task text including verification, and dependency + file-scope metadata from the plan. Spawn one `implementer` teammate. If the plan contains clearly parallel tasks with disjoint file scopes, spawn a second (and up to a third). Implementers self-claim. **You must verify no two active implementer tasks overlap in file scope** — if a conflict appears, serialize by holding the second task. Watch for `impl:` task completions; on critical issues from a later review, file new `impl:` tasks here too. Checkpoint after each task transition: `phase: implementation, tasks_complete: M/N`. Touch heartbeat at every transition.
-4. **Review (reviewer).** Once all `impl:` tasks complete, file a `review:` task and spawn the `reviewer` teammate. Wait for `REVIEW_PASSED <path>`. If critical issues come back instead, the reviewer report names the responsible implementer and task — file fresh `impl:` tasks and loop to phase 3. Checkpoint: `phase: review, status: pass | critical_issues_returned`. Touch heartbeat.
-5. **Finish (reviewer).** Same reviewer runs `finishing-a-development-branch`. The owner makes the merge / PR / keep / discard decision (fourth and last owner touchpoint). On `FINISH_DONE <decision> <ref>`, checkpoint: `phase: finish, status: <merged|pr_opened|kept|discarded>`. Touch heartbeat.
+1. **Design (designer).** Spawn the `designer` teammate. Hand it `<slug>` and the owner's request. Wait for `DESIGN_APPROVED <path>` in your mailbox. If the designer asks a clarifying question, answer from project context if unambiguous; otherwise batch with any open questions and use the §7 escalation template to the owner. Checkpoint: `phase: design, status: complete`. Touch heartbeat.
+
+2. **Plan (planner).** Spawn the `planner` teammate. Hand it `<slug>` and the design doc path. Wait for `WORKTREE_READY` then `PLAN_READY <path>`. Route the plan to the owner for approval (second owner touchpoint). On approval, stamp `plan_approved_at: <ISO datetime>` into the metadata of every `impl:` task you will create — the `TaskCompleted` hook checks for it. Checkpoint: `phase: plan, status: approved`. Touch heartbeat.
+
+3. **Pre-impl review gate (software-architect + security-engineer, parallel).** Spawn both. Hand each the design doc path AND the plan path. Wait for `ARCH_PASSED <path>` AND `SEC_PASSED <path>`. If either posts `ARCH_BLOCKED` / `SEC_BLOCKED`, route the findings to `planner` for a plan revision, then re-route to whichever gate is still blocking. Cap at three plan-revision rounds — escalate to owner via §7 if it does not converge. Checkpoint: `phase: pre_impl_review, status: passed | blocked`. Touch heartbeat.
+
+4. **Implementation (backend-developer + frontend-developer, parallel).** Read the approved plan. Create one shared-task-list entry per plan task with title `impl:be-<short-name>` or `impl:fe-<short-name>` per the prefix the planner assigned, body = full task text including verification, and dependency + file-scope metadata from the plan. Spawn one `backend-developer` and one `frontend-developer`. They self-claim by prefix. **You must verify no two active implementer tasks overlap in file scope** — if a conflict appears, serialize by holding the second task. Watch for `BE_DONE` / `FE_DONE`. Checkpoint after each task transition: `phase: implementation, tasks_complete: M/N`. Touch heartbeat at every transition.
+
+5. **QA gate (qa-engineer).** Once every `impl:` task is complete, spawn `qa-engineer`. Wait for `QA_PASSED <path>` or `QA_BLOCKED <path>`. If blocked, the QA report contains `impl:qa-fix-be-` / `impl:qa-fix-fe-` tasks — file them in the shared task list and loop to phase 4. Checkpoint: `phase: qa, status: passed | blocked`. Touch heartbeat.
+
+6. **Code review (reviewer).** Once `QA_PASSED`, file a `review:` task and spawn the `reviewer` teammate. Wait for `REVIEW_PASSED <path>`. If critical issues come back instead, the reviewer report names the responsible implementer (`backend-developer` or `frontend-developer`) and the failing task — file `impl:review-fix-be-` / `impl:review-fix-fe-` tasks and loop to phase 4. Checkpoint: `phase: review, status: pass | critical_issues_returned`. Touch heartbeat.
+
+7. **Finish (reviewer).** Same reviewer runs `finishing-a-development-branch`. The owner makes the merge / PR / keep / discard decision (third and last owner touchpoint). On `FINISH_DONE <decision> <ref>`, checkpoint: `phase: finish, status: <merged|pr_opened|kept|discarded>`. Touch heartbeat. If the reviewer posts `FINISH_BLOCKED <reason>` instead, follow **Phase 7 merge-failure handling** below.
+
+## Phase 7 merge-failure handling
+
+When the reviewer posts `FINISH_BLOCKED <reason>` (instead of `FINISH_DONE`), the merge step of `finishing-a-development-branch` failed for the `merged` decision. Handle it inline — this is the same owner touchpoint as the finish-branch decision continued, NOT a new touchpoint.
+
+`<reason>` is one of `conflict` / `non-ff` / `dirty-worktree` / `push-rejected` / `other:<short-string>` (see `agents/reviewer.md` § Hat 2 for the full enum and what each reason means).
+
+1. Read the mailbox message. Stash `<reason>` and the verbatim git stderr.
+2. Update the checkpoint: `phase: finish, status: merge_blocked, reason: <reason>, merge_retries: K/3` where `K` is the count of prior retry attempts in this run (start at 0).
+3. Touch the heartbeat.
+4. Present the 5-option menu below to the owner.
+5. Translate the owner's choice into the next instruction to the reviewer per the table.
+
+### 5-option merge-failure menu
+
+Present verbatim:
+
+> **Merge failed:** `<reason>`. Pick one:
+> - **A. Retry merge** — re-attempt the merge now (you've resolved conflicts externally or upstream has stabilised).
+> - **B. Switch to pr_opened** — open a PR for human merge instead.
+> - **C. Switch to kept** — keep the worktree as-is, you'll handle the merge later.
+> - **D. Switch to discarded** — drop the branch entirely.
+> - **E. Escalate** — pause and surface a §7 escalation with full git output.
+
+Translation:
+
+| Choice | Reviewer instruction | Expected next signal |
+|---|---|---|
+| **A** | "Retry the merge step only. Do not re-do design/plan/etc." Increment `merge_retries`. | `FINISH_DONE merged <ref>` OR a new `FINISH_BLOCKED <reason>` |
+| **B** | "Re-run `finishing-a-development-branch` with `decision=pr_opened`." | `FINISH_DONE pr_opened <ref>` |
+| **C** | "Post `FINISH_DONE kept <branch>` directly. Do not attempt another merge." | `FINISH_DONE kept <ref>` |
+| **D** | "Run the discard path of `finishing-a-development-branch`." | `FINISH_DONE discarded <ref>` |
+| **E** | Lead posts §7 template to owner with verbatim git stderr; halts until owner responds. | Owner directs manually |
+
+### Retry cap
+
+`merge_retries` is bounded at 3. Before presenting the menu, check the current value:
+
+- `merge_retries < 3` → present all five options.
+- `merge_retries == 3` → drop option A. The menu shows B/C/D/E only.
+
+The counter is persisted in the checkpoint so `/team-feature-resume` honours it across sessions.
+
+### Flow rejoin
+
+On any `FINISH_DONE <decision>` (any decision), flow rejoins normal phase 7: checkpoint `phase: finish, status: <decision>`, then run **Automatic cleanup** below. Auto-cleanup Step D.5 (worktree removal) runs only when `decision == merged`.
 
 ## Automatic cleanup (runs after `FINISH_DONE`)
 
-The instant phase 5 records `FINISH_DONE`, run cleanup **before idling**. Do this in order, halting and escalating to the owner if any step fails:
+The instant phase 7 records `FINISH_DONE`, run cleanup **before idling**. Do this in order, halting and escalating to the owner if any step fails:
 
 ### Step A — Verify safety preconditions
 
 Confirm all of the following from the checkpoint and the task list:
 
-- Every phase from `brainstorming` through `finish` is checked complete.
+- Every phase from `design` through `finish` is checked complete.
 - The shared task list has zero `in_progress` tasks. Every `impl:` and `review:` task is `completed`.
-- Phase 5 returned a recognised decision: `merged`, `pr_opened`, `kept`, or `discarded`.
-- The expected git commits exist on the worktree branch. Run `git log --oneline -20` and confirm:
+- Phase 7 returned a recognised decision: `merged`, `pr_opened`, `kept`, or `discarded`.
+- The expected git commits exist on the worktree branch. Run `git log --oneline -30` and confirm:
   - A design doc commit under `docs/superpowers/specs/`
   - A plan commit under `docs/superpowers/plans/`
+  - An ARCH report commit AND a SEC report commit under `docs/superpowers/reviews/` (phase-3 gate)
   - One or more implementation commits (TDD pairs of test + code on the same files; the test commit precedes the code commit per the `test-driven-development` skill)
-  - A review report commit under `docs/superpowers/reviews/`
+  - A QA report commit under `docs/superpowers/reviews/` (phase-5 gate)
+  - A code-review report commit under `docs/superpowers/reviews/`
   - If the finish decision is `merged` or `pr_opened`, the corresponding merge / PR-prep commit
 
 If any of these is missing, **halt cleanup**, escalate with the §7 template, and instruct the owner to inspect manually. **Do not run cleanup on a half-finished feature.**
 
 ### Step B — Shut down teammates gracefully
 
-For each live teammate (`designer`, `planner`, every `implementer`, `reviewer`):
+For each live teammate (`designer`, `planner`, `software-architect`, `security-engineer`, every `backend-developer`, every `frontend-developer`, `qa-engineer`, `reviewer`):
 
 1. Send a shutdown request via the canonical agent-teams primitive ("Ask the X teammate to shut down").
 2. Wait for graceful exit.
@@ -117,6 +173,59 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/team-state.sh cleanup <slug> --force
 
 The heartbeat refusal check applies. If it fires, you are still touching the heartbeat (or another lead is alive) — investigate before forcing. If the only reason is your own fresh heartbeat from this session, pass `--ignore-heartbeat` (you know the lead is you and you are about to exit).
 
+### Step D.5 — Worktree removal (on successful merge only)
+
+Runs only after Step C / D have brought platform state to absent. Removes the planner's git worktree when, and only when, the feature was actually merged.
+
+**Trigger conditions** (ALL must be true; any miss → skip and record the reason in the Closing block):
+
+1. `FINISH_DONE merged <ref>` is recorded in the checkpoint.
+2. Step A precondition check passed.
+3. Step B teammate shutdown was clean.
+4. The post-Step-C (or post-Step-D) scan shows `team_config_state: absent`, `task_list_state: absent`, `tmux_state: absent`.
+5. The checkpoint has a non-empty `**Worktree:**` field.
+
+If any condition fails, record `worktree: removal-skipped:<reason>` in the Closing block (Step E) where `<reason>` is one of:
+
+- `not-merged-decision` — finish decision was `pr_opened`, `kept`, or `discarded`.
+- `team-cleanup-incomplete` — Step C/D left platform state present.
+- `no-worktree-recorded` — checkpoint has no `**Worktree:**` line.
+
+**Procedure** (only when all trigger conditions pass):
+
+1. Read the worktree path from the checkpoint's `**Worktree:**` line. Call it `WT_PATH`.
+2. `cd` to the repo root (the **main** worktree, NOT `WT_PATH`). `git worktree remove` refuses when the current directory is inside the target.
+3. Run `git worktree list --porcelain`. If `WT_PATH` is not listed (already pruned, manual removal, etc.), record `worktree: already-absent` in the Closing block and skip to Step E.
+4. Touch the heartbeat.
+5. Run `git worktree remove "$WT_PATH"` (non-forced).
+6. On success → record `worktree: removed` in the Closing block. Touch heartbeat. Proceed to Step E.
+7. On non-zero exit → enter the **4-option remove-failure menu** below.
+
+**Branch handling:** `git worktree remove` does NOT delete the branch. The feature branch survives this step. Branch deletion is left to the owner.
+
+### 4-option remove-failure menu
+
+Triggered when `git worktree remove "$WT_PATH"` exits non-zero. Common causes: untracked files, locked worktree, in-progress git operation, owner pre-seeded files.
+
+Present verbatim:
+
+> **Could not remove worktree** `<WT_PATH>`. Git said: `<stderr>`. Pick one:
+> - **A. Show files + retry** — list what's blocking, then retry the remove.
+> - **B. Force remove** — discard uncommitted work in `<WT_PATH>` and remove. (Confirmation required.)
+> - **C. Keep worktree** — leave it on disk; you'll remove it manually later.
+> - **D. Escalate** — pause and surface a §7 escalation with the verbatim stderr.
+
+Translation:
+
+| Choice | Action | Closing-block record |
+|---|---|---|
+| **A** | Run `git -C "$WT_PATH" status --short` and `git -C "$WT_PATH" diff --stat`. Surface output to owner. Retry `git worktree remove "$WT_PATH"`. Cap: 3 retries per Step D.5. On success: record `worktree: removed (after manual fix)` and proceed to Step E. On 3rd retry still failing: drop option A from the next menu and force B/C/D. | See action column. |
+| **B** | Lead prompts: `"This will discard uncommitted work in <WT_PATH>. Confirm force-remove? (type 'yes' to confirm)"`. On `yes`: snapshot the file list from the pre-remove `git -C "$WT_PATH" status --short` (or take a snapshot now if option A hasn't run), then run `git worktree remove --force "$WT_PATH"`. On any other input: abort B, re-present the menu. | `worktree: force-removed`, `dropped_files: [<path>, ...]` |
+| **C** | Log `WT_PATH` in the Closing block. Tell the owner: `"Worktree retained at <WT_PATH>. Remove manually with 'git worktree remove <WT_PATH>' once you've handled it."` Proceed to Step E. | `worktree: kept-by-owner`, `worktree_path: <WT_PATH>` |
+| **D** | Halt Step D.5. Post the §7 template to the owner with the verbatim stderr from the failed remove. Wait for direction. | `worktree: escalated`, `worktree_path: <WT_PATH>` |
+
+In all four cases, Step E still runs after Step D.5 closes (whether by success or by the owner's menu choice). Step E records the outcome in the Closing block.
+
 ### Step E — Final checkpoint commit
 
 Append a closing block to the checkpoint:
@@ -126,7 +235,13 @@ Append a closing block to the checkpoint:
 - finished at: <ISO datetime>
 - decision: <merged|pr_opened|kept|discarded>
 - cleanup: complete
+- worktree: <removed | already-absent | removal-skipped:<reason> | removed (after manual fix) | force-removed | kept-by-owner | escalated>
+- worktree_path: <path>            # present whenever the worktree directory still exists on disk after cleanup (states: kept-by-owner, escalated, or removal-skipped where the path exists)
+- merge_retries: K                 # only when K > 0; matches the final value of the mid-phase counter
+- dropped_files: [<path>, ...]     # only when state == force-removed
 ```
+
+`removal-skipped` reasons: `not-merged-decision` | `team-cleanup-incomplete` | `no-worktree-recorded`.
 
 Remove the `<slug>.heartbeat` file. Commit the checkpoint. Confirm to the owner: "Team cleaned up. Feature complete."
 
@@ -136,10 +251,9 @@ Tell the owner exactly which step failed, include the script output verbatim, an
 
 ## Owner touchpoints (the ONLY allowed pings to the owner)
 
-1. Brainstorming clarifying questions — batched per phase by you, never raw-passed.
-2. Design sign-off (the brainstorming skill's built-in step).
-3. Plan approval before phase 3 starts.
-4. Finish-branch decision in phase 6.
+1. Design sign-off (phase 1, the brainstorming skill's built-in step).
+2. Plan approval before phase 3 starts.
+3. Finish-branch decision in phase 7.
 
 **Anything else requires the §7 escalation template** from `docs/superpowers/ESCALATION.md`. Refuse to ping the owner without it. Cleanup runs without owner involvement when Step A passes.
 
@@ -155,17 +269,23 @@ After every phase boundary, write `docs/superpowers/sessions/YYYY-MM-DD-<slug>.m
 **Worktree:** <path>
 
 ## Phases
-- [x] brainstorming → docs/superpowers/specs/YYYY-MM-DD-<slug>-design.md
+- [x] design → docs/superpowers/specs/YYYY-MM-DD-<slug>-design.md
 - [x] worktree → <branch>
 - [x] plan → docs/superpowers/plans/YYYY-MM-DD-<slug>-plan.md (approved <datetime>)
+- [x] pre_impl_review → arch + sec PASSED
 - [ ] implementation (M/N tasks complete)
+- [ ] qa
 - [ ] review
-- [ ] finish
+- [ ] finish — when `FINISH_BLOCKED <reason>` is in flight, this line reads `- [ ] finish (blocked: <reason>, merge_retries: K/3)` instead, and stays unchecked until `FINISH_DONE` arrives.
 
 ## Teammates
 - designer (agent-id: ...) — idle
 - planner (agent-id: ...) — idle
-- implementer-1 (agent-id: ...) — active on task impl:<name>
+- software-architect (agent-id: ...) — idle
+- security-engineer (agent-id: ...) — idle
+- backend-developer (agent-id: ...) — active on task impl:be-<name>
+- frontend-developer (agent-id: ...) — idle
+- qa-engineer (agent-id: ...) — idle
 - reviewer (agent-id: ...) — idle
 
 ## Open escalations
@@ -181,10 +301,16 @@ After every phase boundary, write `docs/superpowers/sessions/YYYY-MM-DD-<slug>.m
 
 - **Never** run a Superpowers skill yourself. Always delegate to the correct teammate.
 - **Never** modify, replace, or skip a Superpowers skill. Consume them as-installed.
-- **Never** let an implementer write code before the plan is approved. The `TaskCompleted` hook will reject completions without `plan_approved_at`; do not let the situation arise upstream.
+- **Never** start phase 4 before both `ARCH_PASSED` and `SEC_PASSED` are recorded. The phase-3 gate is non-optional.
+- **Never** start phase 6 before `QA_PASSED` is recorded. The phase-5 gate is non-optional.
+- **Never** let an implementer write code before the plan is approved AND the phase-3 gate has passed. The `TaskCompleted` hook will reject completions without `plan_approved_at`; do not let the situation arise upstream.
 - **Never** let an `impl:` task be marked complete without TDD and the two-stage review from `subagent-driven-development`. The hook is a backstop, not a primary control.
-- **Never** ping the owner without the §7 template, except for the four allowed touchpoints listed above.
+- **Never** ping the owner without the §7 template, except for the three allowed touchpoints listed above.
 - **Never** skip the automatic cleanup block after `FINISH_DONE`. The hooks have no `TeamShutdown` event; the lead is the only thing that knows when to clean up. If cleanup is skipped, the next `/team-feature` for the same slug will trip the preflight and refuse to start.
 - **Never** force cleanup while the heartbeat is fresh and you didn't write it. That's the signal that another lead is alive.
+- **Never** run Step D.5 worktree removal unless the finish decision is `merged` AND the platform-cleanup scan (Step C, or Step D fallback) shows every state `absent`. Other decisions or partial cleanups must record `worktree: removal-skipped:<reason>` and leave the worktree on disk.
+- **Never** force-remove a worktree (`--force`) without explicit owner confirmation in the 4-option menu. The default remove is non-forced; force only on option B with a typed `yes`.
+- **Never** retry merge more than 3 times. After the 3rd `FINISH_BLOCKED`, drop option A from the 5-option menu and require B/C/D/E.
+- **Never** treat the `FINISH_BLOCKED` menu as a new owner touchpoint. It is the same finish-branch touchpoint continued — the 3-touchpoint cap stays at 3.
 
 Begin with the prechecks, then preflight, then spawn `designer`.

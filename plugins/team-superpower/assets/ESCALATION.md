@@ -6,7 +6,7 @@ Every owner-facing question and every "I'm blocked" peer message MUST use this e
 
 ```
 BLOCKED: <one-line question>
-Phase: <brainstorming | worktree | plan | implementation | review | finish>
+Phase: <design | plan | pre_impl_review | implementation | qa | review | finish>
 Context: <2-4 sentences — what we tried, what we considered, why we are stuck>
 Options:
   A. <option> — <trade-off>
@@ -35,13 +35,27 @@ Need from you: choose A/B/C.
 ## Worked example 2 — lead-to-owner (plan-vs-design mismatch surfaced mid-implementation)
 
 ```
-BLOCKED: implementer-1 reports that task impl:add-user-endpoint specifies POST /users, but the approved design doc says PUT /users/{id}. Which is canonical?
+BLOCKED: backend-developer reports that task impl:be-add-user-endpoint specifies POST /users, but the approved design doc says PUT /users/{id}. Which is canonical?
 Phase: implementation
-Context: The plan was approved 2026-05-12T09:14Z. Task 4 reads "POST /users → 201 Created with body". Design doc §3 (approved 2026-05-12T08:51Z) reads "idempotent PUT /users/{id}, 200 or 201". Both choices change the test the implementer writes in the RED step. We have not yet written code for this task — TDD held the line.
+Context: The plan was approved 2026-05-12T09:14Z. Task 4 reads "POST /users → 201 Created with body". Design doc §3 (approved 2026-05-12T08:51Z) reads "idempotent PUT /users/{id}, 200 or 201". Both choices change the test the backend-developer writes in the RED step. We have not yet written code for this task — TDD held the line.
 Options:
-  A. Owner confirms PUT /users/{id} is correct → planner amends task 4 → owner re-approves the plan delta → implementer proceeds.
-  B. Owner confirms POST /users is correct → designer amends the design doc → owner re-approves the design delta → implementer proceeds.
+  A. Owner confirms PUT /users/{id} is correct → planner amends task 4 → owner re-approves the plan delta → backend-developer proceeds.
+  B. Owner confirms POST /users is correct → designer amends the design doc → owner re-approves the design delta → backend-developer proceeds.
   C. Owner reopens the design question entirely (the two APIs imply different semantics).
 Recommendation: A — the design doc was approved first and the discrepancy reads as a plan-writing slip, not a design change. But this is a load-bearing decision and we won't move without your call.
+Need from you: choose A/B/C.
+```
+
+## Worked example 3 — lead-to-owner (`FINISH_BLOCKED` option E)
+
+```
+BLOCKED: Merge of feature/user-search into main failed: push rejected because origin/main advanced. Owner picked option E (escalate) from the 5-option menu rather than retrying inline.
+Phase: finish
+Context: Reviewer attempted `git push` after a clean local merge. Push was rejected: "Updates were rejected because the remote contains work that you do not have locally." The remote moved between phase 6 and phase 7. The lead's 5-option menu was presented; owner chose E because they want to coordinate the rebase manually rather than have the team retry blind.
+Options:
+  A. Owner rebases the feature branch locally onto origin/main, signals "ready to retry"; lead instructs reviewer to retry merge (counts as 1/3 retries).
+  B. Owner pulls latest origin/main into trunk first, then signals; lead retries.
+  C. Owner switches the decision to pr_opened and merges via GitHub UI.
+Recommendation: A — the conflict surface is small and a clean rebase plus retry is the cheapest path. We won't move until you say which.
 Need from you: choose A/B/C.
 ```

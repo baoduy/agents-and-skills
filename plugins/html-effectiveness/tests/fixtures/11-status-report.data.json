@@ -1,0 +1,37 @@
+{
+  "title": "Engineering Status",
+  "auto_pill": "Auto-generated",
+  "date_range": "Apr 29 — May 13, 2026",
+  "repo": "drunkcoding/agents-and-skills",
+  "summary": [
+    { "num": "12", "label": "Shipped",    "delta": "+3 vs prev", "delta_kind": "up" },
+    { "num": "47", "label": "Open bugs",  "delta": "-8",          "delta_kind": "down" },
+    { "num": "14", "label": "On-call",    "delta": "+2",          "delta_kind": "up", "warn": true },
+    { "num": "92%","label": "CI green",   "delta": "flat",        "delta_kind": "flat" }
+  ],
+  "highlights": {
+    "items": [
+      { "strong": "Auth v2 cutover.",  "body": "All traffic on new identity stack; p95 latency down <em>30%</em>." },
+      { "strong": "Search reindex.",   "body": "Full corpus rebuilt in 11h, down from 26h." },
+      { "strong": "Mobile beta.",      "body": "iOS 17 build live to internal testers." }
+    ]
+  },
+  "shipped": {
+    "rows": [
+      { "pr": "#1042", "title": "feat(auth): rotate session keys",       "author": "alice",   "risk": "low" },
+      { "pr": "#1048", "title": "fix(search): off-by-one in date filter", "author": "bob",     "risk": "low" },
+      { "pr": "#1055", "title": "perf(api): cache permission lookups",    "author": "charlie", "risk": "med" },
+      { "pr": "#1061", "title": "feat(mobile): push notif opt-in",        "author": "dana",    "risk": "high" }
+    ]
+  },
+  "velocity_svg": "<svg viewBox=\"0 0 600 160\" xmlns=\"http://www.w3.org/2000/svg\"><polyline fill=\"none\" stroke=\"#D97757\" stroke-width=\"2\" points=\"0,120 75,90 150,100 225,70 300,60 375,80 450,40 525,30 600,50\"/><line x1=\"0\" y1=\"150\" x2=\"600\" y2=\"150\" stroke=\"#D1CFC5\"/></svg>",
+  "velocity_caption": "Merged PRs per day, 2-week window. Source: GitHub API.",
+  "carryover": {
+    "items": [
+      { "tag": "BLOCKED", "body": "App Store review for iOS 17 build.",        "who": "dana" },
+      { "tag": "REVIEW",  "body": "Permission cache invalidation edge case.",  "who": "charlie" },
+      { "tag": "SCOPE",   "body": "Q3 platform RFC pending review.",           "who": "alice" }
+    ]
+  },
+  "footer": "Generated 2026-05-13 · <a href=\"#\">runbook</a>"
+}

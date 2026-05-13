@@ -8,10 +8,13 @@ This directory holds the artifacts produced by `/team-feature` runs. The team-su
 docs/superpowers/
 ├── ESCALATION.md                          # template — referenced by every teammate
 ├── README.md                              # this file
-├── specs/    YYYY-MM-DD-<slug>-design.md  # written by designer (phase 1)
-├── plans/    YYYY-MM-DD-<slug>-plan.md    # written by planner (phase 3)
-├── reviews/  YYYY-MM-DD-<slug>-review.md  # written by reviewer (phase 5)
-└── sessions/ YYYY-MM-DD-<slug>.md         # checkpoint, updated by lead each phase
+├── specs/    YYYY-MM-DD-<slug>-design.md     # written by designer (phase 1)
+├── plans/    YYYY-MM-DD-<slug>-plan.md       # written by planner (phase 2)
+├── reviews/  YYYY-MM-DD-<slug>-arch.md       # written by software-architect (phase 3)
+├── reviews/  YYYY-MM-DD-<slug>-security.md   # written by security-engineer (phase 3)
+├── reviews/  YYYY-MM-DD-<slug>-qa.md         # written by qa-engineer (phase 5)
+├── reviews/  YYYY-MM-DD-<slug>-review.md     # written by reviewer (phase 6)
+└── sessions/ YYYY-MM-DD-<slug>.md            # checkpoint, updated by lead each phase
 ```
 
 ## How to launch
@@ -22,12 +25,11 @@ docs/superpowers/
 
 The lead handles prechecks, spawns the team, and drives the Superpowers skill chain.
 
-## Owner touchpoints (max 4 per feature)
+## Owner touchpoints (max 3 per feature)
 
-1. **Brainstorming clarifying questions.** The designer batches them per phase; you answer in plain English.
-2. **Design sign-off.** The brainstorming skill's built-in approval step.
-3. **Plan approval.** Before any implementer task starts.
-4. **Finish-branch decision.** Merge / PR / keep / discard at phase 6.
+1. **Design sign-off** (after phase 1). The brainstorming skill's built-in approval step. Designer batches any clarifying questions before this point so they piggy-back the same touchpoint.
+2. **Plan approval** (after phase 2). Before the pre-impl arch+security gate runs.
+3. **Finish-branch decision** (in phase 7). Merge / PR / keep / discard.
 
 Anything else that reaches you must use the §7 escalation template in `ESCALATION.md`. Refuse questions that don't follow it — that's the contract.
 
@@ -56,6 +58,20 @@ The lead reads the checkpoint, respawns the right teammates, and continues from 
 The lead is the only thing that knows when a team's work is done. There is no `TeamShutdown` hook event, so cleanup is driven by the slash commands:
 
 - **Automatic**, the happy path: `/team-feature` runs cleanup immediately after `FINISH_DONE`. The lead verifies all phases complete, all expected commits in place, every teammate idle, then invokes the canonical "clean up the team" primitive and confirms with a final scan. A `## Closing` block is appended to the checkpoint.
+
+### Closing-block fields
+
+The auto-cleanup writes a `## Closing` block with these fields:
+
+- `finished at: <ISO datetime>` — when cleanup finished.
+- `decision: <merged|pr_opened|kept|discarded>` — the finish-branch decision.
+- `cleanup: complete` — confirms all cleanup steps ran (or were intentionally skipped).
+- `worktree: <state>` — outcome of Step D.5. One of: `removed`, `already-absent`, `removal-skipped:<reason>`, `removed (after manual fix)`, `force-removed`, `kept-by-owner`, `escalated`.
+- `worktree_path: <path>` — present only when the worktree directory still exists on disk (states `kept-by-owner`, `escalated`, or `removal-skipped` where the path exists).
+- `merge_retries: K` — present only when K > 0; how many retries the 5-option menu ran before reaching `FINISH_DONE`.
+- `dropped_files: [<path>, ...]` — present only when `worktree: force-removed`; the file list snapshot from before the forced removal.
+
+`removal-skipped` reasons: `not-merged-decision` (decision was pr_opened/kept/discarded) | `team-cleanup-incomplete` (Step C/D left platform state present) | `no-worktree-recorded` (checkpoint had no `**Worktree:**` line).
 - **Manual**, the orphan path: if a lead crashed and left `~/.claude/teams/superpower-<slug>/` behind, run `/team-cleanup <slug>` from a fresh session. The slash command dry-runs first, prints what would be removed, asks for confirmation, then applies. The heartbeat file (`docs/superpowers/sessions/<slug>.heartbeat`) protects against wiping a live team — if it was touched in the last 10 minutes, cleanup refuses unless you explicitly confirm with `--ignore-heartbeat`.
 
 Project-side artefacts (`specs/`, `plans/`, `reviews/`, and the checkpoint itself) are **always preserved**. Only platform-side state under `~/.claude/teams/superpower-<slug>/` and `~/.claude/tasks/superpower-<slug>/` is removed, plus any matching tmux session.
@@ -78,14 +94,18 @@ bash plugins/team-superpower/scripts/team-state.sh scan <slug>
 | Symptom | What it usually means | First thing to check |
 |---|---|---|
 | `BLOCKED_IDLE: N unanswered peer messages` from a teammate | A peer asked the teammate something and they tried to idle without replying | Open the teammate's mailbox, reply or escalate |
-| `BAD_PREFIX` on a new task | The lead created a task without the `impl:`/`review:`/`meta:`/`block:` prefix | Lead's bug — fix the task title |
+| `BAD_PREFIX` on a new task | The lead created a task without the `impl:`/`review:`/`meta:`/`block:` prefix (or used an `impl:` task without the `be-` / `fe-` sub-prefix) | Lead's bug — fix the task title |
 | `NO_PLAN_APPROVAL` blocking a task complete | An `impl:` task is missing `metadata.plan_approved_at` | Lead forgot to stamp tasks after owner plan-approval; backfill from the checkpoint timestamp |
+| `ARCH_BLOCKED` or `SEC_BLOCKED` from phase 3 | Pre-impl gate rejected the plan; arch/security findings need plan revisions | Planner addresses the report, re-emits the plan, re-runs the gate before phase 4 starts |
+| `QA_BLOCKED` from phase 5 | Acceptance criteria or regression coverage missing post-implementation | Lead files `impl:qa-fix-be-` / `impl:qa-fix-fe-` tasks; loop back to phase 4 |
+| Backend developer and frontend developer want the same file | Plan didn't capture file-scope metadata for the overlapping tasks, or the task was mis-prefixed | Serialize by holding one; planner should re-route by `impl:be-` / `impl:fe-` prefix and backfill file-scope |
 | `BAD_ESCALATION: missing field(s) ...` | A teammate posted a blocker without all five template fields | Rewrite using the full template in `ESCALATION.md` |
 | Lead refuses to ping the owner | The teammate's request to escalate didn't use the §7 template | Same as above |
 | Teammate ran a non-Superpowers approximation of a skill | Teammate paraphrased the SKILL.md instead of following it | The agent's system prompt requires the canonical skill — re-spawn and remind it explicitly |
-| Two implementers want the same file | Plan didn't capture file-scope metadata for the overlapping tasks | Serialize by holding one; planner should backfill file-scope on the plan |
 | `REFUSED: heartbeat ... is Ns old` from cleanup | Heartbeat is fresh — cleanup script thinks a lead is alive | Verify nothing's running; if certain the previous lead is dead, run with `--ignore-heartbeat` |
 | `/team-feature` halts at preflight | Stale team config left over from a previous run | Run `/team-cleanup <slug>` (or resume via `/team-feature-resume`) |
+| `FINISH_BLOCKED <reason>` from the reviewer | The merge step of `finishing-a-development-branch` failed (`conflict` / `non-ff` / `dirty-worktree` / `push-rejected`) | The lead surfaces a 5-option menu (retry / pr_opened / kept / discarded / escalate). Pick one; merge retries cap at 3. |
+| `git worktree remove` failed during cleanup | Step D.5 hit an uncommitted/untracked file or a locked worktree | Pick from the 4-option menu (show files + retry / force-remove with confirmation / keep / escalate). Force-remove discards uncommitted work — only confirm if you've checked the file list. |
 | Auto-cleanup skipped after FINISH_DONE | One of Step A's preconditions failed (missing commits, in-progress tasks, etc.) | Read the lead's halt reason; once resolved, run `/team-cleanup <slug>` |
 | Hook log noise | Hooks write tuning data to `.claude/hooks/log.jsonl` | Inspect the file; trim or refine matchers if a hook is over-triggering |
 

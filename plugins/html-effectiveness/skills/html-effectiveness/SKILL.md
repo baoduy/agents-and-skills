@@ -26,7 +26,7 @@ If the request fits a report-style output and rendering as HTML would be clearer
 
 ## Template catalog
 
-20 templates ship with this plugin. See `docs/template-gallery.md` for the full table (auto-generated from `templates/manifest.json`). Highlights:
+20 templates ship with this plugin. Full table in `plugins/html-effectiveness/docs/template-gallery.md` (regen via `node plugins/html-effectiveness/scripts/catalog.js`). Highlights:
 
 - `01` / `02` — exploration comparisons (code approaches, visual designs)
 - `03` — code review board
@@ -77,7 +77,7 @@ Preserved from upstream `ThariqS/html-effectiveness`:
 ## Technical requirements
 
 - Single `.html` file, fully self-contained.
-- CSS variables for light/dark theming via `prefers-color-scheme`.
+- CSS variables for theming (light-only baseline, matching upstream palette).
 - System font stack and 150ms smooth transitions.
 - Responsive design 375px–1440px.
 - Semantic HTML5 with ARIA labels.
@@ -89,6 +89,6 @@ Preserved from upstream `ThariqS/html-effectiveness`:
 - **Missing slot data**: ask one question at a time; respect the cap of 6 questions before forcing render with best-guess defaults plus a note of what was assumed.
 - **Render error**: surface `template:slot expected <type> got <type>` to the user; fix the slot value; retry.
 
-## Sync
+## Vendored templates
 
-Generated from upstream `ThariqS/html-effectiveness@<sha pinned in manifest>`. To refresh: `node plugins/html-effectiveness/scripts/sync-upstream.js check`. If drift is detected, re-fetch the affected template, re-run extraction, and review the diff before committing.
+Templates are vendored, not auto-synced. The pinned upstream SHA lives at `templates/manifest.json` → `_meta.upstream_sha`. To refresh a single template: `node plugins/html-effectiveness/scripts/extract.js fetch <id>.html` then `split <id>.html`. Files land in `.tmp/html-effectiveness/extract/` (gitignored). Hand-merge the diff back into `templates/<id>.html.tmpl` and update `_meta.upstream_sha` if pinning a new revision.

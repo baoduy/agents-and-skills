@@ -20,6 +20,7 @@ Personal Claude Code **plugin marketplace** (`drunkcoding`) published as the npm
 ## Working in this repo
 
 - **Ship rule: only the `plugins/` folder is shipped.** Nothing outside `plugins/` (e.g. top-level `agents/`, `scripts/`, `.claude/skills/`) reaches npm or marketplace consumers — the `files` whitelist in `package.json` and the plugin list in `marketplace.json` both enforce this. Do not add plugin content outside `plugins/<name>/`.
+- **Implementation edit rule: feature work edits files inside `plugins/<name>/` only.** Do NOT modify `.claude/`, `.agents/`, or any other top-level directory while implementing a plugin feature. Design / plan / review docs may live under `docs/superpowers/`; repo-level config (`CLAUDE.md`, `package.json`, `marketplace.json`, `README.md`) may only change when the feature explicitly requires it (e.g. adding/renaming a plugin per the rule below). All agent / skill / hook / command source code stays under `plugins/<name>/`.
 - **When adding, removing, or renaming a plugin, update ALL of the following together in one commit:**
   1. `plugins/<name>/.claude-plugin/plugin.json` — create/update/delete the per-plugin manifest.
   2. `.claude-plugin/marketplace.json` — add/remove/rename the matching entry in `plugins[]` (`name`, `source`, `description`, `version`, `category`, `keywords`).
