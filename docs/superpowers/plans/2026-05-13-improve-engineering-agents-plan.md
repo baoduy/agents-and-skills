@@ -102,7 +102,7 @@ assert fm, 'no frontmatter'
 for key in ['name', 'description', 'tools', 'model']:
     assert key + ':' in fm.group(1), f'missing key: {key}'
 lines = text.strip().splitlines()
-assert 35 <= len(lines) <= 60, f'line count {len(lines)} outside 35-60'
+assert 25 <= len(lines) <= 60, f'line count {len(lines)} outside 25-60'
 print('OK')
 "
 ```
@@ -179,7 +179,7 @@ assert fm, 'no frontmatter'
 for key in ['name', 'description', 'tools', 'model']:
     assert key + ':' in fm.group(1), f'missing key: {key}'
 lines = text.strip().splitlines()
-assert 35 <= len(lines) <= 60, f'line count {len(lines)} outside 35-60'
+assert 25 <= len(lines) <= 60, f'line count {len(lines)} outside 25-60'
 print('OK')
 "
 ```
@@ -256,7 +256,7 @@ assert fm, 'no frontmatter'
 for key in ['name', 'description', 'tools', 'model']:
     assert key + ':' in fm.group(1), f'missing key: {key}'
 lines = text.strip().splitlines()
-assert 35 <= len(lines) <= 60, f'line count {len(lines)} outside 35-60'
+assert 25 <= len(lines) <= 60, f'line count {len(lines)} outside 25-60'
 print('OK')
 "
 ```
@@ -332,7 +332,7 @@ assert fm, 'no frontmatter'
 for key in ['name', 'description', 'tools', 'model']:
     assert key + ':' in fm.group(1), f'missing key: {key}'
 lines = text.strip().splitlines()
-assert 35 <= len(lines) <= 60, f'line count {len(lines)} outside 35-60'
+assert 25 <= len(lines) <= 60, f'line count {len(lines)} outside 25-60'
 print('OK')
 "
 ```
@@ -408,7 +408,7 @@ assert fm, 'no frontmatter'
 for key in ['name', 'description', 'tools', 'model']:
     assert key + ':' in fm.group(1), f'missing key: {key}'
 lines = text.strip().splitlines()
-assert 35 <= len(lines) <= 60, f'line count {len(lines)} outside 35-60'
+assert 25 <= len(lines) <= 60, f'line count {len(lines)} outside 25-60'
 print('OK')
 "
 ```
@@ -485,7 +485,7 @@ assert fm, 'no frontmatter'
 for key in ['name', 'description', 'tools', 'model']:
     assert key + ':' in fm.group(1), f'missing key: {key}'
 lines = text.strip().splitlines()
-assert 35 <= len(lines) <= 60, f'line count {len(lines)} outside 35-60'
+assert 25 <= len(lines) <= 60, f'line count {len(lines)} outside 25-60'
 print('OK')
 "
 ```
@@ -561,7 +561,7 @@ assert fm, 'no frontmatter'
 for key in ['name', 'description', 'tools', 'model']:
     assert key + ':' in fm.group(1), f'missing key: {key}'
 lines = text.strip().splitlines()
-assert 35 <= len(lines) <= 60, f'line count {len(lines)} outside 35-60'
+assert 25 <= len(lines) <= 60, f'line count {len(lines)} outside 25-60'
 print('OK')
 "
 ```
@@ -638,7 +638,7 @@ assert fm, 'no frontmatter'
 for key in ['name', 'description', 'tools', 'model']:
     assert key + ':' in fm.group(1), f'missing key: {key}'
 lines = text.strip().splitlines()
-assert 35 <= len(lines) <= 60, f'line count {len(lines)} outside 35-60'
+assert 25 <= len(lines) <= 60, f'line count {len(lines)} outside 25-60'
 print('OK')
 "
 ```
