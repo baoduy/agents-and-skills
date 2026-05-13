@@ -18,7 +18,7 @@ find plugins -path '*/agents/*.md'
 find plugins -path '*/.claude-plugin/plugin.json'
 ```
 
-For each `plugin.json`, parse and check whether the `agents` key is present (any shape). Emit one `[FAIL]` per plugin that declares it. Then validate every agent `.md` file as below.
+For each `plugin.json`, parse the optional `agents` field if present (see "`agents` field rule" below). Then validate every agent `.md` file as below.
 
 ## Spec Compliance Checks
 
@@ -30,7 +30,7 @@ For each `plugin.json`, parse and check whether the `agents` key is present (any
 | `description` length | 1-1024 chars, non-empty |
 | `tools` optional | Comma-separated string; each name appears in the valid-tool list below |
 | `model` optional | One of `sonnet`, `opus`, `haiku`, `inherit` |
-| No `agents` key in plugin.json | The plugin loader rejects any `agents` field with `agents: Invalid input`. Agent files are auto-discovered from `<plugin>/agents/*.md`. If `plugin.json` declares an `agents` array (or any other shape), flag as `[FAIL]` and recommend deleting the key. Confirmed against `anthropics/claude-code` official plugins (`pr-review-toolkit`, `frontend-design`, `commit-commands`, `hookify`) — none declare `agents`. |
+| `agents` field rule | Optional. Per https://code.claude.com/docs/en/plugins-reference#component-path-fields, value is `string` or `array`. Each entry must be a relative path starting with `./` (per "Path behavior rules"). If field is absent, agents are auto-discovered from `<plugin>/agents/*.md`. **Failure modes**: (a) value type other than string/array → `[FAIL]`. (b) entry does not start with `./` → `[FAIL]` (loader rejects with `agents: Invalid input` for bare filenames like `"reviewer.md"`). (c) entry points outside plugin root (contains `..`) → `[FAIL]`. (d) entry path does not exist on disk → `[FAIL]`. (e) field present and replaces the default `agents/` directory while files there exist that are not listed → `[WARN]` (loader silently drops them; v2.1.140+ shows `/doctor` warning). |
 
 ### Valid tool names (Claude Code ≥ 2.1.139)
 
