@@ -26,7 +26,7 @@ If the request fits a report-style output and rendering as HTML would be clearer
 
 ## Template catalog
 
-20 templates ship with this plugin. See `docs/template-gallery.md` for the full table (auto-generated from `templates/manifest.json`). Highlights:
+20 templates ship with this plugin. Full table in `plugins/html-effectiveness/docs/template-gallery.md` (regen via `node plugins/html-effectiveness/scripts/catalog.js`). Highlights:
 
 - `01` / `02` — exploration comparisons (code approaches, visual designs)
 - `03` — code review board
@@ -77,7 +77,7 @@ Preserved from upstream `ThariqS/html-effectiveness`:
 ## Technical requirements
 
 - Single `.html` file, fully self-contained.
-- CSS variables for light/dark theming via `prefers-color-scheme`.
+- CSS variables for theming (light-only baseline, matching upstream palette).
 - System font stack and 150ms smooth transitions.
 - Responsive design 375px–1440px.
 - Semantic HTML5 with ARIA labels.
