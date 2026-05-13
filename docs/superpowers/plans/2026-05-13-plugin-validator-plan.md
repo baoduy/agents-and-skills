@@ -510,7 +510,7 @@ This task runs all checks from design §7. Every check must pass before the comm
 
 This is the single atomic commit covering all moves, the new plugin.json, manifest update, README update, and plugin README.
 
-- [ ] **Step 1: Stage all changes**
+- [x] **Step 1: Stage all changes**
 
   Stage by explicit file paths to avoid accidentally including unrelated files:
 
@@ -529,7 +529,7 @@ This is the single atomic commit covering all moves, the new plugin.json, manife
 
   The `git mv` operations in Tasks 2–6b already stage the deletions from `.claude/`; those are automatically included.
 
-- [ ] **Step 2: Verify staged diff before committing**
+- [x] **Step 2: Verify staged diff before committing**
 
   ```bash
   git status
@@ -543,7 +543,7 @@ This is the single atomic commit covering all moves, the new plugin.json, manife
 
   There must be no unexpected staged files. If `git status` shows anything extra, unstage it with `git restore --staged <file>` before committing.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
   ```bash
   git commit -m "$(cat <<'EOF'
@@ -560,7 +560,7 @@ This is the single atomic commit covering all moves, the new plugin.json, manife
   )"
   ```
 
-- [ ] **Step 4: Verify commit landed**
+- [x] **Step 4: Verify commit landed**
 
   ```bash
   git log --oneline -3
@@ -569,7 +569,7 @@ This is the single atomic commit covering all moves, the new plugin.json, manife
 
   Expected: the new commit is at HEAD, `git show --stat` lists all 10 target paths plus the 6 deletions from `.claude/`.
 
-- [ ] **Step 5: Final post-commit JSON baseline**
+- [x] **Step 5: Final post-commit JSON baseline**
 
   ```bash
   python3 -c "import json, glob; [json.load(open(p)) for p in ['.claude-plugin/marketplace.json', *glob.glob('plugins/*/.claude-plugin/plugin.json')]]; print('OK')"
