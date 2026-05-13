@@ -145,3 +145,6 @@ vite.config.ts.timestamp-*
 .gitnexus
 # Git worktrees
 .worktrees/
+
+# Plugin-owned scratch (see plugins/<name>/scripts/_tmp.js)
+.tmp/
