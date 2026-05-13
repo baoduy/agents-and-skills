@@ -22,10 +22,10 @@
     {
       "name": "team-superpower",
       "source": "./plugins/team-superpower",
-      "description": "Full-stack engineering team that runs the Superpowers skill chain across designer, planner, implementer, reviewer, and 8 discipline roles — architect, backend, frontend, QA, security, devops, technical-writer, and minimal-change-engineer.",
+      "description": "Full-stack engineering team that runs the Superpowers skill chain across 8 roles — designer, planner, software-architect, security-engineer, backend-developer, frontend-developer, qa-engineer, reviewer — with a pre-impl architecture+security gate and a post-impl QA gate.",
       "version": "0.1.0",
       "category": "workflow",
-      "keywords": ["agent-teams", "superpowers", "tdd", "orchestration", "workflow", "brainstorming", "code-review"]
+      "keywords": ["agent-teams", "superpowers", "tdd", "orchestration", "workflow", "brainstorming", "code-review", "architecture", "security", "qa"]
     },
     {
       "name": "plugin-validator",
