@@ -143,3 +143,5 @@ vite.config.ts.timestamp-*
 .vite/
 
 .gitnexus
+# Git worktrees
+.worktrees/
