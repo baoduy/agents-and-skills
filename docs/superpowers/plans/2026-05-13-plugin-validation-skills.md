@@ -462,8 +462,27 @@ If a skill is not discoverable, check that `SKILL.md` has a complete frontmatter
 (Populate during Task 1.6, 1.7, 2.6, 2.7, 3.6, 3.7. Each entry: command run, observed output excerpt, action taken if mismatch.)
 
 ```
-Task 1.6: <fill in>
-Task 1.7: <fill in>
+Task 1.6 (failure path — team-superpower):
+  File: plugins/team-superpower/.claude-plugin/plugin.json
+  Rule walk:
+    - hooks field shape: "hooks": "hooks/hooks.json" is a string path → [FAIL] loader rejects with "hooks: Invalid input"
+    - Still resolved hooks/hooks.json for further checks:
+      - Top-level event keys: "TeammateIdle", "TaskCreated", "TaskCompleted" — none appear in the allowed list
+        (PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, Notification, PreCompact, SessionStart, SessionEnd)
+        → [FAIL] ×3 (one per invalid key)
+      - Matcher group shape: { matcher: "*", hooks: [...] } → [PASS]
+      - Hook entry shape: { type: "command", command: "${CLAUDE_PLUGIN_ROOT}/hooks/<script>.sh" } → [PASS]
+      - Command path resolves: uses ${CLAUDE_PLUGIN_ROOT} variable → [PASS] (best-effort; runtime env required)
+      - No absolute user paths: commands use ${CLAUDE_PLUGIN_ROOT} not /Users/... → [PASS]
+  Result: 1 [FAIL] on plugin.json shape + 3 [FAIL] on invalid event keys. At least one [FAIL] confirmed.
+
+Task 1.7 (pass path — html-effectiveness):
+  File: plugins/html-effectiveness/.claude-plugin/plugin.json
+  Rule walk:
+    - No "hooks" field present in plugin.json → skill emits "no hooks declared; skip"
+  find plugins/html-effectiveness -name 'hooks.json' → no results
+  Result: 0 files scanned, 0 false positives. Clean skip confirmed.
+
 Task 2.6: <fill in>
 Task 2.7: <fill in>
 Task 3.6: <fill in>
