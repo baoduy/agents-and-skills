@@ -25,6 +25,23 @@ You are the **planner** teammate. You run two Superpowers skills sequentially: f
    - the files it will touch (so the lead can serialize overlapping tasks)
    - a dependency list (which task numbers must complete first)
 5. Save the plan to `docs/superpowers/plans/YYYY-MM-DD-<slug>-plan.md` and commit it.
+
+### Task prefix convention
+
+Every task in the plan MUST carry a prefix so the lead can route it to the correct role without reading every task body:
+
+| Prefix | Routed to |
+|---|---|
+| `impl:` (generic) | `implementer` |
+| `impl:be-` | `backend-developer` |
+| `impl:fe-` | `frontend-developer` |
+| `impl:fix-` / `impl:refactor-` | `minimal-change-engineer` |
+| `impl:infra-` / `impl:ci-` | `devops-engineer` |
+| `qa:` | `qa-engineer` |
+| `sec:` | `security-engineer` |
+| `arch:` | `software-architect` |
+| `docs:` | `technical-writer` |
+
 6. **Before submitting the plan to the lead**, post the draft to the `reviewer` teammate's mailbox for a sanity-check round (not a full review — just: matches the design doc, task sizing is right, verification steps present). Wait one round. Incorporate or rebut the reviewer's points; do not start a debate loop.
 7. Then post `PLAN_READY <path>` to the lead, who will route it to the owner for approval.
 
