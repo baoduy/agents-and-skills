@@ -52,9 +52,12 @@ After any cleanup, re-run the scan and confirm `team_config_state: absent` befor
 The next pending phase is the first unchecked box in the checkpoint's `## Phases` section. Open escalations in the checkpoint take precedence — resolve them before resuming.
 
 Read all the artefacts the next phase depends on:
-- If next phase is `worktree` or later: design doc (path is in the checkpoint).
-- If next phase is `implementation` or later: plan + `plan_approved_at` timestamp.
-- If next phase is `finish`: review report.
+- If next phase is `plan` or later: design doc (path is in the checkpoint).
+- If next phase is `pre_impl_review` or later: plan + `plan_approved_at` timestamp.
+- If next phase is `implementation` or later: ARCH + SEC reports (both must be `*_PASSED`).
+- If next phase is `qa` or later: implementation commits on the worktree branch.
+- If next phase is `review` or later: QA report (`QA_PASSED`).
+- If next phase is `finish`: code-review report (`REVIEW_PASSED`).
 
 ### Step 5 — Reconstruct context
 
@@ -64,7 +67,17 @@ Read all the artefacts the next phase depends on:
 
 ### Step 6 — Respawn only the teammates needed
 
-For the next phase, spawn the relevant role(s) using the agent definitions shipped with this plugin. Do **not** respawn teammates whose phase is complete unless that phase needs them again later (e.g. reviewer is reused in phase 6).
+For the next phase, spawn the relevant role(s) using the agent definitions shipped with this plugin. Do **not** respawn teammates whose phase is complete unless that phase needs them again later (e.g. reviewer is reused in phase 7 for finish; planner is re-spawned if phase 3 returned `ARCH_BLOCKED` / `SEC_BLOCKED` and the plan needs revision; backend-developer / frontend-developer are re-spawned for `impl:qa-fix-*` or `impl:review-fix-*` tasks). Phase-to-role map:
+
+| Next phase | Spawn |
+|---|---|
+| `design` | `designer` |
+| `plan` | `planner` |
+| `pre_impl_review` | `software-architect` + `security-engineer` (parallel) |
+| `implementation` | `backend-developer` and/or `frontend-developer` (route by `impl:be-` / `impl:fe-` prefix) |
+| `qa` | `qa-engineer` |
+| `review` | `reviewer` |
+| `finish` | `reviewer` |
 
 Hand each respawned teammate:
 - the slug
@@ -94,7 +107,7 @@ Append to the checkpoint (atomic write — tmp + rename) and commit:
 ### Step 9 — Resume the phase chain
 
 Continue per the same rules as `/team-feature`:
-- four allowed owner touchpoints, nothing else without §7 template
+- three allowed owner touchpoints (design sign-off, plan approval, finish-branch decision), nothing else without §7 template
 - checkpoint after every phase boundary, atomic writes
 - heartbeat touched at every phase boundary
 - automatic cleanup after `FINISH_DONE`
