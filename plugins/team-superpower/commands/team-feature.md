@@ -274,7 +274,7 @@ After every phase boundary, write `docs/superpowers/sessions/YYYY-MM-DD-<slug>.m
 - [ ] implementation (M/N tasks complete)
 - [ ] qa
 - [ ] review
-- [ ] finish
+- [ ] finish — when `FINISH_BLOCKED <reason>` is in flight, this line reads `- [ ] finish (blocked: <reason>, merge_retries: K/3)` instead, and stays unchecked until `FINISH_DONE` arrives.
 
 ## Teammates
 - designer (agent-id: ...) — idle
@@ -306,5 +306,9 @@ After every phase boundary, write `docs/superpowers/sessions/YYYY-MM-DD-<slug>.m
 - **Never** ping the owner without the §7 template, except for the three allowed touchpoints listed above.
 - **Never** skip the automatic cleanup block after `FINISH_DONE`. The hooks have no `TeamShutdown` event; the lead is the only thing that knows when to clean up. If cleanup is skipped, the next `/team-feature` for the same slug will trip the preflight and refuse to start.
 - **Never** force cleanup while the heartbeat is fresh and you didn't write it. That's the signal that another lead is alive.
+- **Never** run Step D.5 worktree removal unless the finish decision is `merged` AND the platform-cleanup scan (Step C, or Step D fallback) shows every state `absent`. Other decisions or partial cleanups must record `worktree: removal-skipped:<reason>` and leave the worktree on disk.
+- **Never** force-remove a worktree (`--force`) without explicit owner confirmation in the 4-option menu. The default remove is non-forced; force only on option B with a typed `yes`.
+- **Never** retry merge more than 3 times. After the 3rd `FINISH_BLOCKED`, drop option A from the 5-option menu and require B/C/D/E.
+- **Never** treat the `FINISH_BLOCKED` menu as a new owner touchpoint. It is the same finish-branch touchpoint continued — the 3-touchpoint cap stays at 3.
 
 Begin with the prechecks, then preflight, then spawn `designer`.
