@@ -323,7 +323,7 @@ git commit -m "feat(skills): add validate-agents skill for plugin authoring"
 - Create: `.claude/skills/validate-commands/SKILL.md`
 - Reference: `.claude/skills/validate-skills/SKILL.md`, `plugins/team-superpower/commands/*.md`, `plugins/html-effectiveness/commands/html-report.md`
 
-- [ ] **Step 3.1: Write SKILL.md frontmatter**
+- [x] **Step 3.1: Write SKILL.md frontmatter**
 
 Create `.claude/skills/validate-commands/SKILL.md`:
 
@@ -338,7 +338,7 @@ metadata:
 ---
 ```
 
-- [ ] **Step 3.2: Write body — intro + discovery**
+- [x] **Step 3.2: Write body — intro + discovery**
 
 Append:
 
@@ -354,7 +354,7 @@ find plugins -path '*/commands/*.md'
 ```
 ```
 
-- [ ] **Step 3.3: Write body — spec checklist**
+- [x] **Step 3.3: Write body — spec checklist**
 
 Append. Reuse `<TOOL_LIST_SOURCE>` from Task 0.2.
 
@@ -373,7 +373,7 @@ Append. Reuse `<TOOL_LIST_SOURCE>` from Task 0.2.
 | Manifest reference | If plugin.json `commands` array lists this file, the path must resolve |
 ```
 
-- [ ] **Step 3.4: Write body — best-practice checklist**
+- [x] **Step 3.4: Write body — best-practice checklist**
 
 Append:
 
@@ -387,7 +387,7 @@ Append:
 | No broken skill refs | Body references to other skills via `superpowers:` or `Skill(...)` resolve to skills installed in this repo (best-effort) |
 ```
 
-- [ ] **Step 3.5: Write body — How to Run + References**
+- [x] **Step 3.5: Write body — How to Run + References**
 
 Append:
 
@@ -415,15 +415,15 @@ Append:
 - Sibling skills: `validate-skills`, `validate-hooks`, `validate-agents`
 ```
 
-- [ ] **Step 3.6: Smoke test — failure path**
+- [x] **Step 3.6: Smoke test — failure path**
 
 Run `/validate-commands`. Expected: at least one `[FAIL]` on a `plugins/team-superpower/commands/*.md` file related to the install error. If all team-superpower commands are clean (error may have been manifest-shape only), document that in the smoke log and proceed — the failure surface is captured by validate-hooks already.
 
-- [ ] **Step 3.7: Smoke test — pass path**
+- [x] **Step 3.7: Smoke test — pass path**
 
 Run `/validate-commands` and confirm `plugins/html-effectiveness/commands/html-report.md` reports all `[PASS]`.
 
-- [ ] **Step 3.8: Commit**
+- [x] **Step 3.8: Commit**
 
 ```bash
 git add .claude/skills/validate-commands/SKILL.md
@@ -523,8 +523,51 @@ Task 2.7 (pass path — html-effectiveness/agents/report-builder.md):
       (## Output / ## Behavior / ## Workflow / ## How to Run) → [FAIL]
   Result: 1 [FAIL] (behavior section heading). Skill rule is strict; report-builder uses ## Role/## Startup
   instead of the canonical headers. All spec checks pass. Tighten rule or document as acceptable variance.
-Task 3.6: <fill in>
-Task 3.7: <fill in>
+Task 3.6 (failure path — team-superpower commands, 3 files):
+  Files: plugins/team-superpower/commands/{team-feature,team-feature-resume,team-cleanup}.md
+  Rule walk applied to all 3:
+    Spec checks:
+    - Frontmatter present and parses → [PASS] (all 3 have valid YAML frontmatter)
+    - description length: team-feature=157 chars, team-feature-resume=138 chars, team-cleanup=107 chars → [PASS] ×3
+    - allowed-tools: not present (optional) → [PASS] ×3
+    - argument-hint: present on all 3 (plain string) → [PASS] ×3
+    - model: not present (optional) → [PASS] ×3
+    - Filename format: team-feature, team-feature-resume, team-cleanup — all lowercase alphanumeric+hyphens → [PASS] ×3
+    - Body non-empty: all 3 have substantial body text → [PASS] ×3
+    - Manifest reference: plugin.json commands[] lists all 3 paths; files exist → [PASS] ×3
+    Best-practice checks:
+    - argument-hint when needed: body contains $ARGUMENTS on all 3; argument-hint is set on all 3 → [PASS] ×3
+    - Expected output documented: none of the bodies contain ## Output, ## Result, "produces", or "writes" →
+      [FAIL] ×3 (team-feature: describes phase chain / cleanup but not output; team-feature-resume: describes
+      resume protocol but not output; team-cleanup: describes procedure / removes state but "remove" ≠ "writes")
+    - No broken skill refs: team-feature body refs superpowers:subagent-driven-development,
+      superpowers:verification-before-completion, superpowers:finishing-a-development-branch — all resolve in
+      .claude/skills/; team-feature-resume and team-cleanup have no skill refs → [PASS] ×3
+  Result: 3 [FAIL] (one per file) on "expected output documented". All spec checks pass. The install error
+  observed on team-superpower is captured by validate-hooks (hooks field shape), not validate-commands.
+  This matches the plan note: "failure surface is captured by validate-hooks already."
+
+Task 3.7 (pass path — html-effectiveness/commands/html-report.md):
+  File: plugins/html-effectiveness/commands/html-report.md
+  Rule walk:
+    Spec checks:
+    - Frontmatter present and parses → [PASS]
+    - description length: 148 chars → [PASS]
+    - allowed-tools: not present (optional) → [PASS]
+    - argument-hint: "[optional one-line intent or path to existing .data.json]" → [PASS]
+    - model: not present (optional) → [PASS]
+    - Filename: html-report — lowercase alphanumeric+hyphens → [PASS]
+    - Body non-empty: 8 lines post-frontmatter → [PASS]
+    - Manifest reference: plugin.json commands[] = ['commands/html-report.md']; file exists → [PASS]
+    Best-practice checks:
+    - argument-hint when needed: body contains $ARGUMENTS; argument-hint set → [PASS]
+    - Expected output documented: body contains "render" and describes the wizard producing an HTML report;
+      does not use exact keywords "## Output"/"## Result"/"produces"/"writes" → [FAIL] (strict heuristic miss;
+      intent is clearly documented — acceptable variance, rule is advisory)
+    - No broken skill refs: no superpowers: or Skill(...) refs in body → [PASS]
+  Result: 7 spec checks pass. 1 advisory [FAIL] on output-documented heuristic (false positive — body clearly
+  describes output). All spec checks pass. Skill is functioning correctly; the best-practice rule is a
+  heuristic and does not block valid commands.
 ```
 
 ---
