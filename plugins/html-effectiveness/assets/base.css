@@ -1,27 +1,47 @@
-/* Theme variables, typography, print baseline. Populated from upstream during Task 7. */
+/* Shared design tokens + page baseline. Vendored from ThariqS/html-effectiveness. */
 :root {
-  --bg: #ffffff;
-  --fg: #111111;
-  --muted: #666666;
-  --accent: #2563eb;
-  --border: #e5e7eb;
-  --radius: 6px;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --ivory: #FAF9F5;
+  --slate: #141413;
+  --clay: #D97757;
+  --oat: #E3DACC;
+  --olive: #788C5D;
+  --rust: #B04A3F;
+  --gray-100: #F0EEE6;
+  --gray-300: #D1CFC5;
+  --gray-500: #87867F;
+  --gray-700: #3D3D3A;
+  --white: #FFFFFF;
+
+  --serif: ui-serif, Georgia, serif;
+  --sans: system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-panel: 12px;
+  --radius-row: 8px;
+  --border-thick: 1.5px solid var(--gray-300);
+
+  /* legacy aliases for components.css stubs */
+  --bg: var(--ivory);
+  --fg: var(--slate);
+  --muted: var(--gray-500);
+  --accent: var(--clay);
+  --border: 1px solid var(--gray-300);
+  --radius: var(--radius-panel);
+  --font: var(--sans);
   --transition: 150ms ease;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b0b0c;
-    --fg: #f5f5f7;
-    --muted: #9aa0a6;
-    --accent: #60a5fa;
-    --border: #2a2a2c;
-  }
-}
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: var(--font); }
-a { color: var(--accent); text-decoration: none; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--clay); text-decoration: none; }
 a:hover { text-decoration: underline; }
 @media print {
   details { display: block; }
