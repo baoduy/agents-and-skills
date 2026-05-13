@@ -58,6 +58,20 @@ The lead reads the checkpoint, respawns the right teammates, and continues from 
 The lead is the only thing that knows when a team's work is done. There is no `TeamShutdown` hook event, so cleanup is driven by the slash commands:
 
 - **Automatic**, the happy path: `/team-feature` runs cleanup immediately after `FINISH_DONE`. The lead verifies all phases complete, all expected commits in place, every teammate idle, then invokes the canonical "clean up the team" primitive and confirms with a final scan. A `## Closing` block is appended to the checkpoint.
+
+### Closing-block fields
+
+The auto-cleanup writes a `## Closing` block with these fields:
+
+- `finished at: <ISO datetime>` — when cleanup finished.
+- `decision: <merged|pr_opened|kept|discarded>` — the finish-branch decision.
+- `cleanup: complete` — confirms all cleanup steps ran (or were intentionally skipped).
+- `worktree: <state>` — outcome of Step D.5. One of: `removed`, `already-absent`, `removal-skipped:<reason>`, `removed (after manual fix)`, `force-removed`, `kept-by-owner`, `escalated`.
+- `worktree_path: <path>` — present only when the worktree directory still exists on disk (states `kept-by-owner`, `escalated`, or `removal-skipped` where the path exists).
+- `merge_retries: K` — present only when K > 0; how many retries the 5-option menu ran before reaching `FINISH_DONE`.
+- `dropped_files: [<path>, ...]` — present only when `worktree: force-removed`; the file list snapshot from before the forced removal.
+
+`removal-skipped` reasons: `not-merged-decision` (decision was pr_opened/kept/discarded) | `team-cleanup-incomplete` (Step C/D left platform state present) | `no-worktree-recorded` (checkpoint had no `**Worktree:**` line).
 - **Manual**, the orphan path: if a lead crashed and left `~/.claude/teams/superpower-<slug>/` behind, run `/team-cleanup <slug>` from a fresh session. The slash command dry-runs first, prints what would be removed, asks for confirmation, then applies. The heartbeat file (`docs/superpowers/sessions/<slug>.heartbeat`) protects against wiping a live team — if it was touched in the last 10 minutes, cleanup refuses unless you explicitly confirm with `--ignore-heartbeat`.
 
 Project-side artefacts (`specs/`, `plans/`, `reviews/`, and the checkpoint itself) are **always preserved**. Only platform-side state under `~/.claude/teams/superpower-<slug>/` and `~/.claude/tasks/superpower-<slug>/` is removed, plus any matching tmux session.
@@ -90,6 +104,8 @@ bash plugins/team-superpower/scripts/team-state.sh scan <slug>
 | Teammate ran a non-Superpowers approximation of a skill | Teammate paraphrased the SKILL.md instead of following it | The agent's system prompt requires the canonical skill — re-spawn and remind it explicitly |
 | `REFUSED: heartbeat ... is Ns old` from cleanup | Heartbeat is fresh — cleanup script thinks a lead is alive | Verify nothing's running; if certain the previous lead is dead, run with `--ignore-heartbeat` |
 | `/team-feature` halts at preflight | Stale team config left over from a previous run | Run `/team-cleanup <slug>` (or resume via `/team-feature-resume`) |
+| `FINISH_BLOCKED <reason>` from the reviewer | The merge step of `finishing-a-development-branch` failed (`conflict` / `non-ff` / `dirty-worktree` / `push-rejected`) | The lead surfaces a 5-option menu (retry / pr_opened / kept / discarded / escalate). Pick one; merge retries cap at 3. |
+| `git worktree remove` failed during cleanup | Step D.5 hit an uncommitted/untracked file or a locked worktree | Pick from the 4-option menu (show files + retry / force-remove with confirmation / keep / escalate). Force-remove discards uncommitted work — only confirm if you've checked the file list. |
 | Auto-cleanup skipped after FINISH_DONE | One of Step A's preconditions failed (missing commits, in-progress tasks, etc.) | Read the lead's halt reason; once resolved, run `/team-cleanup <slug>` |
 | Hook log noise | Hooks write tuning data to `.claude/hooks/log.jsonl` | Inspect the file; trim or refine matchers if a hook is over-triggering |
 
