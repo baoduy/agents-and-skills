@@ -45,24 +45,6 @@ jobs:
       - name: Print the version
         run: echo "Next version is v${NEXT_VERSION}"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: "https://registry.npmjs.org/"
-
-      - name: Update version in package.json
-        run: npm version "${NEXT_VERSION}" --no-git-tag-version --allow-same-version
-
-      - name: Sync plugin manifest versions
-        run: |
-          if [ -f .claude-plugin/marketplace.json ]; then
-            node -e "const fs=require('fs');const p='.claude-plugin/marketplace.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));if(Array.isArray(j.plugins)){j.plugins.forEach(pl=>{pl.version=process.env.NEXT_VERSION});}fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');"
-          fi
-          for f in plugins/*/.claude-plugin/plugin.json; do
-            [ -f "$f" ] || continue
-            node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('$f','utf8'));j.version=process.env.NEXT_VERSION;fs.writeFileSync('$f',JSON.stringify(j,null,2)+'\n');"
-          done
-
       - name: Determine release flag
         id: flag
         run: |
@@ -73,6 +55,45 @@ jobs:
           else
             echo "enable=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org/"
+
+      - name: Update version in package.json
+        if: steps.flag.outputs.enable == 'true'
+        run: npm version "${NEXT_VERSION}" --no-git-tag-version --allow-same-version
+
+      - name: Sync plugin manifest versions
+        if: steps.flag.outputs.enable == 'true'
+        run: |
+          if [ -f .claude-plugin/marketplace.json ]; then
+            node -e "const fs=require('fs');const p='.claude-plugin/marketplace.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));if(Array.isArray(j.plugins)){j.plugins.forEach(pl=>{pl.version=process.env.NEXT_VERSION});}fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');"
+          fi
+          for f in plugins/*/.claude-plugin/plugin.json; do
+            [ -f "$f" ] || continue
+            node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('$f','utf8'));j.version=process.env.NEXT_VERSION;fs.writeFileSync('$f',JSON.stringify(j,null,2)+'\n');"
+          done
+
+      - name: Commit version bump
+        if: steps.flag.outputs.enable == 'true'
+        env:
+          NEXT_VERSION: ${{ env.NEXT_VERSION }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add package.json .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json
+
+          if git diff --cached --quiet; then
+            echo "No version diff to commit — semantic-version produced same value as HEAD"
+            exit 0
+          fi
+
+          git commit -m "chore(release): v${NEXT_VERSION} [skip ci]"
+          git push origin HEAD:main
 
       - name: Create GitHub Release
         if: steps.flag.outputs.enable == 'true'
