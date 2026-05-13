@@ -1,7 +1,32 @@
 {
   "_meta": {
     "upstream_repo": "ThariqS/html-effectiveness",
-    "upstream_sha": "PENDING",
-    "extracted_at": "PENDING"
+    "upstream_sha": "a1fb5673c26f87be9b833e1876cf4fd0f30f5f2d",
+    "fetched_at": "2026-05-13",
+    "note": "Templates vendored. Re-fetch is manual; see scripts/fetch-upstream.js."
+  },
+  "11-status-report": {
+    "title": "Status Report",
+    "use_cases": ["weekly status", "project update", "team digest", "monthly recap", "engineering status"],
+    "pattern": "interactive_report",
+    "tmpl": "templates/11-status-report.html.tmpl",
+    "slots": {
+      "title":      { "type": "string",  "required": true },
+      "auto_pill":  { "type": "string" },
+      "date_range": { "type": "string",  "required": true },
+      "repo":       { "type": "string" },
+      "summary": {
+        "type": "array",
+        "of": { "num": "string", "label": "string", "delta": "string", "delta_kind": "string", "warn": "boolean" }
+      },
+      "highlights":      { "type": "object" },
+      "shipped":         { "type": "object" },
+      "velocity_svg":    { "type": "html" },
+      "velocity_caption":{ "type": "string" },
+      "carryover":       { "type": "object" },
+      "footer":          { "type": "html" }
+    },
+    "asset_bundles": ["base"],
+    "extra_js": null
   }
 }

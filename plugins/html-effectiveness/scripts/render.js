@@ -4,7 +4,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { render as mustache } from './mustache.js';
 
@@ -173,4 +173,4 @@ function cli() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) cli();
+if (import.meta.url === pathToFileURL(process.argv[1]).href) cli();

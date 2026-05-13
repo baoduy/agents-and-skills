@@ -1,0 +1,152 @@
+<!--
+template: 11-status-report
+upstream: 11-status-report.html
+slots:
+  title: string
+  auto_pill?: string
+  date_range: string
+  repo?: string
+  summary[]: { num, label, delta?, delta_kind?: up|flat|down, warn?: bool }
+  highlights?: { items[]: { strong, body: html } }
+  shipped?: { rows[]: { pr, title: html, author, risk: low|med|high } }
+  velocity_svg?: html
+  velocity_caption?: string
+  carryover?: { items[]: { tag, body: html, who? } }
+  footer?: html
+-->
+<div class="page report report--status">
+  <header>
+    <div class="header-top">
+      <h1>{{title}}</h1>
+      {{#auto_pill}}<span class="auto-pill">{{auto_pill}}</span>{{/auto_pill}}
+    </div>
+    <div class="date-range">
+      {{date_range}}
+      {{#repo}} &middot; <span class="repo">{{repo}}</span>{{/repo}}
+    </div>
+  </header>
+
+  <section>
+    <div class="summary-band">
+      {{#summary}}
+      <div class="stat-card {{#warn}}warn{{/warn}}">
+        <div class="stat-num">{{num}}</div>
+        <div class="stat-label">{{label}}</div>
+        {{#delta}}<div class="stat-delta {{delta_kind}}">{{delta}}</div>{{/delta}}
+      </div>
+      {{/summary}}
+    </div>
+  </section>
+
+  {{#highlights}}
+  <section>
+    <h2>Highlights</h2>
+    <hr class="rule">
+    <ul class="highlights">
+      {{#items}}
+      <li><strong>{{strong}}</strong> {{{body}}}</li>
+      {{/items}}
+    </ul>
+  </section>
+  {{/highlights}}
+
+  {{#shipped}}
+  <section>
+    <h2>Shipped</h2>
+    <hr class="rule">
+    <table class="shipped">
+      <thead>
+        <tr><th style="width:90px;">PR</th><th>Title</th><th style="width:140px;">Author</th><th style="width:100px;">Risk</th></tr>
+      </thead>
+      <tbody>
+        {{#rows}}
+        <tr>
+          <td><a class="pr-link" href="#">{{pr}}</a></td>
+          <td>{{{title}}}</td>
+          <td class="author">{{author}}</td>
+          <td><span class="risk"><span class="risk-dot {{risk}}"></span>{{risk}}</span></td>
+        </tr>
+        {{/rows}}
+      </tbody>
+    </table>
+  </section>
+  {{/shipped}}
+
+  {{#velocity_svg}}
+  <section>
+    <h2>Velocity</h2>
+    <hr class="rule">
+    <div class="chart-panel">
+      {{{velocity_svg}}}
+      {{#velocity_caption}}<div class="chart-caption">{{velocity_caption}}</div>{{/velocity_caption}}
+    </div>
+  </section>
+  {{/velocity_svg}}
+
+  {{#carryover}}
+  <section>
+    <h2>Carryover</h2>
+    <hr class="rule">
+    <div class="carryover">
+      {{#items}}
+      <div class="carry-item">
+        <span class="carry-tag">{{tag}}</span>
+        <div class="carry-body">{{{body}}}{{#who}} <span class="who">&middot; {{who}}</span>{{/who}}</div>
+      </div>
+      {{/items}}
+    </div>
+  </section>
+  {{/carryover}}
+
+  {{#footer}}<footer>{{{footer}}}</footer>{{/footer}}
+</div>
+
+<style>
+.report--status { max-width: 860px; margin: 0 auto; padding: 56px 24px 120px; font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+.report--status header { margin-bottom: 40px; }
+.report--status .header-top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 8px; }
+.report--status h1 { font-family: var(--serif); font-weight: 500; font-size: 38px; letter-spacing: -0.01em; margin: 0; }
+.report--status .auto-pill { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-500); background: var(--gray-100); border: var(--border-thick); border-radius: 999px; padding: 5px 11px; white-space: nowrap; }
+.report--status .date-range { color: var(--gray-500); font-size: 14px; }
+.report--status .date-range .repo { font-family: var(--mono); font-size: 13px; color: var(--gray-700); }
+.report--status section { margin-bottom: 52px; }
+.report--status h2 { font-family: var(--serif); font-weight: 500; font-size: 24px; letter-spacing: -0.01em; margin: 0 0 6px; }
+.report--status hr.rule { border: none; border-top: 1px solid var(--gray-300); margin: 0 0 22px; }
+.report--status .summary-band { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 720px) { .report--status .summary-band { grid-template-columns: repeat(2, 1fr); } }
+.report--status .stat-card { background: var(--white); border: var(--border-thick); border-radius: var(--radius-panel); padding: 20px 22px 18px; }
+.report--status .stat-card.warn { border-left: 4px solid var(--clay); padding-left: 19px; }
+.report--status .stat-num { font-family: var(--serif); font-size: 44px; font-weight: 500; line-height: 1; color: var(--slate); margin-bottom: 8px; }
+.report--status .stat-label { font-family: var(--sans); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-500); }
+.report--status .stat-delta { font-family: var(--mono); font-size: 11px; margin-top: 6px; }
+.report--status .stat-delta.up { color: var(--olive); }
+.report--status .stat-delta.flat { color: var(--gray-500); }
+.report--status .stat-delta.down { color: var(--rust); }
+.report--status .highlights { list-style: none; margin: 0; padding: 0; }
+.report--status .highlights li { position: relative; padding: 0 0 14px 26px; font-size: 15px; color: var(--gray-700); }
+.report--status .highlights li::before { content: ""; position: absolute; left: 6px; top: 8px; width: 7px; height: 7px; border-radius: 2px; background: var(--clay); }
+.report--status .highlights li strong { color: var(--slate); font-weight: 600; }
+.report--status table.shipped { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--white); border: var(--border-thick); border-radius: var(--radius-panel); overflow: hidden; }
+.report--status table.shipped thead th { text-align: left; font-family: var(--sans); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gray-500); background: var(--gray-100); padding: 12px 16px; border-bottom: 1px solid var(--gray-300); }
+.report--status table.shipped tbody td { padding: 13px 16px; border-bottom: 1px solid var(--gray-100); font-size: 14px; vertical-align: middle; }
+.report--status table.shipped tbody tr:last-child td { border-bottom: none; }
+.report--status table.shipped tbody tr:hover { background: var(--ivory); }
+.report--status .pr-link { font-family: var(--mono); font-size: 13px; color: var(--clay); text-decoration: none; border-bottom: 1px dotted transparent; }
+.report--status .pr-link:hover { border-bottom-color: var(--clay); }
+.report--status .author { color: var(--gray-700); font-size: 13px; }
+.report--status .risk { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--gray-500); text-transform: capitalize; }
+.report--status .risk-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.report--status .risk-dot.low { background: var(--olive); }
+.report--status .risk-dot.med { background: var(--clay); }
+.report--status .risk-dot.high { background: var(--rust); }
+.report--status .chart-panel { background: var(--white); border: var(--border-thick); border-radius: var(--radius-panel); padding: 24px 28px 18px; }
+.report--status .chart-panel svg { display: block; width: 100%; height: auto; }
+.report--status .chart-caption { font-size: 12px; color: var(--gray-500); margin-top: 12px; }
+.report--status .carryover { background: var(--oat); border-radius: var(--radius-panel); padding: 20px 22px; }
+.report--status .carry-item { display: flex; align-items: baseline; gap: 14px; padding: 8px 0; }
+.report--status .carry-item + .carry-item { border-top: 1px solid rgba(20, 20, 19, 0.08); }
+.report--status .carry-tag { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-700); background: var(--ivory); border-radius: 4px; padding: 3px 7px; flex-shrink: 0; }
+.report--status .carry-body { font-size: 14px; color: var(--gray-700); }
+.report--status .carry-body .who { color: var(--gray-500); font-size: 12px; }
+.report--status footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--gray-300); font-family: var(--mono); font-size: 12px; color: var(--gray-500); }
+</style>
