@@ -69,7 +69,51 @@ After preflight clears:
 
 6. **Code review (reviewer).** Once `QA_PASSED`, file a `review:` task and spawn the `reviewer` teammate. Wait for `REVIEW_PASSED <path>`. If critical issues come back instead, the reviewer report names the responsible implementer (`backend-developer` or `frontend-developer`) and the failing task — file `impl:review-fix-be-` / `impl:review-fix-fe-` tasks and loop to phase 4. Checkpoint: `phase: review, status: pass | critical_issues_returned`. Touch heartbeat.
 
-7. **Finish (reviewer).** Same reviewer runs `finishing-a-development-branch`. The owner makes the merge / PR / keep / discard decision (third and last owner touchpoint). On `FINISH_DONE <decision> <ref>`, checkpoint: `phase: finish, status: <merged|pr_opened|kept|discarded>`. Touch heartbeat.
+7. **Finish (reviewer).** Same reviewer runs `finishing-a-development-branch`. The owner makes the merge / PR / keep / discard decision (third and last owner touchpoint). On `FINISH_DONE <decision> <ref>`, checkpoint: `phase: finish, status: <merged|pr_opened|kept|discarded>`. Touch heartbeat. If the reviewer posts `FINISH_BLOCKED <reason>` instead, follow **Phase 7 merge-failure handling** below.
+
+## Phase 7 merge-failure handling
+
+When the reviewer posts `FINISH_BLOCKED <reason>` (instead of `FINISH_DONE`), the merge step of `finishing-a-development-branch` failed for the `merged` decision. Handle it inline — this is the same owner touchpoint as the finish-branch decision continued, NOT a new touchpoint.
+
+1. Read the mailbox message. Stash `<reason>` and the verbatim git stderr.
+2. Update the checkpoint: `phase: finish, status: merge_blocked, reason: <reason>, merge_retries: K/3` where `K` is the count of prior retry attempts in this run (start at 0).
+3. Touch the heartbeat.
+4. Present the 5-option menu below to the owner.
+5. Translate the owner's choice into the next instruction to the reviewer per the table.
+
+### 5-option merge-failure menu
+
+Present verbatim:
+
+> **Merge failed:** `<reason>`. Pick one:
+> - **A. Retry merge** — re-attempt the merge now (you've resolved conflicts externally or upstream has stabilised).
+> - **B. Switch to pr_opened** — open a PR for human merge instead.
+> - **C. Switch to kept** — keep the worktree as-is, you'll handle the merge later.
+> - **D. Switch to discarded** — drop the branch entirely.
+> - **E. Escalate** — pause and surface a §7 escalation with full git output.
+
+Translation:
+
+| Choice | Reviewer instruction | Expected next signal |
+|---|---|---|
+| **A** | "Retry the merge step only. Do not re-do design/plan/etc." Increment `merge_retries`. | `FINISH_DONE merged <ref>` OR a new `FINISH_BLOCKED <reason>` |
+| **B** | "Re-run `finishing-a-development-branch` with `decision=pr_opened`." | `FINISH_DONE pr_opened <ref>` |
+| **C** | "Post `FINISH_DONE kept <branch>` directly. Do not attempt another merge." | `FINISH_DONE kept <ref>` |
+| **D** | "Run the discard path of `finishing-a-development-branch`." | `FINISH_DONE discarded <ref>` |
+| **E** | Lead posts §7 template to owner with verbatim git stderr; halts until owner responds. | Owner directs manually |
+
+### Retry cap
+
+`merge_retries` is bounded at 3. Before presenting the menu, check the current value:
+
+- `merge_retries < 3` → present all five options.
+- `merge_retries == 3` → drop option A. The menu shows B/C/D/E only.
+
+The counter is persisted in the checkpoint so `/team-feature-resume` honours it across sessions.
+
+### Flow rejoin
+
+On any `FINISH_DONE <decision>` (any decision), flow rejoins normal phase 7: checkpoint `phase: finish, status: <decision>`, then run **Automatic cleanup** below. Auto-cleanup Step D.5 (worktree removal) runs only when `decision == merged`.
 
 ## Automatic cleanup (runs after `FINISH_DONE`)
 
