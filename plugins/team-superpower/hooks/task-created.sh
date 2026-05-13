@@ -5,13 +5,23 @@
 #   - task.title: string
 #
 # Title MUST start with one of: impl:, review:, meta:, block:
-# Otherwise exit 2 with stderr BAD_PREFIX so the team-team runtime refuses
-# the task and surfaces the failure to the lead.
+# v2 additions:
+#   - impl: tasks MUST carry a sub-prefix (be-, fe-, qa-fix-be-, qa-fix-fe-,
+#     review-fix-be-, review-fix-fe-, contract-update-, be-migration-,
+#     be-contract-publish-) — bare `impl:foo` is rejected.
+#   - Shape-marker file at docs/superpowers/sessions/<slug>.shape (written by
+#     the lead in phase 0) restricts which sub-prefixes are allowed:
+#       be-only      → only `impl:be-*`, `impl:contract-update-*` allowed
+#       fe-only      → only `impl:fe-*`, `impl:contract-update-*` allowed
+#       full-stack   → all sub-prefixes allowed
+#   - Slug is taken from .task.metadata.slug or .metadata.slug, with fallback
+#     to the most-recent .shape file when only one exists.
 
 set -euo pipefail
 
 LOG_DIR="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks"
 LOG_FILE="$LOG_DIR/log.jsonl"
+SESSIONS_DIR="${CLAUDE_PROJECT_DIR:-$PWD}/docs/superpowers/sessions"
 mkdir -p "$LOG_DIR"
 
 ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -29,11 +39,36 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 title="$(printf '%s' "$payload" | jq -r '.task.title // .title // ""' 2>/dev/null || echo "")"
+slug="$(printf '%s' "$payload" | jq -r '.task.metadata.slug // .metadata.slug // ""' 2>/dev/null || echo "")"
 
-printf '{"ts":"%s","hook":"task-created","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+# Resolve shape from the slug's marker file. If slug is unknown but exactly
+# one .shape file exists, use it (single in-flight feature is the common case).
+shape=""
+if [ -d "$SESSIONS_DIR" ]; then
+  shape_file=""
+  if [ -n "$slug" ] && [ -f "$SESSIONS_DIR/$slug.shape" ]; then
+    shape_file="$SESSIONS_DIR/$slug.shape"
+  else
+    count="$(find "$SESSIONS_DIR" -maxdepth 1 -type f -name '*.shape' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$count" = "1" ]; then
+      shape_file="$(find "$SESSIONS_DIR" -maxdepth 1 -type f -name '*.shape' 2>/dev/null | head -n1)"
+    fi
+  fi
+  if [ -n "$shape_file" ] && [ -f "$shape_file" ]; then
+    shape="$(head -n1 "$shape_file" | tr -d '[:space:]')"
+  fi
+fi
 
+printf '{"ts":"%s","hook":"task-created","title":%s,"shape":%s}\n' \
+  "$ts" \
+  "$(printf '%s' "$title" | jq -Rs .)" \
+  "$(printf '%s' "$shape" | jq -Rs .)" \
+  >> "$LOG_FILE"
+
+# Top-level prefix check
 case "$title" in
-  impl:*|review:*|meta:*|block:*) exit 0 ;;
+  review:*|meta:*|block:*) exit 0 ;;
+  impl:*) ;;
   "")
     echo "BAD_PREFIX: task title missing; must start with impl:|review:|meta:|block:" >&2
     exit 2 ;;
@@ -41,3 +76,43 @@ case "$title" in
     echo "BAD_PREFIX: task title must start with impl:|review:|meta:|block: (got: $title)" >&2
     exit 2 ;;
 esac
+
+# At this point title starts with `impl:`. Strip prefix and require a known
+# sub-prefix.
+rest="${title#impl:}"
+case "$rest" in
+  be-*|qa-fix-be-*|review-fix-be-*|be-migration-*|be-contract-publish-*)
+    sub="be"
+    ;;
+  fe-*|qa-fix-fe-*|review-fix-fe-*)
+    sub="fe"
+    ;;
+  contract-update-*)
+    sub="contract"
+    ;;
+  *)
+    echo "BAD_PREFIX: impl: task requires a sub-prefix (be-|fe-|qa-fix-be-|qa-fix-fe-|review-fix-be-|review-fix-fe-|contract-update-|be-migration-|be-contract-publish-). Got: $title" >&2
+    exit 2 ;;
+esac
+
+# Shape-aware enforcement
+case "$shape" in
+  be-only)
+    if [ "$sub" = "fe" ]; then
+      echo "SHAPE_REJECTED: shape is 'be-only'; impl:fe-* tasks are not allowed for this feature." >&2
+      exit 2
+    fi
+    ;;
+  fe-only)
+    if [ "$sub" = "be" ]; then
+      echo "SHAPE_REJECTED: shape is 'fe-only'; impl:be-* tasks are not allowed for this feature." >&2
+      exit 2
+    fi
+    ;;
+  full-stack|"")
+    # full-stack: anything goes. Empty shape: hook can't tell — accept and
+    # let the lead serialize/validate. Logged above for tuning.
+    ;;
+esac
+
+exit 0

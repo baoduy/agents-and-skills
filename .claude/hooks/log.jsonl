@@ -13,3 +13,8 @@
 {"ts":"2026-05-13T09:29:51Z","hook":"task-created","title":""}
 {"ts":"2026-05-13T09:29:52Z","hook":"task-created","title":""}
 {"ts":"2026-05-13T09:29:53Z","hook":"task-created","title":""}
+{"ts":"2026-05-13T12:44:16Z","hook":"task-completed","title":"impl:be-thing","plan_approved_at":""}
+{"ts":"2026-05-13T12:44:16Z","hook":"task-completed","title":"impl:be-thing","plan_approved_at":"2026-05-13T00:00:00Z"}
+{"ts":"2026-05-13T12:44:16Z","hook":"task-completed","title":"impl:be-migration-a","plan_approved_at":"2026-05-13T00:00:00Z"}
+{"ts":"2026-05-13T12:44:17Z","hook":"task-completed","title":"impl:be-migration-a","plan_approved_at":"2026-05-13T00:00:00Z"}
+{"ts":"2026-05-13T12:44:17Z","hook":"task-completed","title":"review:final","plan_approved_at":""}

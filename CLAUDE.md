@@ -37,6 +37,21 @@ Personal Claude Code **plugin marketplace** (`drunkcoding`) published as the npm
 - **When adding or editing a `SKILL.md` under `plugins/<name>/skills/<skill>/`, run the `validate-skills` skill against it** before committing. Committed at `.claude/skills/validate-skills/` (vendored from `callstackincubator/agent-skills`, MIT). Already adapted to scan `plugins/` + `.claude/skills/` — invoke via `/validate-skills` in Claude Code.
 - House style: minimal diff, no scope creep, preserve existing prose unless the task requires changes. Think before coding; surgical edits only.
 
+## Agent team best practices (when designing or editing team plugins)
+
+These rules apply when working on `plugins/team-superpower/` (or any future plugin that orchestrates a Claude Code agent team). They reflect the official Claude Code "Creating Agent Teams" guidance and what we've learned shipping `team-superpower`.
+
+1. **Team size.** Aim for **3–5 teammates** working in parallel at any one time, with **5–6 tasks per teammate**. Lifetime role count may legitimately be larger (`team-superpower` defines 8 roles) provided phase-gated spawning keeps **concurrent** teammates ≤ 5. Document the concurrency model in the plugin README when the lifetime role count exceeds 5.
+2. **Distinct, non-overlapping roles.** Each teammate gets a clear write-scope and a clear read-scope. If two roles can write to the same file, merge them or add a sequencing gate. Cross-cutting concerns (security, architecture) review but never write.
+3. **Task sizing.** Tasks must be **2–5 minutes** of work with exact file paths, complete code references, and explicit verification steps. Sub-2-minute tasks should be merged; tasks crossing 5 minutes should be split. **If one teammate would receive more than ~12 tasks, surface a "split the feature" escalation rather than continuing** — the docs' 5–6 target is the load-bearing number.
+4. **Avoid file conflicts.** Every plan task must declare the files it will touch. The lead serializes any two tasks that overlap in file scope. Implementers running in parallel must own disjoint directories or have an explicit publish/consume gate (e.g. contracts).
+5. **Spawn context.** A teammate inherits project context (CLAUDE.md, MCP servers, skills) but **NOT** the lead's conversation. Every spawn prompt must explicitly hand over: the slug, the role's relevant artefact paths, the stack shape (where applicable), open escalations, and whether this is a fresh spawn or a resume. Use a spawn-prompt template — do not improvise prompts per teammate.
+6. **Start with research/review.** When introducing a new agent-team workflow, pilot it on read-only or review-style tasks before letting it write production code. `team-superpower`'s phase chain (design → plan → arch+sec → impl → QA → review) reflects this — research and review precede every write.
+7. **Monitor and steer.** The lead must heartbeat at every phase boundary AND detect within-phase stalls (no mailbox activity or task transitions for `limits.phase_stall_minutes`, default 30 → ping the teammate and, if still silent, escalate via §7). Passive mailbox-only waiting is a bug.
+8. **Lead never implements.** The lead is a conductor. It must not run Superpowers (or any feature-writing) skills itself, must not edit feature code, and must not start its own work in parallel with teammates. Wait for the relevant PASSED signal before advancing.
+
+When adding new roles or new commands to a team plugin, write the change against this checklist and call out which item drove the design.
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
