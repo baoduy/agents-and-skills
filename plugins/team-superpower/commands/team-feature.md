@@ -75,6 +75,8 @@ After preflight clears:
 
 When the reviewer posts `FINISH_BLOCKED <reason>` (instead of `FINISH_DONE`), the merge step of `finishing-a-development-branch` failed for the `merged` decision. Handle it inline — this is the same owner touchpoint as the finish-branch decision continued, NOT a new touchpoint.
 
+`<reason>` is one of `conflict` / `non-ff` / `dirty-worktree` / `push-rejected` / `other:<short-string>` (see `agents/reviewer.md` § Hat 2 for the full enum and what each reason means).
+
 1. Read the mailbox message. Stash `<reason>` and the verbatim git stderr.
 2. Update the checkpoint: `phase: finish, status: merge_blocked, reason: <reason>, merge_retries: K/3` where `K` is the count of prior retry attempts in this run (start at 0).
 3. Touch the heartbeat.
