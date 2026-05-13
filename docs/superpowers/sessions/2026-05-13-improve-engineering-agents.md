@@ -13,7 +13,7 @@ Examine the engineer skill set under https://github.com/msitarzewski/agency-agen
 - [x] plan → docs/superpowers/plans/2026-05-13-improve-engineering-agents-plan.md (approved 2026-05-13T15:00:00+08:00)
 - [x] implementation (10/10 tasks complete)
 - [x] review → docs/superpowers/reviews/2026-05-13-improve-engineering-agents-review.md (REVIEW_PASSED)
-- [ ] finish
+- [x] finish → merged into dev (merge commit 109d65a, parents 17e8c0b + 91a8537) FINISH_DONE merged
 
 ## Task tracking (shared task list disabled — hook schema mismatch on this Claude Code version; tracking via checkpoint instead)
 - [x] impl:add-software-architect-agent — impl-a (commit 6a4ba8d)
@@ -43,3 +43,8 @@ Examine the engineer skill set under https://github.com/msitarzewski/agency-agen
 1. Owner runs /team-feature-resume with this filename.
 2. Lead respawns teammates using same role definitions.
 3. Lead reads this checkpoint, identifies next pending task, resumes.
+
+## Closing
+- finished at: 2026-05-13T15:12:00+08:00
+- decision: merged
+- cleanup: complete
