@@ -26,7 +26,7 @@ Then install any plugin individually:
 
 ```text
 /plugin install tech-graph@drunkcoding
-/plugin install html-effectiveness@drunkcoding
+/plugin install html-effectiveness@drunkcoding --scope local
 ```
 
 Reload after install:
@@ -56,10 +56,6 @@ Install into a project's `.claude/` instead of your user profile:
 ### npm / npx
 
 ```bash
-# Whole marketplace
-npm install -g @drunkcoding/agents-and-skills
-
-# Or via npx skills (https://github.com/vercel-labs/skills)
 # Use the GitHub shorthand (owner/repo) — `npx skills` does not resolve npm scopes.
 npx skills add baoduy/agents-and-skills
 ```

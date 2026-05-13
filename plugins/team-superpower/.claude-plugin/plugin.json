@@ -16,5 +16,30 @@
     "commands/team-feature-resume.md",
     "commands/team-cleanup.md"
   ],
-  "hooks": "hooks/hooks.json"
+  "hooks": {
+    "TeammateIdle": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/teammate-idle.sh" }
+        ]
+      }
+    ],
+    "TaskCreated": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/task-created.sh" }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/task-completed.sh" }
+        ]
+      }
+    ]
+  }
 }
