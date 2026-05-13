@@ -41,7 +41,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 **Files touched:** Create `plugins/plugin-validator/.claude-plugin/plugin.json`
 **Overlaps with:** nothing — unique file
 
-- [ ] **Step 1: Create the directory tree**
+- [x] **Step 1: Create the directory tree**
 
   ```bash
   mkdir -p /path/to/worktree/plugins/plugin-validator/.claude-plugin
@@ -53,7 +53,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
   Where `/path/to/worktree` = `.worktrees/superpower-plugin-validator` from repo root.
   Use the Write tool with an absolute path — do not use Bash echo/cat for file creation.
 
-- [ ] **Step 2: Write `plugins/plugin-validator/.claude-plugin/plugin.json`**
+- [x] **Step 2: Write `plugins/plugin-validator/.claude-plugin/plugin.json`**
 
   Exact content (verbatim — do not add or remove any keys):
 
@@ -74,7 +74,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
   - No `commands` key (rejected by loader — `commands: Invalid input`).
   - No `hooks` key (plugin has no runtime hooks).
 
-- [ ] **Step 3: Verify the file parses**
+- [x] **Step 3: Verify the file parses**
 
   ```bash
   python3 -c "import json; json.load(open('plugins/plugin-validator/.claude-plugin/plugin.json')); print('OK')"
@@ -94,7 +94,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 
 **Edge case — upstream attribution:** `validate-skills/SKILL.md` carries Callstack attribution in YAML frontmatter (`author: Callstack`, `upstream: https://github.com/callstackincubator/agent-skills`, `license: MIT`). `git mv` preserves the file byte-for-byte. Do NOT rewrite, strip, or reorder any frontmatter fields.
 
-- [ ] **Step 1: Create target directory and move file**
+- [x] **Step 1: Create target directory and move file**
 
   ```bash
   mkdir -p plugins/plugin-validator/skills/validate-skills
@@ -104,7 +104,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 
   Run from the worktree root (`.worktrees/superpower-plugin-validator`).
 
-- [ ] **Step 2: Verify the move and attribution preservation**
+- [x] **Step 2: Verify the move and attribution preservation**
 
   ```bash
   # New path exists
@@ -123,7 +123,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 
   (Exact line numbers may differ — the important thing is all three values are present verbatim.)
 
-- [ ] **Step 3: Verify git tracks the rename (not add+delete)**
+- [x] **Step 3: Verify git tracks the rename (not add+delete)**
 
   ```bash
   git status
@@ -143,7 +143,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 
 **Edge case:** The References block in this file points to `docs/superpowers/specs/2026-05-13-plugin-validation-skills-design.md`. That doc does not move. No link updates required — verify the reference remains intact after the move.
 
-- [ ] **Step 1: Create target directory and move file**
+- [x] **Step 1: Create target directory and move file**
 
   ```bash
   mkdir -p plugins/plugin-validator/skills/validate-agents
@@ -151,7 +151,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
          plugins/plugin-validator/skills/validate-agents/SKILL.md
   ```
 
-- [ ] **Step 2: Verify move and reference preservation**
+- [x] **Step 2: Verify move and reference preservation**
 
   ```bash
   ls plugins/plugin-validator/skills/validate-agents/SKILL.md
@@ -165,7 +165,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
   - Tool-list provenance: see `docs/superpowers/specs/2026-05-13-plugin-validation-skills-design.md` § Resolution 2
   ```
 
-- [ ] **Step 3: Confirm git tracks rename**
+- [x] **Step 3: Confirm git tracks rename**
 
   ```bash
   git status
@@ -183,7 +183,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 **Files touched:** Move `.claude/skills/validate-commands/SKILL.md` → `plugins/plugin-validator/skills/validate-commands/SKILL.md`
 **Overlaps with:** Tasks 2, 3, 5 are independent
 
-- [ ] **Step 1: Create target directory and move file**
+- [x] **Step 1: Create target directory and move file**
 
   ```bash
   mkdir -p plugins/plugin-validator/skills/validate-commands
@@ -191,7 +191,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
          plugins/plugin-validator/skills/validate-commands/SKILL.md
   ```
 
-- [ ] **Step 2: Verify move**
+- [x] **Step 2: Verify move**
 
   ```bash
   ls plugins/plugin-validator/skills/validate-commands/SKILL.md
@@ -210,7 +210,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 **Files touched:** Move `.claude/skills/validate-hooks/SKILL.md` → `plugins/plugin-validator/skills/validate-hooks/SKILL.md`
 **Overlaps with:** Tasks 2, 3, 4 are independent
 
-- [ ] **Step 1: Create target directory and move file**
+- [x] **Step 1: Create target directory and move file**
 
   ```bash
   mkdir -p plugins/plugin-validator/skills/validate-hooks
@@ -218,7 +218,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
          plugins/plugin-validator/skills/validate-hooks/SKILL.md
   ```
 
-- [ ] **Step 2: Verify move**
+- [x] **Step 2: Verify move**
 
   ```bash
   ls plugins/plugin-validator/skills/validate-hooks/SKILL.md
@@ -243,14 +243,14 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 
 **Edge case:** The `References` block in `plugin-validator.md` includes `Spec: docs/superpowers/specs/2026-05-13-plugin-validator-agent-design.md` and `Plan: docs/superpowers/plans/2026-05-13-plugin-validator-agent.md`. Those paths do not move. No content edits needed.
 
-- [ ] **Step 1: Move the agent file**
+- [x] **Step 1: Move the agent file**
 
   ```bash
   git mv .claude/agents/plugin-validator.md \
          plugins/plugin-validator/agents/plugin-validator.md
   ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
   ```bash
   ls plugins/plugin-validator/agents/plugin-validator.md
@@ -264,14 +264,14 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 
 **Files touched:** Move `.claude/commands/validate-plugins.md` → `plugins/plugin-validator/commands/validate-plugins.md`
 
-- [ ] **Step 1: Move the command file**
+- [x] **Step 1: Move the command file**
 
   ```bash
   git mv .claude/commands/validate-plugins.md \
          plugins/plugin-validator/commands/validate-plugins.md
   ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
   ```bash
   ls plugins/plugin-validator/commands/validate-plugins.md
@@ -286,7 +286,7 @@ Tasks 1–6 all touch disjoint files and may be run in any order, but must all c
 
 Read the file first (required before Edit). Then append the new entry as the last element in the `plugins[]` array.
 
-- [ ] **Step 1: Add the new plugin entry**
+- [x] **Step 1: Add the new plugin entry**
 
   Edit `.claude-plugin/marketplace.json`. The `plugins` array currently ends with the `team-superpower` entry. Add the following as the fourth element (after `team-superpower`, before the closing `]`):
 
@@ -328,7 +328,7 @@ Read the file first (required before Edit). Then append the new entry as the las
   ]
   ```
 
-- [ ] **Step 2: Verify JSON parses**
+- [x] **Step 2: Verify JSON parses**
 
   ```bash
   python3 -c "import json; d = json.load(open('.claude-plugin/marketplace.json')); print(len(d['plugins']), 'plugins')"
@@ -342,7 +342,7 @@ Read the file first (required before Edit). Then append the new entry as the las
 
 Read the file first. The Plugins table currently has 3 rows (tech-graph, html-effectiveness, team-superpower). Add the fourth row immediately after the `team-superpower` row.
 
-- [ ] **Step 1: Add plugin-validator row to Plugins table**
+- [x] **Step 1: Add plugin-validator row to Plugins table**
 
   The new row to insert after `| [\`team-superpower\`](plugins/team-superpower) | ... |`:
 
@@ -350,7 +350,7 @@ Read the file first. The Plugins table currently has 3 rows (tech-graph, html-ef
   | [`plugin-validator`](plugins/plugin-validator) | Orchestrated validator that checks every plugin's skills, agents, commands, and hooks for spec compliance — runs in parallel and proposes batched fixes. |
   ```
 
-- [ ] **Step 2: Verify row is present**
+- [x] **Step 2: Verify row is present**
 
   ```bash
   grep "plugin-validator" README.md
@@ -362,7 +362,7 @@ Read the file first. The Plugins table currently has 3 rows (tech-graph, html-ef
 
 **Files touched:** Create `plugins/plugin-validator/README.md`
 
-- [ ] **Step 1: Write `plugins/plugin-validator/README.md`**
+- [x] **Step 1: Write `plugins/plugin-validator/README.md`**
 
   Exact content:
 
@@ -406,7 +406,7 @@ Read the file first. The Plugins table currently has 3 rows (tech-graph, html-ef
   Scans `plugins/**` only. Local `.claude/` artifacts and vendored paths (e.g. `plugins/tech-graph/skills/tech-graph/`) are excluded.
   ```
 
-- [ ] **Step 2: Verify file exists**
+- [x] **Step 2: Verify file exists**
 
   ```bash
   ls plugins/plugin-validator/README.md
@@ -423,7 +423,7 @@ Read the file first. The Plugins table currently has 3 rows (tech-graph, html-ef
 
 This task runs all checks from design §7. Every check must pass before the commit in Task 8.
 
-- [ ] **Step 1: JSON validity**
+- [x] **Step 1: JSON validity**
 
   ```bash
   python3 -c "import json, glob; [json.load(open(p)) for p in ['.claude-plugin/marketplace.json', *glob.glob('plugins/*/.claude-plugin/plugin.json')]]; print('OK')"
@@ -431,7 +431,7 @@ This task runs all checks from design §7. Every check must pass before the comm
 
   Expected: `OK`
 
-- [ ] **Step 2: All six moved files present at new paths**
+- [x] **Step 2: All six moved files present at new paths**
 
   ```bash
   ls plugins/plugin-validator/skills/validate-skills/SKILL.md && echo "validate-skills OK"
@@ -444,7 +444,7 @@ This task runs all checks from design §7. Every check must pass before the comm
 
   Expected: all six echo lines print.
 
-- [ ] **Step 3: Originals absent from .claude/**
+- [x] **Step 3: Originals absent from .claude/**
 
   ```bash
   test ! -e .claude/skills/validate-skills/SKILL.md && echo "OK: validate-skills removed"
@@ -457,7 +457,7 @@ This task runs all checks from design §7. Every check must pass before the comm
 
   Expected: all six echo lines print.
 
-- [ ] **Step 4: Callstack attribution intact in validate-skills**
+- [x] **Step 4: Callstack attribution intact in validate-skills**
 
   ```bash
   grep "author: Callstack" plugins/plugin-validator/skills/validate-skills/SKILL.md && echo "attribution OK"
@@ -466,7 +466,7 @@ This task runs all checks from design §7. Every check must pass before the comm
 
   Expected: both echo lines print.
 
-- [ ] **Step 5: marketplace.json has plugin-validator entry**
+- [x] **Step 5: marketplace.json has plugin-validator entry**
 
   ```bash
   python3 -c "import json; d=json.load(open('.claude-plugin/marketplace.json')); names=[p['name'] for p in d['plugins']]; assert 'plugin-validator' in names, 'MISSING'; print('plugin-validator present')"
@@ -474,7 +474,7 @@ This task runs all checks from design §7. Every check must pass before the comm
 
   Expected: `plugin-validator present`
 
-- [ ] **Step 6: README.md contains plugin-validator row**
+- [x] **Step 6: README.md contains plugin-validator row**
 
   ```bash
   grep "plugin-validator" README.md | grep "plugins/plugin-validator"
@@ -482,7 +482,7 @@ This task runs all checks from design §7. Every check must pass before the comm
 
   Expected: one matching line.
 
-- [ ] **Step 7: plugin.json has no forbidden keys**
+- [x] **Step 7: plugin.json has no forbidden keys**
 
   ```bash
   python3 -c "

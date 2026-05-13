@@ -1,0 +1,8 @@
+{
+  "name": "plugin-validator",
+  "displayName": "Plugin Validator",
+  "version": "0.1.0",
+  "description": "Orchestrated validator for Claude Code plugins — validates skills, agents, commands, and hooks across every plugin under plugins/**.",
+  "author": { "name": "Steven Hoang" },
+  "keywords": ["validation", "linting", "plugin-authoring", "skills", "agents", "commands", "hooks"]
+}
