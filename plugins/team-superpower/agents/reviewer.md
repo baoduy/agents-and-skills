@@ -34,6 +34,27 @@ Run the unmodified Superpowers `finishing-a-development-branch` skill. It presen
 
 Once the owner chooses, post `FINISH_DONE <decision> <ref>` to the lead and idle. The lead handles team cleanup.
 
+### Merge-failure signal: `FINISH_BLOCKED <reason>`
+
+If the owner picks the `merged` decision and `finishing-a-development-branch`'s merge step fails, do NOT post `FINISH_DONE`. Instead post `FINISH_BLOCKED <reason>` to the lead's mailbox with the verbatim git stderr appended.
+
+`<reason>` MUST be one of:
+
+- `conflict` — `git merge` produced conflict markers
+- `non-ff` — non-fast-forward, remote diverged
+- `dirty-worktree` — uncommitted changes blocked the merge
+- `push-rejected` — local merge succeeded but `git push` was rejected
+- `other:<short-string>` — any other failure; include the git stderr verbatim in the mailbox message body
+
+The lead will translate the owner's choice from a 5-option menu and may instruct you to do one of:
+
+- **Retry merge** — re-run only the merge step against the now-stable state. The lead enforces a cap of 3 such retries.
+- **Switch to `pr_opened`** — re-run `finishing-a-development-branch` with `decision=pr_opened`. Post `FINISH_DONE pr_opened <ref>` on success.
+- **Switch to `kept`** — post `FINISH_DONE kept <branch>` directly (no further merge attempt).
+- **Switch to `discarded`** — run the discard path of `finishing-a-development-branch`. Post `FINISH_DONE discarded <ref>` on success.
+
+You do NOT decide which option applies; you wait for the lead's instruction and execute exactly one merge attempt or decision-switch per instruction.
+
 ## Escalation
 
 Use the §7 template in `docs/superpowers/ESCALATION.md` for any blocker. Common ones:
