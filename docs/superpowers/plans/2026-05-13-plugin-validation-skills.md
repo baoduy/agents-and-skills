@@ -483,8 +483,46 @@ Task 1.7 (pass path — html-effectiveness):
   find plugins/html-effectiveness -name 'hooks.json' → no results
   Result: 0 files scanned, 0 false positives. Clean skip confirmed.
 
-Task 2.6: <fill in>
-Task 2.7: <fill in>
+Task 2.6 (failure path — team-superpower agents, 4 files):
+  Files: plugins/team-superpower/agents/{designer,planner,implementer,reviewer}.md
+  Rule walk applied to all 4 (shared shape):
+    Spec checks:
+    - YAML frontmatter present and parses → [PASS]
+    - name format valid (1-64 chars, lowercase alphanumeric+hyphens) → [PASS]
+    - name matches filename (designer→designer, planner→planner, etc.) → [PASS]
+    - description length 1-1024 chars → [PASS]
+    - tools field (where present): Read, Write, Bash, Glob, Grep, Edit — all in valid-tool list → [PASS]
+    - model: sonnet → [PASS] (report-builder has no model field → [PASS] optional)
+    - Manifest reference: plugin.json agents[] lists all 4 paths; files exist → [PASS]
+    Best-practice checks:
+    - Third-person description: none start with "I " → [PASS]
+    - When-to-invoke trigger: none contain "Use when", "When the user", or "Trigger" → [FAIL] ×4
+    - Body length: 23–39 lines (post-frontmatter) → [PASS]
+    - No first-person body: no "I will"/"I'll" as leading clause → [PASS]
+    - Behavior section: body uses "Hard rules", "What you must NOT do", "When you idle", phase headers —
+      none of ## Output / ## Behavior / ## Workflow / ## How to Run → [FAIL] ×4
+  Result: 2 [FAIL] per file (when-to-invoke, behavior section). 8 failures across 4 files confirmed.
+
+Task 2.7 (pass path — html-effectiveness/agents/report-builder.md):
+  File: plugins/html-effectiveness/agents/report-builder.md
+  Rule walk:
+    Spec checks:
+    - YAML frontmatter present and parses → [PASS]
+    - name: report-builder — valid format → [PASS]
+    - name matches filename: report-builder.md → report-builder → [PASS]
+    - description length: 296 chars → [PASS]
+    - tools: Read, Write, Bash, Glob, Grep — all valid → [PASS]
+    - model: not present (optional) → [PASS]
+    - Manifest reference: plugin.json agents[] = ['agents/report-builder.md']; file exists → [PASS]
+    Best-practice checks:
+    - Third-person description: starts with "Conversational wizard..." → [PASS]
+    - When-to-invoke trigger: description contains "Use when" → [PASS]
+    - Body length: 54 lines post-frontmatter → [PASS]
+    - No first-person body: no "I will"/"I'll" as leading clause → [PASS]
+    - Behavior section: body uses ## Role / ## Startup / ## Conversation loop — not in required list
+      (## Output / ## Behavior / ## Workflow / ## How to Run) → [FAIL]
+  Result: 1 [FAIL] (behavior section heading). Skill rule is strict; report-builder uses ## Role/## Startup
+  instead of the canonical headers. All spec checks pass. Tighten rule or document as acceptable variance.
 Task 3.6: <fill in>
 Task 3.7: <fill in>
 ```
