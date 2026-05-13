@@ -171,6 +171,59 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/team-state.sh cleanup <slug> --force
 
 The heartbeat refusal check applies. If it fires, you are still touching the heartbeat (or another lead is alive) — investigate before forcing. If the only reason is your own fresh heartbeat from this session, pass `--ignore-heartbeat` (you know the lead is you and you are about to exit).
 
+### Step D.5 — Worktree removal (on successful merge only)
+
+Runs only after Step C / D have brought platform state to absent. Removes the planner's git worktree when, and only when, the feature was actually merged.
+
+**Trigger conditions** (ALL must be true; any miss → skip and record the reason in the Closing block):
+
+1. `FINISH_DONE merged <ref>` is recorded in the checkpoint.
+2. Step A precondition check passed.
+3. Step B teammate shutdown was clean.
+4. The post-Step-C (or post-Step-D) scan shows `team_config_state: absent`, `task_list_state: absent`, `tmux_state: absent`.
+5. The checkpoint has a non-empty `**Worktree:**` field.
+
+If any condition fails, record `worktree: removal-skipped:<reason>` in the Closing block (Step E) where `<reason>` is one of:
+
+- `not-merged-decision` — finish decision was `pr_opened`, `kept`, or `discarded`.
+- `team-cleanup-incomplete` — Step C/D left platform state present.
+- `no-worktree-recorded` — checkpoint has no `**Worktree:**` line.
+
+**Procedure** (only when all trigger conditions pass):
+
+1. Read the worktree path from the checkpoint's `**Worktree:**` line. Call it `WT_PATH`.
+2. `cd` to the repo root (the **main** worktree, NOT `WT_PATH`). `git worktree remove` refuses when the current directory is inside the target.
+3. Run `git worktree list --porcelain`. If `WT_PATH` is not listed (already pruned, manual removal, etc.), record `worktree: already-absent` in the Closing block and skip to Step E.
+4. Touch the heartbeat.
+5. Run `git worktree remove "$WT_PATH"` (non-forced).
+6. On success → record `worktree: removed` in the Closing block. Touch heartbeat. Proceed to Step E.
+7. On non-zero exit → enter the **4-option remove-failure menu** below.
+
+**Branch handling:** `git worktree remove` does NOT delete the branch. The feature branch survives this step. Branch deletion is left to the owner.
+
+### 4-option remove-failure menu
+
+Triggered when `git worktree remove "$WT_PATH"` exits non-zero. Common causes: untracked files, locked worktree, in-progress git operation, owner pre-seeded files.
+
+Present verbatim:
+
+> **Could not remove worktree** `<WT_PATH>`. Git said: `<stderr>`. Pick one:
+> - **A. Show files + retry** — list what's blocking, then retry the remove.
+> - **B. Force remove** — discard uncommitted work in `<WT_PATH>` and remove. (Confirmation required.)
+> - **C. Keep worktree** — leave it on disk; you'll remove it manually later.
+> - **D. Escalate** — pause and surface a §7 escalation with the verbatim stderr.
+
+Translation:
+
+| Choice | Action | Closing-block record |
+|---|---|---|
+| **A** | Run `git -C "$WT_PATH" status --short` and `git -C "$WT_PATH" diff --stat`. Surface output to owner. Retry `git worktree remove "$WT_PATH"`. Cap: 3 retries per Step D.5. On success: record `worktree: removed (after manual fix)` and proceed to Step E. On 3rd retry still failing: drop option A from the next menu and force B/C/D. | See action column. |
+| **B** | Lead prompts: `"This will discard uncommitted work in <WT_PATH>. Confirm force-remove? (type 'yes' to confirm)"`. On `yes`: snapshot the file list from the pre-remove `git -C "$WT_PATH" status --short` (or take a snapshot now if option A hasn't run), then run `git worktree remove --force "$WT_PATH"`. On any other input: abort B, re-present the menu. | `worktree: force-removed`, `dropped_files: [<path>, ...]` |
+| **C** | Log `WT_PATH` in the Closing block. Tell the owner: `"Worktree retained at <WT_PATH>. Remove manually with 'git worktree remove <WT_PATH>' once you've handled it."` Proceed to Step E. | `worktree: kept-by-owner`, `worktree_path: <WT_PATH>` |
+| **D** | Halt Step D.5. Post the §7 template to the owner with the verbatim stderr from the failed remove. Wait for direction. | `worktree: escalated`, `worktree_path: <WT_PATH>` |
+
+In all four cases, Step E still runs after Step D.5 closes (whether by success or by the owner's menu choice). Step E records the outcome in the Closing block.
+
 ### Step E — Final checkpoint commit
 
 Append a closing block to the checkpoint:
@@ -180,7 +233,13 @@ Append a closing block to the checkpoint:
 - finished at: <ISO datetime>
 - decision: <merged|pr_opened|kept|discarded>
 - cleanup: complete
+- worktree: <removed | already-absent | removal-skipped:<reason> | removed (after manual fix) | force-removed | kept-by-owner | escalated>
+- worktree_path: <path>            # present whenever the worktree directory still exists on disk after cleanup (states: kept-by-owner, escalated, or removal-skipped where the path exists)
+- merge_retries: K                 # only when K > 0; matches the final value of the mid-phase counter
+- dropped_files: [<path>, ...]     # only when state == force-removed
 ```
+
+`removal-skipped` reasons: `not-merged-decision` | `team-cleanup-incomplete` | `no-worktree-recorded`.
 
 Remove the `<slug>.heartbeat` file. Commit the checkpoint. Confirm to the owner: "Team cleaned up. Feature complete."
 
