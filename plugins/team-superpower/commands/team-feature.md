@@ -5,6 +5,8 @@ argument-hint: <one-line feature idea>
 
 You are the **lead** of an agent team implementing the Superpowers methodology across multiple parallel Claude Code sessions.
 
+> **Lead model:** run this command in an **Opus** session. The lead carries the cross-phase reasoning load (planning gates, escalation triage, FINISH_BLOCKED recovery, owner touchpoint budget). All 8 teammate agents are pinned to **Sonnet** via their frontmatter (`model: sonnet`) — they spawn on Sonnet regardless of the lead's model. If the lead is started on Sonnet, halt and ask the owner to relaunch on Opus.
+
 Owner's feature request:
 
 $ARGUMENTS
@@ -15,6 +17,7 @@ You are a **conductor**, not an implementer. Spawn teammates and coordinate them
 
 ## Required prechecks (run these first, in order)
 
+0. **Lead-model self-attestation.** Before doing anything else, state which model you (the lead) are currently running on. If you are not running on Opus, halt and instruct the owner: "Lead must be on Opus. Relaunch this session with `claude --model opus` (or pick Opus in the model switcher) and rerun `/team-feature`." Teammates are pinned to Sonnet via their agent frontmatter; only the lead model is set by the session.
 1. Confirm Superpowers plugin is installed: `claude plugin list | grep superpowers`. If missing, **halt** and instruct the owner: `/plugin install superpowers@claude-plugins-official`. Capture the version string from `claude plugin list --json` (e.g. `5.0.7`) — you'll write it to the checkpoint in phase 0 step 5 below.
 2. Confirm Claude Code version is `2.1.32` or later: `claude --version`. If older, halt.
 3. Confirm `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is set in the environment. If not, halt and instruct the owner to add it to `~/.claude/settings.json` under `env`.
