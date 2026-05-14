@@ -16,3 +16,4 @@
 {"ts":"2026-05-14T03:08:08Z","hook":"task-created","title":"impl:foo"}
 {"ts":"2026-05-14T03:08:08Z","hook":"task-created","warn":"bad_prefix","reason":"title missing"}
 {"ts":"2026-05-14T03:08:08Z","hook":"task-created","warn":"bad_prefix","title":"random"}
+{"ts":"2026-05-14T05:39:26Z","hook":"task-completed","title":"review:finalize","plan_approved_at":""}

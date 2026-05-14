@@ -101,7 +101,7 @@ case "$title" in
 esac
 
 # Validate escalation entries if present.
-required_fields=("Phase" "Context" "Options" "Recommendation" "Need from you")
+required_fields=("Phase" "Context" "Options" "Recommendation" "Need from you" "Peer attempts")
 missing_any=""
 entries="$(printf '%s' "$payload" | jq -c '(.task.metadata.blocked_questions // .metadata.blocked_questions // [])[]?' 2>/dev/null || true)"
 
