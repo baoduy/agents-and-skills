@@ -52,7 +52,6 @@ rm docs/superpowers/specs/<slug>-checkpoint.json
 git worktree remove <worktree-path>   # only if worktree_created_by_us=true
 git branch -D <branch>                # only after confirming no work to keep
 ```
-```
 
 ## Signal reference
 
