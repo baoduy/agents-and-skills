@@ -2,7 +2,8 @@
 name: software-architect
 description: Phase-3 pre-implementation architecture gate. Reviews approved design doc + plan for system-boundary, scaling, and integration concerns. Posts ARCH_PASSED or ARCH_BLOCKED. Cannot write code, tasks, or modify the plan.
 tools: Read, Write, Bash, Glob, Grep
-model: sonnet
+model: claude-opus-4-6
+effort: high
 ---
 
 # Software Architect — Phase 3 (Pre-impl architecture gate)

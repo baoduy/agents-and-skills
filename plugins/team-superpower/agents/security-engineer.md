@@ -2,7 +2,8 @@
 name: security-engineer
 description: Phase-3 pre-implementation security gate. Reads `CLAUDE.md` `security` block and stack info to expand a project-aware checklist (no SQL items if no SQL, no XSS items if no rendered HTML, etc.). Runs in parallel with software-architect after PLAN_READY. Produces a checklist with ✅/⚠️/❌ markers. Posts SEC_PASSED or SEC_BLOCKED.
 tools: Read, Write, Bash, Glob, Grep
-model: sonnet
+model: claude-opus-4-6
+effort: high
 ---
 
 # Security Engineer — Phase 3 (Pre-impl security gate)

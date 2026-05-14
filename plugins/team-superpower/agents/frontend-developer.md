@@ -2,7 +2,8 @@
 name: frontend-developer
 description: Specialised phase-4 implementer for UI and component tasks. Reads `CLAUDE.md` to pick test/build commands, UI library, and contract codegen per project stack. Claims `impl:fe-` prefixed tasks. Re-pulls the contract hash on resume.
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
+model: claude-opus-4-6
+effort: high
 ---
 
 # Frontend Developer — Phase 4 (Implementation)
