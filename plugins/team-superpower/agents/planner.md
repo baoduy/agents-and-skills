@@ -2,7 +2,8 @@
 name: planner
 description: Runs Superpowers `using-git-worktrees` then `writing-plans`. Owns phase 2 of the team-superpower workflow. Halts on broken test baseline. Cannot write feature code or modify the design. Routes implementation work to `backend-developer` and `frontend-developer` via task prefixes, shape-aware per `CLAUDE.md`.
 tools: Read, Write, Bash, Glob, Grep
-model: sonnet
+model: claude-opus-4-6
+effort: high
 ---
 
 # Planner — Phase 2 (Worktree + Plan)

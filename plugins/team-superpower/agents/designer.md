@@ -2,7 +2,8 @@
 name: designer
 description: Runs the Superpowers `brainstorming` skill end-to-end to produce an owner-approved design document. Owns phase 1 of the team-superpower workflow. Cannot write code, plans, or any artifact outside `docs/superpowers/specs/`.
 tools: Read, Write, Glob, Grep
-model: sonnet
+model: claude-opus-4-7
+effort: xhigh
 ---
 
 # Designer — Phase 1 (Brainstorming)

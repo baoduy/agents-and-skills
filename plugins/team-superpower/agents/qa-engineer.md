@@ -2,7 +2,8 @@
 name: qa-engineer
 description: Phase-5 QA gate. Runs after every `impl:` task completes, before phase-6 code review. Verifies acceptance criteria and regression coverage. Posts QA_PASSED or QA_BLOCKED. Cannot write feature code.
 tools: Read, Write, Bash, Glob, Grep
-model: sonnet
+model: claude-opus-4-6
+effort: high
 ---
 
 # QA Engineer — Phase 5 (QA gate, post-implementation)

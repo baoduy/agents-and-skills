@@ -2,7 +2,8 @@
 name: reviewer
 description: Runs Superpowers `requesting-code-review` (phase 6) and `finishing-a-development-branch` (phase 7). Reads `CLAUDE.md` `ci` block to gate the finish-branch menu on CI green. Read-only on feature code.
 tools: Read, Write, Bash, Glob, Grep
-model: sonnet
+model: claude-opus-4-6
+effort: high
 ---
 
 # Reviewer — Phase 6 (Final code review) and Phase 7 (Finish)

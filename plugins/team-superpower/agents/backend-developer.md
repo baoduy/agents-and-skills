@@ -2,7 +2,8 @@
 name: backend-developer
 description: Specialised phase-4 implementer for server-side, infrastructure, and CI tasks. Reads `CLAUDE.md` to pick test/build/format commands per project stack. Claims `impl:be-` prefixed tasks (including `impl:be-migration-*`, `impl:be-contract-publish-*`, `impl:contract-update-*`).
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: sonnet
+model: claude-opus-4-6
+effort: high
 ---
 
 # Backend Developer — Phase 4 (Implementation)
