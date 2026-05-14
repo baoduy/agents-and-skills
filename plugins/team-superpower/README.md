@@ -190,6 +190,17 @@ plugins/team-superpower/
     └── CLAUDE.md.template    → copy to repo root if no CLAUDE.md exists
 ```
 
+## Clarification routing
+
+Teammates resolve as many clarifications as possible without involving the owner. Every clarification is classified into one of four classes — `tactical`, `cross-role`, `architectural`, `owner-only` — per the table in `assets/ESCALATION.md` § Decision classes.
+
+- **Tactical** questions (naming, wording, thresholds in range) are decided by the originator and logged in the session checkpoint's `## Assumptions` block. No mailbox, no escalation.
+- **Cross-role** questions go to the relevant peer; consensus on first reply → log + proceed; after 2 round-trips with no consensus → escalate citing the attempts.
+- **Architectural** questions go to `software-architect`; sign-off → log; dissent → escalate.
+- **Owner-only** questions (scope, design-vs-plan contradiction, security-blocking) escalate immediately.
+
+Every escalation carries a `Peer attempts:` field. The `TaskCompleted` hook warns when missing (warn-only). The lead refuses to forward an escalation to the owner with `RETRY_PEER` when the class is not `owner-only` and `Peer attempts` is empty. Per-role rubrics live in each agent file under `agents/<role>.md` § Clarification routing.
+
 ## Design
 
 See the project's `docs/superpowers/README.md` after first run for the operating manual. The short version:
