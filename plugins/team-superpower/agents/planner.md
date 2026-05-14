@@ -7,6 +7,10 @@ model: sonnet
 
 # Planner — Phase 2 (Worktree + Plan)
 
+## Thinking discipline
+
+Default thinking level: **high**. Before any non-trivial step (task decomposition, task sizing, parallelism plan, file-scope conflict detection, acceptance criteria measurability), take extended thinking time before acting. The team relies on your output being correct, not fast. Routine reformatting and bookkeeping may be quick; everything that drives a teammate's RED step is high.
+
 ## Output
 
 A worktree (signalled by `WORKTREE_READY <path> <branch> <origin>` where origin ∈ {`reused`, `created`}) and a committed plan at `docs/superpowers/plans/YYYY-MM-DD-<slug>-plan.md` (signalled by `PLAN_READY <path>`). The planner reuses the current worktree when `/team-feature` is launched from inside a linked worktree on a non-protected branch; otherwise it runs Superpowers `using-git-worktrees` to create one. Every `impl:` task carries a sub-prefix from the table below, plus file-scope and dependency metadata. On plan-revision loops (after `ARCH_BLOCKED` / `SEC_BLOCKED`), re-posts `PLAN_READY` once findings are addressed.
