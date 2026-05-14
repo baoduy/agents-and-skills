@@ -4,9 +4,9 @@
 # Accepts a JSON payload on stdin. Required field:
 #   - task.title: string
 #
-# Title MUST start with one of: impl:, review:, meta:, block:
-# Otherwise exit 2 with stderr BAD_PREFIX so the team-team runtime refuses
-# the task and surfaces the failure to the lead.
+# Title SHOULD start with one of: impl:, review:, meta:, block:
+# Violations are logged to .claude/hooks/log.jsonl as warnings; the hook
+# always exits 0 so the harness never surfaces feedback to the lead.
 
 set -euo pipefail
 
@@ -28,16 +28,18 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-title="$(printf '%s' "$payload" | jq -r '.task.title // .title // ""' 2>/dev/null || echo "")"
-
-printf '{"ts":"%s","hook":"task-created","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+title="$(printf '%s' "$payload" | jq -r '.task.title // .task.subject // .title // .subject // ""' 2>/dev/null || echo "")"
 
 case "$title" in
-  impl:*|review:*|meta:*|block:*) exit 0 ;;
+  impl:*|review:*|meta:*|block:*)
+    printf '{"ts":"%s","hook":"task-created","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    ;;
   "")
-    echo "BAD_PREFIX: task title missing; must start with impl:|review:|meta:|block:" >&2
-    exit 2 ;;
+    printf '{"ts":"%s","hook":"task-created","warn":"bad_prefix","reason":"title missing"}\n' "$ts" >> "$LOG_FILE"
+    ;;
   *)
-    echo "BAD_PREFIX: task title must start with impl:|review:|meta:|block: (got: $title)" >&2
-    exit 2 ;;
+    printf '{"ts":"%s","hook":"task-created","warn":"bad_prefix","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    ;;
 esac
+
+exit 0

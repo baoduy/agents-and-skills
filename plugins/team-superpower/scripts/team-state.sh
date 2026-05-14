@@ -28,7 +28,7 @@
 #   1  dry-run completed with items to remove (caller should re-run with --force)
 #   2  bad arguments
 #   3  heartbeat indicates a live lead; refuse without --ignore-heartbeat
-#   4  nothing to clean up (cleanup) / no teams found (scan)
+#   4  nothing to clean up (cleanup only; scan is read-only and always exits 0)
 
 set -euo pipefail
 
@@ -82,7 +82,7 @@ cmd_scan() {
     slugs="$(list_all_team_slugs)"
     if [ -z "$slugs" ]; then
       echo "No team-superpower teams found under $TEAMS_DIR"
-      return 4
+      return 0
     fi
     echo "team-superpower teams on this machine:"
     while IFS= read -r s; do
