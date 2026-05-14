@@ -522,6 +522,10 @@ stack_shape: full-stack | be-only | fe-only
 ## Open escalations
 - (none) | <escalation-template entries>
 
+## Assumptions
+(appended after each phase; one entry per non-owner decision)
+- <ISO ts> <role> [class=<tactical|cross-role|architectural>]: <one-line decision> (peer: <role|none>, evidence: <link to mailbox msg | n/a>)
+
 ## Resume protocol
 1. Owner runs /team-feature-resume with this filename.
 2. Lead respawns teammates using same role definitions.
@@ -556,5 +560,6 @@ stack_shape: full-stack | be-only | fe-only
 - **Never** spawn more than 5 teammates concurrently. The plugin defines up to 8 lifetime roles but phase-gating must keep ≤ 5 active at any moment. If a future change would break this, halt and escalate.
 - **Never** run Step D.5 worktree removal when `**Worktree origin:** reused`. The worktree existed before `/team-feature` started; the owner owns it. Record `worktree: removal-skipped:reused-existing-worktree` and leave the worktree on disk.
 - **Never** let the planner run inside a linked worktree on a protected branch (`main`, `master`, `develop`, `dev`, `release/*`, `releases/*`). The planner halts and escalates; the owner switches to a feature branch and re-runs.
+- **Never** forward an owner-bound escalation when the originator's `class` is not `owner-only` AND `Peer attempts` lists fewer than one round-trip with a peer. The lead returns the escalation to the originator with `RETRY_PEER: try <suggested role> first`. Touchpoint count is NOT decremented (this is a routing reject, not an owner touch). The lead also returns it with `LOG_ASSUMPTION: tactical questions log to checkpoint § Assumptions, not the mailbox` when `class=tactical`. The 4-class table is in `assets/ESCALATION.md`; the originator's classification is taken from the escalation's `Peer attempts:` field prefix.
 
 Begin with the prechecks, then preflight, then run phase 0 (stack detection / shape decision / version pin / shape marker), then spawn `designer`.
