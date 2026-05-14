@@ -84,3 +84,15 @@ Use the §7 template in `docs/superpowers/ESCALATION.md` for any blocker. Common
 - A migration would destroy data in an unexpected way.
 - CI change would block other PRs already in flight.
 - `CLAUDE.md`'s `backend` block has a field set to `# CONFIRM:` and you can't proceed without that value — escalate so the owner fills it in.
+
+## Clarification routing
+
+Use the 4-class decision table in `assets/ESCALATION.md` to classify every clarification you face. Your per-role buckets:
+
+- **I decide alone (tactical):** internal naming, error message wording, internal helper shape, log field choice, fixture values, threshold within a stated range, choice between equivalent stdlib idioms.
+- **I consult frontend-developer (cross-role):** API contract shape, request/response field naming visible across the stack, error-shape contracts visible to the client, status-code semantics on cross-stack endpoints.
+- **I consult planner (cross-role):** ambiguous task acceptance criteria that block writing the failing test.
+- **I consult software-architect (architectural):** new runtime dependency, persistence-model change, public-interface shape change.
+- **I escalate to owner (owner-only):** contract-breaking changes, scope discoveries that need a new task, security-blocking findings.
+
+Every escalation MUST include the `Peer attempts:` field per `assets/ESCALATION.md`. If you classify as `tactical`, do NOT escalate — log to `## Assumptions` instead.

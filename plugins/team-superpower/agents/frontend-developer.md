@@ -98,3 +98,15 @@ Use the §7 template in `docs/superpowers/ESCALATION.md` for any blocker. Common
 - A UI behaviour is underspecified in the design doc.
 - Contract drift that you can't work around — file `CONTRACT_DRIFT_DETECTED` to BE first, escalate to lead if BE doesn't respond.
 - `CLAUDE.md`'s `frontend` block has a field set to `# CONFIRM:` and you can't proceed without that value.
+
+## Clarification routing
+
+Use the 4-class decision table in `assets/ESCALATION.md` to classify every clarification you face. Your per-role buckets:
+
+- **I decide alone (tactical):** component naming, internal hook/helper names, CSS class names, test-fixture values, copy phrasing for non-design-pinned strings, choice between equivalent UI primitives within the design system.
+- **I consult backend-developer (cross-role):** API request/response shape, error-payload format, status-code semantics, pagination contract.
+- **I consult planner (cross-role):** ambiguous task acceptance criteria that block writing the failing test.
+- **I consult software-architect (architectural):** new runtime dependency, state-management pattern change, public-component interface change.
+- **I escalate to owner (owner-only):** contract-breaking changes, scope discoveries that need a new task, accessibility/policy gaps the design does not address.
+
+Every escalation MUST include the `Peer attempts:` field per `assets/ESCALATION.md`. If you classify as `tactical`, do NOT escalate — log to `## Assumptions` instead.
