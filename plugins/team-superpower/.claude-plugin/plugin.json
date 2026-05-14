@@ -1,7 +1,7 @@
 {
   "name": "team-superpower",
   "displayName": "Team Superpower",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "description": "Shape-adaptive coordination layer that runs the obra/superpowers skill chain across a Claude Code agent team — one /team-feature command takes an idea through design, plan, pre-impl architecture+security gate, BE/FE implementation, QA gate, code review, CI gate, and finish with at most 3 owner touchpoints. Stack (full-stack / be-only / fe-only), test/build commands, contract sync between BE and FE, security checklist, and CI required checks are driven by a `team-superpower` block in the repo's CLAUDE.md.",
   "author": {
     "name": "Steven Hoang"
