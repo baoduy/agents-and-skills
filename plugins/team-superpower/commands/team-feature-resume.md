@@ -28,6 +28,24 @@ Same prechecks as `/team-feature`:
 
 Halt on any failure.
 
+### Step 2.5 — Superpowers version-pin check
+
+Read the checkpoint frontmatter (the YAML block between `---` markers at the top of the file). Extract `superpowers_version`. Read the currently-installed Superpowers version (`claude plugin list --json` → grep for `superpowers`). Compare:
+
+- **Versions match** → proceed.
+- **Versions differ** → halt and surface this 3-option menu to the owner:
+
+  > **Superpowers version drifted** since this feature started:
+  > - pinned in checkpoint: `<pinned>`
+  > - currently installed: `<current>`
+  >
+  > Skill semantics may have shifted. Pick one:
+  > - **A. Continue anyway** — accept the risk; semantics may differ mid-feature.
+  > - **B. Roll back Superpowers** — owner runs `/plugin install superpowers@<pinned>` and re-runs `/team-feature-resume`. (Lead halts; cannot install plugins itself.)
+  > - **C. Discard this feature** — halt resume; the owner manually cleans state via `/team-cleanup <slug>` and starts fresh.
+
+  This is **not** counted as a touchpoint because it only happens on resume after a rare Superpowers update. On choice A, log `superpowers_pin_overridden: <pinned> → <current>` to the resume-log block; on choice B halt without changes; on choice C halt and instruct the owner to `/team-cleanup`.
+
 ### Step 3 — Preflight scan
 
 Run:
@@ -75,10 +93,11 @@ Do NOT re-run earlier phases. Their checkpoints stand.
 
 If the checkpoint's `## Closing` block exists but is incomplete (has `decision:` and `cleanup: complete` but is missing the `worktree:` line) AND the recorded decision is `merged`, the previous lead crashed inside Step D.5. Resume protocol:
 
-1. Verify Step A–D conditions still hold by running `bash ${CLAUDE_PLUGIN_ROOT}/scripts/team-state.sh scan <slug>` — all states must be `absent`. If anything is `present`, halt and instruct the owner to run `/team-cleanup <slug>` before resuming.
-2. Re-run Step D.5 from the top: read `**Worktree:**`, `cd` to repo root, check `git worktree list --porcelain`, attempt non-forced remove. The procedure is idempotent — if the worktree was already removed in the prior session it'll be recorded as `already-absent`.
-3. On remove failure, re-enter the 4-option remove-failure menu fresh (no carry-over retry count — the prior session's count was not persisted because Step D.5 retries are per-session, not per-run; this is intentional, the owner sees a fresh menu).
-4. On completion, write the missing Closing-block fields (`worktree`, `worktree_path` if applicable, `dropped_files` if applicable) and commit.
+1. Read `**Worktree origin:**` from the checkpoint. If it is `reused`, Step D.5 should never have run — abort the mid-Step-D.5 path: append `worktree: removal-skipped:reused-existing-worktree` to the Closing block, commit, and exit normally. The owner's pre-existing worktree stays on disk. Skip to Step 5 of the resume protocol only if there is still feature work to resume; otherwise the resume terminates here.
+2. Verify Step A–D conditions still hold by running `bash ${CLAUDE_PLUGIN_ROOT}/scripts/team-state.sh scan <slug>` — all states must be `absent`. If anything is `present`, halt and instruct the owner to run `/team-cleanup <slug>` before resuming.
+3. Re-run Step D.5 from the top: read `**Worktree:**`, `cd` to repo root, check `git worktree list --porcelain`, attempt non-forced remove. The procedure is idempotent — if the worktree was already removed in the prior session it'll be recorded as `already-absent`.
+4. On remove failure, re-enter the 4-option remove-failure menu fresh (no carry-over retry count — the prior session's count was not persisted because Step D.5 retries are per-session, not per-run; this is intentional, the owner sees a fresh menu).
+5. On completion, write the missing Closing-block fields (`worktree`, `worktree_path` if applicable, `dropped_files` if applicable) and commit.
 
 ### Step 5 — Reconstruct context
 
@@ -86,7 +105,17 @@ If the checkpoint's `## Closing` block exists but is incomplete (has `decision:`
 - Recreate the team with the same name (`superpower-<slug>`).
 - Touch `docs/superpowers/sessions/<slug>.heartbeat` and update it at every phase boundary (same protocol as `/team-feature`).
 
-### Step 6 — Respawn only the teammates needed
+### Step 6 — Re-read the shape marker
+
+Read `docs/superpowers/sessions/<slug>.shape` and `stack_shape` from the checkpoint frontmatter. They must match — if they disagree, halt and escalate (one was hand-edited). The shape determines which implementer to respawn:
+
+- `full-stack` → both `backend-developer` and `frontend-developer` are eligible to respawn.
+- `be-only` → only `backend-developer`. NEVER respawn `frontend-developer` for a `be-only` feature.
+- `fe-only` → only `frontend-developer`. NEVER respawn `backend-developer`.
+
+If the marker file is missing, re-derive shape from `CLAUDE.md` via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/parse-claudemd.sh shape CLAUDE.md` and write the marker file before continuing.
+
+### Step 6 (cont.) — Respawn only the teammates needed
 
 For the next phase, spawn the relevant role(s) using the agent definitions shipped with this plugin. Do **not** respawn teammates whose phase is complete unless that phase needs them again later (e.g. reviewer is reused in phase 7 for finish; planner is re-spawned if phase 3 returned `ARCH_BLOCKED` / `SEC_BLOCKED` and the plan needs revision; backend-developer / frontend-developer are re-spawned for `impl:qa-fix-*` or `impl:review-fix-*` tasks). Phase-to-role map:
 
@@ -95,7 +124,7 @@ For the next phase, spawn the relevant role(s) using the agent definitions shipp
 | `design` | `designer` |
 | `plan` | `planner` |
 | `pre_impl_review` | `software-architect` + `security-engineer` (parallel) |
-| `implementation` | `backend-developer` and/or `frontend-developer` (route by `impl:be-` / `impl:fe-` prefix) |
+| `implementation` | `backend-developer` and/or `frontend-developer`, **filtered by stack_shape** (be-only ⇒ BE only; fe-only ⇒ FE only; full-stack ⇒ both, route by prefix) |
 | `qa` | `qa-engineer` |
 | `review` | `reviewer` |
 | `finish` | `reviewer` |
@@ -142,5 +171,7 @@ Continue per the same rules as `/team-feature`:
 - **Never** skip Step 3 preflight. Stale team configs cause runtime errors and silently re-use the wrong session IDs.
 - **Never** force-cleanup state with a fresh heartbeat unless the owner has confirmed in writing the previous lead is dead.
 - **Never** skip the resume-log commit. It is the audit trail that proves the resume happened.
+- **Never** respawn an implementer for a shape that excludes it (`frontend-developer` in `be-only`, `backend-developer` in `fe-only`). The hooks will reject the implementer's task creations anyway, but spawning is your decision and you do not bypass the shape.
+- **Never** silently ignore a `superpowers_version` mismatch. Always surface the 3-option menu at Step 2.5.
 
 If anything in the checkpoint looks tampered with or inconsistent (e.g. plan marked approved but no plan file exists, completed task with missing commits), halt and escalate to the owner with the §7 template. Do not paper over.

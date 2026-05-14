@@ -1,0 +1,96 @@
+# Project: <your-project-name>
+
+<!--
+  This file is the source of truth for project context. team-superpower reads
+  the structured `team-superpower` YAML block below to decide which teammates
+  to spawn and what test / build / format commands to use. The free-form prose
+  outside the block is passed verbatim to every teammate as project context.
+
+  team-superpower will NEVER overwrite this file. If it detects a missing
+  block, it writes its best guess to `docs/superpowers/stack.detected.md` for
+  you to copy/edit/paste here.
+
+  Delete this comment block before committing.
+-->
+
+<short narrative describing what the project is, who consumes it, and any cross-
+service dependencies your team should know about. Example: "This is the orders
+microservice for the storefront. APIs talk to the payments service via gRPC.
+PII goes through the redaction pipeline (see redaction-guide).">
+
+```team-superpower
+# ────────────────────────────────────────────────────────────────────────────
+# Backend
+# ────────────────────────────────────────────────────────────────────────────
+# Set `backend: none` (no further keys) if this is a frontend-only repo.
+backend:
+  language: csharp              # csharp | node-ts | python | go | rust | java
+  framework: aspnetcore         # framework name; e.g. aspnetcore | fastapi | express | nestjs | gin | axum | spring-boot
+  test_framework: xunit         # xunit | nunit | mstest | reqnroll | pytest | jest | vitest | go-testing | cargo-test | junit
+  build_command: dotnet build
+  test_command: dotnet test
+  format_command: dotnet format --verify-no-changes   # set to "none" if no style check is wired
+  migration_tool: ef-core       # ef-core | flyway | liquibase | alembic | django-migrations | prisma | typeorm | knex | none
+  package_manager: nuget        # nuget | npm | pnpm | yarn | bun | pip | poetry | pipenv | go-modules | cargo | maven | gradle
+
+# ────────────────────────────────────────────────────────────────────────────
+# Frontend
+# ────────────────────────────────────────────────────────────────────────────
+# Set `frontend: none` (no further keys) if this is a backend-only repo.
+frontend:
+  language: typescript          # typescript | javascript
+  framework: react              # react | vue | svelte | solid | angular | next | nuxt
+  bundler: vite                 # vite | webpack | rspack | next | nuxt | rollup | none
+  test_framework: vitest        # vitest | jest | none
+  e2e_framework: playwright     # playwright | cypress | none
+  ui_library: shadcn            # shadcn | mui | antd | tailwind-only | none
+  package_manager: pnpm         # npm | pnpm | yarn | bun
+  build_command: pnpm build
+  test_command: pnpm test
+
+# ────────────────────────────────────────────────────────────────────────────
+# Contracts — only relevant when both backend AND frontend are present.
+# ────────────────────────────────────────────────────────────────────────────
+contracts:
+  source_of_truth: openapi      # openapi | grpc | graphql | typescript | none
+  openapi_path: contracts/openapi.yaml
+  ts_gen_command: pnpm generate:api-types   # command that regenerates FE-consumable types from the contract
+
+# ────────────────────────────────────────────────────────────────────────────
+# CI — read by reviewer in phase 7 to gate the finish-branch decision.
+# ────────────────────────────────────────────────────────────────────────────
+ci:
+  provider: github-actions       # github-actions | azure-pipelines | gitlab-ci | circleci | none
+  workflow_path: .github/workflows/ci.yml
+  required_checks: ["build", "test", "lint"]
+  poll_timeout_minutes: 20
+
+# ────────────────────────────────────────────────────────────────────────────
+# Security — drives the security-engineer's checklist (phase 3).
+# ────────────────────────────────────────────────────────────────────────────
+security:
+  domain: payments               # payments | healthcare | generic | internal-only
+  pii: yes                       # yes | no
+  public_endpoints: yes          # yes | no
+  data_at_rest: sql              # sql | nosql | none
+
+# ────────────────────────────────────────────────────────────────────────────
+# Limits — operational tuning. Defaults are sensible; override only if needed.
+# ────────────────────────────────────────────────────────────────────────────
+limits:
+  phase_stall_minutes: 30        # within-phase stall watchdog window; two empty windows force a §7 escalation
+  max_tasks_per_implementer: 12  # planner halts and asks the owner to split the feature above this
+  max_concurrent_teammates: 5    # hard cap on parallel teammates (best-practice guidance from CLAUDE.md)
+```
+
+## Conventions
+
+<!--
+  Anything below is free-form prose. Capture local style rules, conventions
+  the architecture review or implementers should respect, and any "we don't do
+  X here" rules. Implementers will read this at task start.
+-->
+
+- (Example) File-scoped namespaces, nullable reference types on.
+- (Example) React components are function components only.
+- (Example) All API endpoints require `[Authorize]` unless explicitly marked `[AllowAnonymous]`.

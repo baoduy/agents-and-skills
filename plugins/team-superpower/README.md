@@ -4,6 +4,10 @@ Coordination layer that runs the [obra/superpowers](https://github.com/obra/supe
 
 This plugin is *not* a fork of Superpowers. It consumes Superpowers skills as-installed and adds the orchestration: who runs which skill, when, and how teammates talk without bothering the owner.
 
+## v2 — shape-adaptive, project-aware
+
+The plugin reads a `team-superpower` YAML block from your repo-root `CLAUDE.md` to drive every stack decision: BE-only repos do not spawn a frontend teammate, FE-only repos do not spawn a backend teammate, full-stack repos get both plus a contract-publish gate. Test/build/format commands come from `CLAUDE.md` — no more hard-coded `dotnet test`. CI green is required before the finish-branch menu (when a CI provider is configured). The security engineer's checklist is project-aware (no SQL items if no SQL, no XSS items if no HTML). The Superpowers version is pinned at session start so mid-feature skill drift can't corrupt recovery. See `assets/CLAUDE.md.template` for the schema and `docs/superpowers/README.md` (seeded on first run) for the operating manual.
+
 ## What you get
 
 - Three slash commands: `/team-feature`, `/team-feature-resume`, `/team-cleanup`.
@@ -173,13 +177,16 @@ plugins/team-superpower/
 ├── hooks/
 │   ├── hooks.json
 │   ├── teammate-idle.sh
-│   ├── task-created.sh
-│   └── task-completed.sh
+│   ├── task-created.sh       → recognises v2 sub-prefixes and the shape marker
+│   └── task-completed.sh     → migration serialization + contract-publish verification
 ├── scripts/
-│   └── team-state.sh      → inspection + cleanup helper, called by the slash commands
+│   ├── team-state.sh         → inspection + cleanup helper
+│   ├── detect-stack.sh       → filesystem-based stack detection (BE / FE / contracts / CI)
+│   └── parse-claudemd.sh     → extract the team-superpower block from CLAUDE.md
 └── assets/
-    ├── ESCALATION.md      → seeded to docs/superpowers/ESCALATION.md on first run
-    └── SESSION_README.md  → seeded to docs/superpowers/README.md on first run
+    ├── ESCALATION.md         → seeded to docs/superpowers/ESCALATION.md on first run
+    ├── SESSION_README.md     → seeded to docs/superpowers/README.md on first run
+    └── CLAUDE.md.template    → copy to repo root if no CLAUDE.md exists
 ```
 
 ## Design
