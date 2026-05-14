@@ -193,6 +193,8 @@ bash plugins/team-superpower/scripts/team-state.sh scan <slug>
 | `REFUSED: heartbeat ... is Ns old` from cleanup | Heartbeat is fresh — cleanup script thinks a lead is alive | Verify nothing's running; if certain the previous lead is dead, run with `--ignore-heartbeat` |
 | `/team-feature` halts at preflight | Stale team config left over from a previous run | Run `/team-cleanup <slug>` (or resume via `/team-feature-resume`) |
 | `FINISH_BLOCKED <reason>` from the reviewer | The merge step of `finishing-a-development-branch` failed (`conflict` / `non-ff` / `dirty-worktree` / `push-rejected`) | The lead surfaces a 5-option menu (retry / pr_opened / kept / discarded / escalate). Pick one; merge retries cap at 3. |
+| `RETRY_PEER: try <role> first` | Lead bounced an escalation because the originator's class isn't `owner-only` and `Peer attempts` is empty | Originator mails the named role with the question, waits one cadence, then refiles citing the attempt. See `assets/ESCALATION.md` § Decision classes |
+| `LOG_ASSUMPTION: tactical, log to checkpoint § Assumptions` | Lead bounced a `class=tactical` escalation | Originator logs one line under the session checkpoint's `## Assumptions` and proceeds. No owner touchpoint consumed |
 | `git worktree remove` failed during cleanup | Step D.5 hit an uncommitted/untracked file or a locked worktree | Pick from the 4-option menu (show files + retry / force-remove with confirmation / keep / escalate). Force-remove discards uncommitted work — only confirm if you've checked the file list. |
 | Auto-cleanup skipped after FINISH_DONE | One of Step A's preconditions failed (missing commits, in-progress tasks, etc.) | Read the lead's halt reason; once resolved, run `/team-cleanup <slug>` |
 | Hook log noise | Hooks write tuning data to `.claude/hooks/log.jsonl` | Inspect the file; trim or refine matchers if a hook is over-triggering |
@@ -204,3 +206,13 @@ bash plugins/team-superpower/scripts/team-state.sh scan <slug>
 ## Where the methodology lives
 
 The team-superpower plugin is purely the coordination layer. The actual development discipline (TDD, plan format, two-stage review, branch hygiene) is owned by the upstream [obra/superpowers](https://github.com/obra/superpowers) skills. If a skill's behaviour changes, the team picks it up automatically — agents reference skills by name, not by content.
+
+## Session checkpoint § Assumptions
+
+Every non-owner decision (tactical, cross-role with consensus, architectural with sign-off) is logged as one line in the session checkpoint's `## Assumptions` block. The QA and reviewer phases scan this block for contradictions with the design / plan; contradictions surface as QA findings or review comments. Format:
+
+```
+- <ISO ts> <role> [class=<tactical|cross-role|architectural>]: <one-line decision> (peer: <role|none>, evidence: <link to mailbox msg | n/a>)
+```
+
+The owner sees the assumptions log at every phase boundary as part of the checkpoint commit.
