@@ -5,7 +5,19 @@
       "mcp__plugin_context-mode_context-mode__*",
       "mcp__plugin_context-mode_context-mode__ctx_execute",
       "Bash(rtk grep *)",
-      "WebFetch(domain:code.claude.com)"
+      "WebFetch(domain:code.claude.com)",
+      "Read(//Users/steven/_CODE/GIT/agents-and-skills/**)",
+      "Bash(rtk find *)",
+      "Bash(mkdir -p /tmp/cr-hook)",
+      "Bash(rm -f /tmp/cr-hook/.claude/hooks/log.jsonl)",
+      "Bash(CLAUDE_PROJECT_DIR=/tmp/cr-hook printf '%s' '{\"task\":{\"title\":\"review:finalize\",\"metadata\":{\"blocked_questions\":[\"BLOCKED: foo\\\\nPhase: plan\\\\nContext: x\\\\nOptions: A. y\\\\nRecommendation: A\\\\nNeed from you: A/B\"]}}}')",
+      "Bash(bash plugins/team-superpower/hooks/task-completed.sh)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(mkdir -p .tmp-hook-test)",
+      "Bash(rm -f .tmp-hook-test/.claude/hooks/log.jsonl)",
+      "Bash(CLAUDE_PROJECT_DIR=\"$\\(pwd\\)/.tmp-hook-test\" printf '%s' '{\"task\":{\"title\":\"review:finalize\",\"metadata\":{\"blocked_questions\":[\"BLOCKED: foo\\\\nPhase: plan\\\\nContext: x\\\\nOptions: A. y\\\\nRecommendation: A\\\\nNeed from you: A/B\"]}}}')",
+      "Bash(rtk read *)",
+      "Bash(export CLAUDE_PROJECT_DIR=\"$\\(pwd\\)/.tmp-hook-test\")"
     ]
   }
 }

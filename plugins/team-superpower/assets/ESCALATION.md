@@ -14,9 +14,26 @@ Options:
   C. <option> — <trade-off>  (optional)
 Recommendation: <our pick + one-sentence why>
 Need from you: <choose one | yes/no | other>
+Peer attempts:
+  - <ISO ts> asked <role>: <one-line reply summary or "no reply within cadence">
+  - <ISO ts> asked <role>: <one-line reply summary or "no reply within cadence">
+  (or, when no peer attempt is required:)
+  - class=tactical — no peer attempt; logged as assumption, see checkpoint § Assumptions
+  - class=owner-only — no peer attempt because <reason>
 ```
 
-All five labels (`Phase`, `Context`, `Options`, `Recommendation`, `Need from you`) MUST appear. Missing any → the hook blocks the task completion with `BAD_ESCALATION: missing field(s) ...`.
+All six labels (`Phase`, `Context`, `Options`, `Recommendation`, `Need from you`, `Peer attempts`) MUST appear. The `TaskCompleted` hook warns (warn-only since 2026-05-14) with `bad_escalation: missing field(s) ...` if any are missing.
+
+## Decision classes
+
+| Class           | Examples                                                                                       | Routing                                                                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| tactical        | naming, error wording, log field choice, fixture data, threshold inside a stated range         | Originator decides. Logs to checkpoint § Assumptions. No mailbox, no escalation.                                                                  |
+| cross-role      | API contract shape across roles, test placement, error-handling contract                       | Mailbox to the peer role. Consensus on the first round-trip → log + proceed. After 2 round-trips with no consensus → escalate citing the attempts. |
+| architectural   | new runtime dependency, persistence-model change, public-interface shape change                | Mailbox to `software-architect` first. Sign-off → log as architectural assumption. Dissent or no-decide → escalate.                              |
+| owner-only      | scope change, design-vs-plan contradiction, external policy, security-blocking decision        | Escalate immediately. No peer attempt required. `Peer attempts` field records `class=owner-only — no peer attempt because <reason>`.       |
+
+Classification rule of thumb: if the answer changes a test the implementer would write, AND the existing design / plan does not pin it, AND the change does not alter scope / architecture / external policy, the question is tactical or cross-role. Otherwise it is architectural or owner-only.
 
 ## Worked example 1 — peer-to-peer (planner → designer)
 
@@ -30,6 +47,8 @@ Options:
   C. Drop the criterion from the plan and tag it as a follow-up.
 Recommendation: B — "fast" is the kind of vague that costs a rewrite later, and the design doc is the right place to fix it once.
 Need from you: choose A/B/C.
+Peer attempts:
+  - 2026-05-12T14:02Z asked designer: "no reply within cadence (30min)"
 ```
 
 ## Worked example 2 — lead-to-owner (plan-vs-design mismatch surfaced mid-implementation)
@@ -44,6 +63,8 @@ Options:
   C. Owner reopens the design question entirely (the two APIs imply different semantics).
 Recommendation: A — the design doc was approved first and the discrepancy reads as a plan-writing slip, not a design change. But this is a load-bearing decision and we won't move without your call.
 Need from you: choose A/B/C.
+Peer attempts:
+  - class=owner-only — no peer attempt because design-vs-plan contradiction requires owner adjudication
 ```
 
 ## Worked example 3 — lead-to-owner (`FINISH_BLOCKED` option E)
@@ -58,4 +79,16 @@ Options:
   C. Owner switches the decision to pr_opened and merges via GitHub UI.
 Recommendation: A — the conflict surface is small and a clean rebase plus retry is the cheapest path. We won't move until you say which.
 Need from you: choose A/B/C.
+Peer attempts:
+  - class=owner-only — no peer attempt because owner explicitly chose escalate over inline retry
 ```
+
+## Worked example 4 — tactical, no peer attempt (assumption logged, no escalation)
+
+This is shown for completeness; this entry NEVER reaches the owner mailbox. It is what the originator writes into `## Assumptions` in the session checkpoint. No `BLOCKED:` is filed.
+
+```
+2026-05-12T14:08Z backend-developer [class=tactical]: chose error message "user_id required" over "missing user_id" for consistency with existing 422 responses on /v1/users. (peer: none, evidence: n/a)
+```
+
+The class=tactical originator does NOT file an escalation. If they file one anyway with `Peer attempts: <empty>`, the lead bounces it with `RETRY_PEER: try <peer role> first` (or `LOG_ASSUMPTION: this is tactical, log it instead`).

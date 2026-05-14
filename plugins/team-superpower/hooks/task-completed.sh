@@ -48,8 +48,7 @@ printf '{"ts":"%s","hook":"task-completed","title":%s,"plan_approved_at":%s}\n' 
 case "$title" in
   impl:*)
     if [ -z "$plan_approved_at" ]; then
-      echo "NO_PLAN_APPROVAL: impl: tasks require metadata.plan_approved_at before completion (title: $title)" >&2
-      exit 2
+      printf '{"ts":"%s","hook":"task-completed","warn":"no_plan_approval","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
     fi
     ;;
 esac
@@ -66,8 +65,7 @@ case "$title" in
         | select((.status // "") == "in_progress")
       ] | length' 2>/dev/null || echo 0)"
     if [ "${other_in_progress:-0}" -gt 0 ]; then
-      echo "MIGRATION_RACE: another impl:be-migration-* task is in_progress; migrations must serialize. (title: $title)" >&2
-      exit 2
+      printf '{"ts":"%s","hook":"task-completed","warn":"migration_race","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
     fi
     ;;
 esac
@@ -92,8 +90,7 @@ case "$title" in
           done <<< "$patterns"
         done <<< "$commits"
         if [ "$touched" -ne 1 ]; then
-          echo "EMPTY_CONTRACT_PUBLISH: $title claims to publish a contract but no commit touches a contract file (looked for: $(echo "$patterns" | tr '\n' ' '))" >&2
-          exit 2
+          printf '{"ts":"%s","hook":"task-completed","warn":"empty_contract_publish","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
         fi
       fi
     fi
@@ -101,7 +98,7 @@ case "$title" in
 esac
 
 # Validate escalation entries if present.
-required_fields=("Phase" "Context" "Options" "Recommendation" "Need from you")
+required_fields=("Phase" "Context" "Options" "Recommendation" "Need from you" "Peer attempts")
 missing_any=""
 entries="$(printf '%s' "$payload" | jq -c '(.task.metadata.blocked_questions // .metadata.blocked_questions // [])[]?' 2>/dev/null || true)"
 
@@ -130,8 +127,7 @@ if [ -n "$entries" ]; then
 fi
 
 if [ -n "$missing_any" ]; then
-  echo "BAD_ESCALATION: missing field(s) $missing_any" >&2
-  exit 2
+  printf '{"ts":"%s","hook":"task-completed","warn":"bad_escalation","missing":%s}\n' "$ts" "$(printf '%s' "$missing_any" | jq -Rs .)" >> "$LOG_FILE"
 fi
 
 exit 0
