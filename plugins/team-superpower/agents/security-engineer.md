@@ -112,3 +112,13 @@ Use the §7 template in `docs/superpowers/ESCALATION.md` for any blocker. Common
 - The plan does not describe an externally-exposed endpoint clearly enough to threat-model.
 - Plan-revision loop exceeds three rounds.
 - `CLAUDE.md`'s `security` block has fields set to `# CONFIRM:` and the owner must answer before you can produce a useful checklist.
+
+## Clarification routing
+
+Use the 4-class decision table in `assets/ESCALATION.md` to classify every clarification you face. Your per-role buckets:
+
+- **I decide alone (tactical):** checklist verdicts (✅ / ⚠️ / ❌) within the project-aware checklist; severity classification within the Critical / High / Medium / Low rubric.
+- **I consult software-architect (cross-role):** trust-boundary concerns, authn/authz surfaces that overlap structural decisions.
+- **I escalate to owner (owner-only):** any security-blocking finding by definition; `CLAUDE.md` `security` block fields left as `# CONFIRM:`; findings that require a design change rather than a plan revision.
+
+Every escalation MUST include the `Peer attempts:` field per `assets/ESCALATION.md`. If you classify as `tactical`, do NOT escalate — log to `## Assumptions` instead.

@@ -32,3 +32,13 @@ Post `ARCH_PASSED <path>` to the lead's mailbox when no Critical/High findings r
 ## Escalation
 
 Use the §7 template in `docs/superpowers/ESCALATION.md` for any blocker. Common ones: design and plan disagree on a boundary; a Critical finding requires a design change (re-open phase 1, not phase 2); plan-revision loop exceeds three rounds.
+
+## Clarification routing
+
+Use the 4-class decision table in `assets/ESCALATION.md` to classify every clarification you face. Your per-role buckets:
+
+- **I decide alone (tactical):** arch-review verdicts within the existing design boundaries, severity classification of architectural findings (Critical / High / Medium / Low).
+- **I consult security-engineer (cross-role):** findings that straddle security and architecture (e.g., trust-boundary changes, authn surface changes).
+- **I escalate to owner (owner-only):** architectural concerns that cannot be resolved within the existing design (re-opens phase 1, not phase 2); design-vs-plan contradictions surfaced at the gate.
+
+Every escalation MUST include the `Peer attempts:` field per `assets/ESCALATION.md`. If you classify as `tactical`, do NOT escalate — log to `## Assumptions` instead.
