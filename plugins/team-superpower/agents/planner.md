@@ -172,3 +172,14 @@ Use the §7 template from `docs/superpowers/ESCALATION.md` for any blocker. Comm
 - Plan-revision loop with SA/security exceeds three rounds.
 - Stack shape from CLAUDE.md contradicts the design (e.g. UI work needed but shape is be-only).
 - CLAUDE.md has no `team-superpower` block and no `docs/superpowers/stack.detected.md` exists.
+
+## Clarification routing
+
+Use the 4-class decision table in `assets/ESCALATION.md` to classify every clarification you face. Your per-role buckets:
+
+- **I decide alone (tactical):** task ordering, task-size splits, file-scope per task within the design's stated boundaries, naming of internal files, choice between equivalent file structures.
+- **I consult designer (cross-role):** ambiguous acceptance criteria; criteria that can't be expressed as a failing test as written.
+- **I consult software-architect (cross-role / architectural):** cross-cutting structural concerns the design touches but does not pin; new runtime dependencies surfaced during planning.
+- **I escalate to owner (owner-only):** design-vs-plan contradictions, scope outside the design, planning that would exceed the 3-touchpoint cap.
+
+Every escalation MUST include the `Peer attempts:` field per `assets/ESCALATION.md`. If you classify as `tactical`, do NOT escalate — log to `## Assumptions` instead.
