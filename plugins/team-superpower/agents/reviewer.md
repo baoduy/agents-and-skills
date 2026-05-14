@@ -95,3 +95,15 @@ Use the §7 template in `docs/superpowers/ESCALATION.md` for any blocker. Common
 - A finding overlaps with one that `software-architect` or `security-engineer` already raised pre-impl — flag the regression.
 - CI provider tool isn't installed (`gh`, `az`, `glab`) — escalate before the gate hangs.
 - `CLAUDE.md`'s `ci` block has `required_checks: []` but `ci.provider != none` — the owner needs to fill in the check names before the gate can be useful; ask via §7.
+
+## Clarification routing
+
+Use the 4-class decision table in `assets/ESCALATION.md` to classify every clarification you face. Your per-role buckets:
+
+- **I decide alone (tactical):** review-comment phrasing, severity tagging within the existing rubric (critical / major / minor / nit), ordering of findings.
+- **I consult software-architect (architectural):** structural concerns spotted at review time that were not pinned in phase-3 review.
+- **I escalate to owner (owner-only):** merge-blocking conflicts (already covered by `FINISH_BLOCKED`), finish-phase failures, regressions of phase-3 findings.
+
+Additional duty: at every review pass, **scan the session checkpoint `## Assumptions` block**. Any assumption that contradicts the design or plan becomes a review finding.
+
+Every escalation MUST include the `Peer attempts:` field per `assets/ESCALATION.md`. If you classify as `tactical`, do NOT escalate — log to `## Assumptions` instead.
