@@ -31,7 +31,7 @@ All six labels (`Phase`, `Context`, `Options`, `Recommendation`, `Need from you`
 | tactical        | naming, error wording, log field choice, fixture data, threshold inside a stated range         | Originator decides. Logs to checkpoint § Assumptions. No mailbox, no escalation.                                                                  |
 | cross-role      | API contract shape across roles, test placement, error-handling contract                       | Mailbox to the peer role. Consensus on the first round-trip → log + proceed. After 2 round-trips with no consensus → escalate citing the attempts. |
 | architectural   | new runtime dependency, persistence-model change, public-interface shape change                | Mailbox to `software-architect` first. Sign-off → log as architectural assumption. Dissent or no-decide → escalate.                              |
-| owner-only      | scope change, design-vs-plan contradiction, external policy, security-blocking decision        | Escalate immediately. No peer attempt required. `Peer attempts` field records `class=owner-only — no peer attempt needed because <reason>`.       |
+| owner-only      | scope change, design-vs-plan contradiction, external policy, security-blocking decision        | Escalate immediately. No peer attempt required. `Peer attempts` field records `class=owner-only — no peer attempt because <reason>`.       |
 
 Classification rule of thumb: if the answer changes a test the implementer would write, AND the existing design / plan does not pin it, AND the change does not alter scope / architecture / external policy, the question is tactical or cross-role. Otherwise it is architectural or owner-only.
 

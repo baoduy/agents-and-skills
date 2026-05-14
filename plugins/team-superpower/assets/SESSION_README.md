@@ -187,7 +187,7 @@ bash plugins/team-superpower/scripts/team-state.sh scan <slug>
 | `ARCH_BLOCKED` or `SEC_BLOCKED` from phase 3 | Pre-impl gate rejected the plan; arch/security findings need plan revisions | Planner addresses the report, re-emits the plan, re-runs the gate before phase 4 starts |
 | `QA_BLOCKED` from phase 5 | Acceptance criteria or regression coverage missing post-implementation | Lead files `impl:qa-fix-be-` / `impl:qa-fix-fe-` tasks; loop back to phase 4 |
 | Backend developer and frontend developer want the same file | Plan didn't capture file-scope metadata for the overlapping tasks, or the task was mis-prefixed | Serialize by holding one; planner should re-route by `impl:be-` / `impl:fe-` prefix and backfill file-scope |
-| `BAD_ESCALATION: missing field(s) ...` | A teammate posted a blocker without all five template fields | Rewrite using the full template in `ESCALATION.md` |
+| `bad_escalation: missing field(s) ...` (warn-only in `log.jsonl`) | A teammate posted a blocker without all six template fields (`Phase`, `Context`, `Options`, `Recommendation`, `Need from you`, `Peer attempts`) | Rewrite using the full template in `assets/ESCALATION.md` |
 | Lead refuses to ping the owner | The teammate's request to escalate didn't use the §7 template | Same as above |
 | Teammate ran a non-Superpowers approximation of a skill | Teammate paraphrased the SKILL.md instead of following it | The agent's system prompt requires the canonical skill — re-spawn and remind it explicitly |
 | `REFUSED: heartbeat ... is Ns old` from cleanup | Heartbeat is fresh — cleanup script thinks a lead is alive | Verify nothing's running; if certain the previous lead is dead, run with `--ignore-heartbeat` |
