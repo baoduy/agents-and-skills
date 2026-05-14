@@ -102,7 +102,15 @@ If the checkpoint's `## Closing` block exists but is incomplete (has `decision:`
 ### Step 5 — Reconstruct context
 
 - `cd` into the worktree path recorded in the checkpoint. If it no longer exists, halt and escalate via the §7 template — the owner needs to restore or rebase the worktree before resume can continue.
-- Recreate the team with the same name (`superpower-<slug>`).
+- Recreate the team with the same name (`superpower-<slug>`) via the canonical `TeamCreate` tool:
+  ```
+  TeamCreate({
+    team_name:   "superpower-<slug>",
+    agent_type:  "team-lead",
+    description: "<reuse the description from the previous run if recorded in the checkpoint; otherwise the owner's one-line request>"
+  })
+  ```
+  TeamCreate is idempotent at the directory level — if `~/.claude/teams/superpower-<slug>/config.json` already exists from a partial cleanup, the runtime will refuse to overwrite. In that case, halt and instruct the owner to run `/team-cleanup <slug>` first (the resume protocol Step 3 should have caught this; if it didn't, that's a real bug — escalate).
 - Touch `docs/superpowers/sessions/<slug>.heartbeat` and update it at every phase boundary (same protocol as `/team-feature`).
 
 ### Step 6 — Re-read the shape marker
@@ -117,7 +125,7 @@ If the marker file is missing, re-derive shape from `CLAUDE.md` via `bash ${CLAU
 
 ### Step 6 (cont.) — Respawn only the teammates needed
 
-For the next phase, spawn the relevant role(s) using the agent definitions shipped with this plugin. Do **not** respawn teammates whose phase is complete unless that phase needs them again later (e.g. reviewer is reused in phase 7 for finish; planner is re-spawned if phase 3 returned `ARCH_BLOCKED` / `SEC_BLOCKED` and the plan needs revision; backend-developer / frontend-developer are re-spawned for `impl:qa-fix-*` or `impl:review-fix-*` tasks). Phase-to-role map:
+For the next phase, spawn the relevant role(s) using the canonical `Agent` primitive documented in `/team-feature` § "Create the team (canonical primitive)" — same `subagent_type` / `team_name` / `name` / `prompt` shape, and `team_name` MUST be `superpower-<slug>` so messages route to the existing inboxes under `~/.claude/teams/superpower-<slug>/inboxes/`. Do **not** respawn teammates whose phase is complete unless that phase needs them again later (e.g. reviewer is reused in phase 7 for finish; planner is re-spawned if phase 3 returned `ARCH_BLOCKED` / `SEC_BLOCKED` and the plan needs revision; backend-developer / frontend-developer are re-spawned for `impl:qa-fix-*` or `impl:review-fix-*` tasks). Phase-to-role map:
 
 | Next phase | Spawn |
 |---|---|

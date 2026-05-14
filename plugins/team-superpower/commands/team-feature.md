@@ -140,6 +140,70 @@ After preflight clears AND phase 0 has decided the shape:
 3. Ensure `docs/superpowers/sessions/<slug>.shape` was written in phase 0.4 and is committed.
 4. Write checkpoint updates atomically: write to `<file>.tmp` then `mv -f <file>.tmp <file>`. Half-written checkpoints corrupt recovery.
 
+## Create the team (canonical primitive)
+
+Immediately after writing the initial checkpoint and **before** spawning any teammate, create the team via the canonical Claude Code `TeamCreate` tool. Do NOT mkdir `~/.claude/teams/...` by hand — the runtime owns that directory and the inbox files inside it.
+
+Call:
+
+```
+TeamCreate({
+  team_name:   "superpower-<slug>",
+  agent_type:  "team-lead",
+  description: "<one-line owner request, ≤120 chars>"
+})
+```
+
+This creates:
+
+```
+~/.claude/teams/superpower-<slug>/
+├── config.json          ← team configuration & members (lead-managed)
+└── inboxes/
+    ├── team-lead.json   ← your inbox (auto-populated as teammates SendMessage you)
+    ├── designer.json    ← created when the designer teammate is spawned
+    ├── planner.json     ← created when the planner is spawned
+    └── ...              ← one file per teammate name (= the agent's role)
+
+~/.claude/tasks/superpower-<slug>/
+└── ...                  ← shared task list (TaskCreate / TaskUpdate)
+```
+
+The runtime appends every inbound `SendMessage` to the recipient's JSON array with shape:
+
+```json
+{
+  "from":      "<sender role name>",
+  "text":      "<message body>",
+  "summary":   "<5-10 word preview>",
+  "timestamp": "<ISO 8601 UTC>",
+  "read":      false,
+  "color":     "<UI hint>"
+}
+```
+
+You never write these files directly. Always use `SendMessage` to deliver, and read your inbox through the automatic delivery the runtime hands you (see "Automatic Message Delivery" in the TeamCreate tool docs). The only hand-read is `~/.claude/teams/superpower-<slug>/config.json` when you need to discover member roles by name.
+
+### Spawning teammates (canonical Agent call)
+
+When you spawn a teammate (per the phase chain below), use the `Agent` tool with **all four** of these parameters:
+
+```
+Agent({
+  subagent_type: "<role>",          // e.g. "team-superpower:designer"; matches the agent .md filename
+  team_name:     "superpower-<slug>",
+  name:          "<role>",          // e.g. "designer"; becomes the inbox filename (designer.json) and the SendMessage `to` value
+  prompt:        "<filled Spawn prompt template, see below>"
+})
+```
+
+Hard rules for the spawn call:
+
+- `name` MUST equal the role string (`designer`, `planner`, `software-architect`, `security-engineer`, `backend-developer`, `frontend-developer`, `qa-engineer`, `reviewer`). Inbox filenames depend on this.
+- `team_name` MUST equal `superpower-<slug>` — every cleanup, resume, and `team-state.sh` primitive depends on this convention.
+- `subagent_type` MUST match the agent definition shipped by this plugin (`team-superpower:<role>`).
+- Do NOT spawn the same role twice in parallel. If a role needs a second pass, mailbox the existing teammate instead of spawning a duplicate.
+
 ## Spawn prompt template (use verbatim — do NOT improvise per role)
 
 Every teammate spawn MUST hand over the same minimum context. A teammate inherits project context (`CLAUDE.md`, MCP servers, skills) automatically but does NOT inherit your conversation history — anything implicit on your side is invisible on theirs. Use this template:
