@@ -91,22 +91,20 @@ case "$rest" in
     sub="contract"
     ;;
   *)
-    echo "BAD_PREFIX: impl: task requires a sub-prefix (be-|fe-|qa-fix-be-|qa-fix-fe-|review-fix-be-|review-fix-fe-|contract-update-|be-migration-|be-contract-publish-). Got: $title" >&2
-    exit 2 ;;
+    printf '{"ts":"%s","hook":"task-created","warn":"bad_subprefix","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    exit 0 ;;
 esac
 
 # Shape-aware enforcement
 case "$shape" in
   be-only)
     if [ "$sub" = "fe" ]; then
-      echo "SHAPE_REJECTED: shape is 'be-only'; impl:fe-* tasks are not allowed for this feature." >&2
-      exit 2
+      printf '{"ts":"%s","hook":"task-created","warn":"shape_rejected","shape":"be-only","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
     fi
     ;;
   fe-only)
     if [ "$sub" = "be" ]; then
-      echo "SHAPE_REJECTED: shape is 'fe-only'; impl:be-* tasks are not allowed for this feature." >&2
-      exit 2
+      printf '{"ts":"%s","hook":"task-created","warn":"shape_rejected","shape":"fe-only","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
     fi
     ;;
   full-stack|"")

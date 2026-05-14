@@ -52,6 +52,7 @@ The plugin reads a `team-superpower` YAML block from your repo-root `CLAUDE.md` 
 - `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in your environment (the slash command halts if absent).
 - The Superpowers plugin installed: `/plugin install superpowers@claude-plugins-official`.
 - `jq` on `$PATH` (the hooks degrade to log-only when missing, but you want them enforcing).
+- **Run the lead session on Opus.** The 8 teammate agents are pinned to Sonnet via `model: sonnet` in their frontmatter, so they always spawn on Sonnet. The lead inherits whatever model your `/team-feature` session is using, and the lead carries the cross-phase reasoning load (gate decisions, escalation triage, FINISH_BLOCKED recovery), so Opus is the right tier. The command performs a self-attestation check at preflight and halts if the lead reports it is running on Sonnet/Haiku.
 
 ## Install
 

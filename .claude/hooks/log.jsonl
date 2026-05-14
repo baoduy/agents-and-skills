@@ -16,4 +16,16 @@
 {"ts":"2026-05-14T03:08:08Z","hook":"task-created","title":"impl:foo"}
 {"ts":"2026-05-14T03:08:08Z","hook":"task-created","warn":"bad_prefix","reason":"title missing"}
 {"ts":"2026-05-14T03:08:08Z","hook":"task-created","warn":"bad_prefix","title":"random"}
-{"ts":"2026-05-14T05:39:26Z","hook":"task-completed","title":"review:finalize","plan_approved_at":""}
+{"ts":"2026-05-14T03:19:28Z","hook":"task-created","title":"","shape":""}
+{"ts":"2026-05-14T03:19:28Z","hook":"task-created","warn":"bad_prefix","reason":"title missing"}
+{"ts":"2026-05-14T03:19:28Z","hook":"task-created","warn":"bad_subprefix","title":""}
+{"ts":"2026-05-14T03:19:28Z","hook":"task-created","title":"impl:bogus","shape":""}
+{"ts":"2026-05-14T03:19:28Z","hook":"task-created","warn":"bad_subprefix","title":"impl:bogus"}
+{"ts":"2026-05-14T03:19:28Z","hook":"task-completed","title":"impl:foo","plan_approved_at":""}
+{"ts":"2026-05-14T03:19:28Z","hook":"task-completed","warn":"no_plan_approval","title":"impl:foo"}
+{"ts":"2026-05-14T03:19:28Z","hook":"teammate-idle","unanswered":1}
+{"ts":"2026-05-14T03:19:28Z","hook":"teammate-idle","warn":"blocked_idle","unanswered":1}
+{"ts":"2026-05-14T05:39:27Z","hook":"task-completed","title":"review:finalize","plan_approved_at":""}
+{"ts":"2026-05-14T05:39:27Z","hook":"task-completed","warn":"bad_escalation","missing":"Peer attempts"}
+{"ts":"2026-05-14T05:39:51Z","hook":"task-completed","title":"review:finalize","plan_approved_at":""}
+{"ts":"2026-05-14T05:39:51Z","hook":"task-completed","warn":"bad_escalation","missing":"Peer attempts"}

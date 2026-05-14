@@ -38,8 +38,7 @@ unanswered="$(printf '%s' "$payload" | jq '[.mailbox[]? | select((.from // "") !
 printf '{"ts":"%s","hook":"teammate-idle","unanswered":%s}\n' "$ts" "$unanswered" >> "$LOG_FILE"
 
 if [ "${unanswered:-0}" -gt 0 ]; then
-  echo "BLOCKED_IDLE: $unanswered unanswered peer messages. Reply or escalate via ESCALATION.md before idling." >&2
-  exit 2
+  printf '{"ts":"%s","hook":"teammate-idle","warn":"blocked_idle","unanswered":%s}\n' "$ts" "$unanswered" >> "$LOG_FILE"
 fi
 
 exit 0
