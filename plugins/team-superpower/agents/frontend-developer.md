@@ -52,6 +52,16 @@ Function components only unless `CLAUDE.md` explicitly says otherwise. Hooks at 
 5. You handle `impl:qa-fix-fe-` and `impl:review-fix-fe-` tasks (filed by `qa-engineer` and `reviewer` respectively).
 6. Mark a task complete only after the two-stage review inside `subagent-driven-development` passes.
 7. **Use the test framework / runner from CLAUDE.md.** Do not assume vitest if the project runs jest.
+8. **MAX_ITERATIONS guardrail.** Track `iteration_count` per task (start at 0 on claim). Increment by 1 every time you have to retry the SAME failing test (same test name, same expectation) after a RED→GREEN attempt did not stick. The cap is read from `CLAUDE.md`'s `limits.max_iterations_per_task` (default 8). When `iteration_count` reaches the cap, halt and post a §7 escalation with these mandatory fields:
+    - `Phase:` (current Superpowers skill phase)
+    - `Context:` (one-paragraph summary of the stuck test)
+    - `what_failed:` (exact failure message from the last attempt)
+    - `one_change_to_fix:` (single most likely fix you would try next)
+    - `iteration_count: <N>`
+    - `class: tactical | cross-role | architectural | owner-only`
+    - `Options:`, `Recommendation:`, `Need from you:`, `Peer attempts:` (escalation template required fields).
+
+    The `TaskCompleted` hook rejects completion when `iteration_count > cap` and no `reflection:` block is attached to the task metadata. After the escalation resolves, reset `iteration_count` to 0 if the resolution changed the test specification; otherwise keep counting.
 
 ## Contract sync (full-stack only)
 
