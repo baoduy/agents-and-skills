@@ -173,6 +173,8 @@ overrides_applied: []                 # list of flag strings, e.g. ["--mode=team
 
 `mode_reasoning` is mandatory — it makes a wrong heuristic call debuggable later.
 
+Phase 4 adds three more frontmatter fields (`wave`, `wave_replans`, `tasks_complete`) tracking wave progress; see the canonical checkpoint block under "## Checkpointing" below.
+
 ## Mode-specific execution
 
 The phase chain that follows depends on the mode:
@@ -613,6 +615,9 @@ size: minimal | standard | full        # v3, only when mode=team
 mode_reasoning: |                      # v3, populated by scripts/assess-complexity.sh or "owner override via ..."
   <multi-line reasoning trace>
 overrides_applied: []                  # v3, list of flag strings, e.g. ["--mode=team", "--size=full"]
+wave: 0/0                              # v3, current wave / total waves during phase 4 (set when phase 4 starts)
+wave_replans: 0/3                      # v3, collision-driven re-plans for the current wave; cap 3 before owner escalation
+tasks_complete: 0/0                    # v3, tasks complete in current wave / wave size
 ---
 
 # Session: <slug>
