@@ -13,6 +13,21 @@ Owner's feature request:
 
 $ARGUMENTS
 
+## Parsing the launch flags
+
+Before doing anything else, parse override flags from the owner's request. The flags are space-separated tokens, may appear before the feature description, and use `=` to bind their value:
+
+- `--mode=<solo|single-agent|team>` — force the execution mode; skip the heuristic ladder.
+- `--size=<minimal|standard|full>` — force the team size (only meaningful with `--mode=team`; ignored otherwise — log the override but proceed).
+- `--explain` — run Phase 0.5 to compute the decision, print it to the owner, and STOP. Do not spawn anything.
+
+If any of these flags appear, strip them from `$ARGUMENTS` and treat the remainder as the actual launch message. Record the flags used in the checkpoint field `overrides_applied:` (a list of strings, empty if none).
+
+Examples:
+- `/team-feature --mode=solo update copy in welcome banner` → mode=solo, launch_message="update copy in welcome banner".
+- `/team-feature --explain redesign the checkout flow` → run heuristic, print decision, stop.
+- `/team-feature --mode=team --size=full add /healthcheck` → mode=team, size=full, launch_message="add /healthcheck".
+
 ## Your job
 
 You are a **conductor**, not an implementer. Spawn teammates and coordinate them through the canonical Superpowers skill chain. Do not run skills yourself — delegate every skill to the correct teammate. The team-superpower agent definitions (`designer`, `planner`, `software-architect`, `security-engineer`, `backend-developer`, `frontend-developer`, `qa-engineer`, `reviewer`) shipped with this plugin tell each teammate exactly which Superpowers skill to run.
@@ -105,6 +120,92 @@ plugin_version: <team-superpower plugin version>
 claude_code_version: <e.g. 2.1.32>
 stack_shape: full-stack | be-only | fe-only
 ```
+
+## Phase 0.5 — Complexity assessment (mode and size)
+
+This phase runs after stack detection and BEFORE preflight. It picks an execution mode (solo / single-agent / team) and, when applicable, a team size (minimal / standard / full). The decision is autonomous — the owner can override via `--mode` / `--size` but there is NO owner touchpoint here.
+
+### 0.5.1 — Determine mode and size
+
+1. If `--mode=` was supplied in the launch flags: use it directly. Skip step 2.
+2. Otherwise, run the heuristic ladder:
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/assess-complexity.sh "$LAUNCH_MESSAGE" "$PWD"
+   ```
+   Capture stdout — it is YAML containing `mode:`, optionally `size:`, `shape:`, and `mode_reasoning:`. Exit 0 = confident; exit 1 = ambiguous (the script defaults to team and includes the ambiguity in `mode_reasoning`).
+3. If `--size=` was supplied AND the resolved mode is `team`, override the `size:` field with the flag value. If the resolved mode is `solo` or `single-agent`, log that `--size=` was ignored.
+
+### 0.5.2 — Handle `--explain`
+
+If `--explain` was supplied, print the YAML decision to the owner with this header and STOP — do not write the marker file, do not write the checkpoint, do not spawn anything:
+
+```
+Heuristic decision for your launch message:
+
+<paste the YAML block from assess-complexity.sh>
+
+Re-run without `--explain` to proceed, or supply `--mode=` / `--size=` to override.
+```
+
+### 0.5.3 — Write the mode marker
+
+Otherwise, write the mode to a marker file the hooks can read:
+
+```bash
+mkdir -p docs/superpowers/sessions
+echo "$mode" > docs/superpowers/sessions/<slug>.mode
+git add docs/superpowers/sessions/<slug>.mode
+```
+
+The `TaskCreated` hook reads this marker to reject `impl:*` titles when `mode=solo`.
+
+### 0.5.4 — Write mode and size to the checkpoint frontmatter
+
+Extend the checkpoint frontmatter with:
+
+```yaml
+mode: solo | single-agent | team
+size: minimal | standard | full       # only when mode=team
+mode_reasoning: |
+  <copy of mode_reasoning from assess-complexity.sh output, or "owner override via --mode=..." when flagged>
+overrides_applied: []                 # list of flag strings, e.g. ["--mode=team", "--size=full"]
+```
+
+`mode_reasoning` is mandatory — it makes a wrong heuristic call debuggable later.
+
+## Mode-specific execution
+
+The phase chain that follows depends on the mode:
+
+### Solo mode
+
+- Do NOT spawn any teammates. Do NOT create a team. Skip `TeamCreate`.
+- The lead does the work itself in its own session.
+- Touchpoint 1 — **Plan-and-diff review**: write a one-paragraph description of the change + the proposed diff; ask the owner "Approve and apply?".
+- On approval, apply the change.
+- Touchpoint 2 — **Finish decision**: present the change as applied and ask the owner "Commit / discard?".
+- On commit, write the commit and stop. Do NOT run a CI gate — solo changes are too small to justify it.
+- The 3-touchpoint promise becomes 2 for solo mode (spec §4.6).
+
+### Single-agent mode
+
+- Skip designer, planner, software-architect, security-engineer, qa-engineer, reviewer.
+- Spawn exactly ONE implementer matching shape: `backend-developer` if `side: be-only`, `frontend-developer` if `side: fe-only`. (Use the `side_signal:` line from `assess-complexity.sh`'s `mode_reasoning` to decide.)
+- Touchpoint 1 — **Inline spec sign-off**: lead writes a one-paragraph spec at `docs/superpowers/specs/<slug>.md` and asks the owner "Ok to proceed?".
+- Touchpoint 2 — **Plan approval**: lead writes a one-task inline plan at `docs/superpowers/plans/<slug>.md` (the single task usually 5 lines: `Files`, `Depends on: []`, `Verification`, code outline) and asks the owner "Approve plan?".
+- Dispatch the implementer with that single task. Wait for `done`.
+- Lead reviews the implementer's diff itself in a single pass (no separate reviewer teammate).
+- Touchpoint 3 — **Finish decision**: run `superpowers:finishing-a-development-branch` (CI gate per `CLAUDE.md`'s `ci` block).
+
+### Team mode
+
+Run the full v2 phase chain with the chosen size (per the existing spawn table in §0.5 of this file). Size determines whether `software-architect`, `security-engineer`, and `qa-engineer` are spawned:
+
+- `minimal`: designer, planner, implementer(s), reviewer (no architect / security / QA).
+- `standard`: + `qa-engineer`.
+- `full`: + `software-architect` + `security-engineer`.
+
+The existing v2 phase chain (design → plan → arch+sec → impl → QA → review → finish) runs unchanged. The shape-adaptive spawn from §0.5 still applies on top of size.
 
 ## Preflight — detect stale or orphaned state
 
