@@ -338,22 +338,40 @@ Fill every field. If a field is genuinely N/A for a role (e.g. there is no QA re
 
 3. **Pre-impl review gate (software-architect + security-engineer, parallel).** Spawn both. Hand each the design doc path AND the plan path. Wait for `ARCH_PASSED <path>` AND `SEC_PASSED <path>`. If either posts `ARCH_BLOCKED` / `SEC_BLOCKED`, route the findings to `planner` for a plan revision, then re-route to whichever gate is still blocking. Cap at three plan-revision rounds — escalate to owner via §7 if it does not converge. Checkpoint: `phase: pre_impl_review, status: passed | blocked`. Touch heartbeat.
 
-4. **Implementation (shape-adaptive, parallel where allowed).** Read the approved plan. Create one shared-task-list entry per plan task with the planner's assigned title (`impl:be-*`, `impl:fe-*`, `impl:be-migration-*`, `impl:be-contract-publish-*`), body = full task text including verification, and `depends_on` + `files` + `tests` + `estimated_minutes` + `plan_approved_at` metadata from the plan.
+4. **Implementation — Phase 4 wave dispatcher (wave-based, shape-adaptive).** Read the approved plan's `## Waves` section. For each wave N in order:
 
-   **Spawn rule (shape-adaptive):**
-   - `full-stack`: spawn one `backend-developer` AND one `frontend-developer`.
-   - `be-only`: spawn one `backend-developer` only. Do NOT spawn `frontend-developer`.
-   - `fe-only`: spawn one `frontend-developer` only. Do NOT spawn `backend-developer`.
+   **4.1 Collision check.** Build a wave manifest by concatenating each task's `id` + space-separated `files:` metadata, one task per line. Pipe it to `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wave-collision-check.sh`. Exit 0 → proceed. Exit 1 → halt the wave, do NOT dispatch any task in it, post `WAVE_COLLISION wave=N tasks=[…] shared_files=[…]` to the planner's mailbox (verbatim from the helper output), and wait for a fresh `PLAN_READY <path>`. Re-read the plan, re-build the manifest, re-run the collision check. Cap the loop at **3 re-plan retries on the same wave** (`wave_replans: K/3` in the checkpoint). On the 4th attempt, escalate to owner via §7 template — planner cannot converge on this dependency graph.
 
-   **Contract publish (full-stack only).** If the planner emitted `impl:be-contract-publish-<slug>` as the first task, the backend-developer claims it first. Do NOT release any `impl:fe-*` task to the frontend-developer until you see `CONTRACT_PUBLISHED <task-id>` in your mailbox. The plan tasks already encode `depends_on: [impl:be-contract-publish-<slug>]` on every FE task, but you enforce the gate at the assignment level too.
+   **4.2 Create task entries.** For every task in this wave, create one shared-task-list entry with title from the plan (`impl:be-*`, `impl:fe-*`, `impl:be-migration-*`, `impl:be-contract-publish-*`, `impl:contract-update-*`). Set metadata: `wave: N`, `depends_on: [...]`, `files: [...]`, `tests: [...]`, `estimated_minutes`, `plan_approved_at`, `iteration_count: 0`. The `TaskCreated` hook will warn on missing wave.
 
-   **Mid-implementation contract drift.** If you receive `CONTRACT_DRIFT_DETECTED` from frontend-developer, or backend-developer files an `impl:contract-update-*` task on its own, pause all `impl:fe-*` in-flight work (post a "pause" message to frontend-developer's mailbox; it will idle on its current task). Wait for `CONTRACT_UPDATED <task-id>` from backend-developer, then unpause FE. Frontend-developer re-pulls the contract hash on resume.
+   **4.3 Spawn counts.**
+   - `be_count = count(impl:be-* tasks in wave N)`; `fe_count = count(impl:fe-* tasks in wave N)`.
+   - Live BE instances target = `min(be_count, 2)`; FE target = `min(fe_count, 2)`.
+   - If a live instance is below target, spawn additional implementer(s) for that side using the canonical spawn-prompt template (§Spawn prompt template). Reuse already-spawned implementers across waves — do NOT respawn.
+   - If a live instance is above target (previous wave had more tasks than this one), let it idle. Idle instances do NOT trigger `TeammateIdle` because that hook checks unanswered peer mail, not work activity.
 
-   **Migration serialization.** `impl:be-migration-*` tasks must run one at a time. The planner chains them via `depends_on`, the `TaskCompleted` hook is a backstop with `MIGRATION_RACE`, and you enforce it at assignment: do not release a second migration task while one is `in_progress`.
+   **4.4 Task claim.** Each implementer self-claims one task from the wave queue matching its side prefix. The lead does NOT assign tasks explicitly — implementers pull from the queue. If a side has more tasks than instances, the extras get claimed serially by whichever instance frees up first.
 
-   **File-scope conflict check.** Verify no two active implementer tasks overlap in file scope — if a conflict appears, serialize by holding the second task. Watch for `BE_DONE` / `FE_DONE`.
+   **4.5 Contract gate.** If the wave contains `impl:be-contract-publish-<slug>`, do NOT release any `impl:fe-*` queue items until `CONTRACT_PUBLISHED <task-id>` arrives, even if the FE tasks technically live in a later wave. Plan dependencies already enforce this; the gate is a backstop.
 
-   Checkpoint after each task transition: `phase: implementation, tasks_complete: M/N`. Touch heartbeat at every transition.
+   **4.6 Migration serialization.** `impl:be-migration-*` tasks must occupy a wave alone on the BE side. The planner enforces upfront via `Depends on:`; the `TaskCompleted` hook is a final backstop with `MIGRATION_RACE`.
+
+   **4.7 Mid-wave collision.** If an implementer posts `WAVE_COLLISION` mid-wave (an undeclared overlap surfaced during work), halt the wave: keep in-flight tasks running to completion, do not claim any further task, route the collision to planner as in 4.1. Same 3-retry cap.
+
+   **4.8 Mid-implementation contract drift.** If `CONTRACT_DRIFT_DETECTED` arrives from frontend-developer, or backend-developer files `impl:contract-update-*` on its own, pause all `impl:fe-*` claims until `CONTRACT_UPDATED <task-id>` arrives. Frontend-developer re-pulls the contract hash on resume.
+
+   **4.9 Wave completion.** A wave completes when:
+   - every task in the wave has status `done`,
+   - every task's `TaskCompleted` hook returned 0 (verified via the JSONL log),
+   - no implementer holds unanswered peer mail relevant to this wave.
+
+   On completion, checkpoint: `phase: implementation, wave: N/M, tasks_complete: X/Y` and advance to wave N+1.
+
+   **4.10 Task failure inside a wave.** If any task fails (`iteration_count` exceeded with no reflection, two-stage review rejects, test never goes green), halt the wave at that task. Other in-flight tasks finish; no new claims until the failure resolves via the four-class clarification routing. On resolution: resume the wave from where it stopped — do NOT restart.
+
+   **4.11 Idle implementer cleanup.** Between waves, if any implementer instance has been idle for the entire previous wave AND no upcoming wave will use it, the lead MAY shut it down to free context. Fresh implementers spawn for later waves on demand. (Optional; harmless to leave idle implementers alive.)
+
+   Checkpoint after each wave: `phase: implementation, wave: N/M, tasks_complete: X/Y`. Touch heartbeat. Do not advance to phase 5 until wave M/M completes.
 
 5. **QA gate (qa-engineer).** Once every `impl:` task is complete, spawn `qa-engineer`. Wait for `QA_PASSED <path>` or `QA_BLOCKED <path>`. If blocked, the QA report contains `impl:qa-fix-be-` / `impl:qa-fix-fe-` tasks — file them in the shared task list and loop to phase 4. Checkpoint: `phase: qa, status: passed | blocked`. Touch heartbeat.
 
