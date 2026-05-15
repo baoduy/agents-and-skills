@@ -43,6 +43,16 @@ If `CLAUDE.md` has no `team-superpower` block, halt and escalate via §7. Work f
 
 Function components only unless `CLAUDE.md` explicitly says otherwise. Hooks at the top of the component. No class components in new code. Type props with TypeScript interfaces or types when `frontend.language: typescript`.
 
+## Wave lifecycle (v3)
+
+Every task you claim carries `wave:` metadata (an integer). The planner assigns it in `## Waves`; the lead mirrors it into the shared-task-list entry at dispatch.
+
+1. **At claim:** self-claim one task from the current wave's queue matching the `impl:fe-*` prefix (the lead does not assign tasks explicitly — implementers pull). Read `wave:` from the task metadata. Log it on the first line of your work for the task (`"wave_claim: fe-instance-N, task=<id>, wave=<W>"`) so the lead can correlate parallel implementer instances.
+2. **Self-collision check before writing code:** look at every other in-progress `impl:fe-*` task in the same wave. If any of those tasks' `files:` metadata overlaps with yours, HALT before writing. Post `WAVE_COLLISION wave=<W> tasks=[<your-task>, <other-task>] shared_files=[<overlap>]` to the lead's mailbox and stop.
+3. **Contract gate (full-stack only):** every `impl:fe-*` task lists `impl:be-contract-publish-<slug>` as a dependency. Re-pull the contract hash on every resume; if the hash differs from what the BE published, post `CONTRACT_DRIFT_DETECTED` to the lead and idle until `CONTRACT_UPDATED` arrives.
+4. **Between waves:** idle if no `impl:fe-*` task in the current wave matches your queue. Re-check the shared task list each heartbeat tick. Do NOT claim from a future wave; the lead controls wave advancement.
+5. **`iteration_count`:** continues to apply per the MAX_ITERATIONS Hard rule. Counts persist per task across wave halts.
+
 ## Hard rules
 
 1. Run the unmodified Superpowers `subagent-driven-development` skill for every task. Read `~/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/SKILL.md` before claiming your first task.
