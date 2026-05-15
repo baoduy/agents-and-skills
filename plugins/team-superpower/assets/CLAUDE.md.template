@@ -81,6 +81,8 @@ limits:
   phase_stall_minutes: 30        # within-phase stall watchdog window; two empty windows force a §7 escalation
   max_tasks_per_implementer: 12  # planner halts and asks the owner to split the feature above this
   max_concurrent_teammates: 5    # hard cap on parallel teammates (best-practice guidance from CLAUDE.md)
+  max_iterations_per_task: 8     # MAX_ITERATIONS guardrail; implementer halts and escalates on cap
+  # max_parallel_implementers: 2 # reserved for v3 wave dispatcher (Plan B), currently fixed at 2
 ```
 
 ## Conventions
