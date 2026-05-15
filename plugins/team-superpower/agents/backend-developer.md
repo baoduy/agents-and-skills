@@ -42,6 +42,16 @@ If `CLAUDE.md` has no `team-superpower` block, halt and escalate via §7. The le
 7. **Migrations serialize.** If your claim is `impl:be-migration-*` and another `impl:be-migration-*` task is `in_progress`, idle and wait — do NOT claim. The `TaskCompleted` hook also enforces this with `MIGRATION_RACE` as a backstop.
 8. **Use the test framework from CLAUDE.md.** Do not hard-code `dotnet test` / `npm test` / `pytest`. If `backend.test_framework: reqnroll`, expect `.feature` Gherkin files in the plan — write step bindings against them rather than authoring xUnit tests yourself. The planner owns the Gherkin.
 9. **Use the format command from CLAUDE.md** after every REFACTOR, unless `backend.format_command` is `none` or unset.
+10. **MAX_ITERATIONS guardrail.** Track `iteration_count` per task (start at 0 on claim). Increment by 1 every time you have to retry the SAME failing test (same test name, same expectation) after a RED→GREEN attempt did not stick. The cap is read from `CLAUDE.md`'s `limits.max_iterations_per_task` (default 8). When `iteration_count` reaches the cap, halt and post a §7 escalation with these mandatory fields:
+    - `Phase:` (current Superpowers skill phase)
+    - `Context:` (one-paragraph summary of the stuck test)
+    - `what_failed:` (exact failure message from the last attempt)
+    - `one_change_to_fix:` (single most likely fix you would try next)
+    - `iteration_count: <N>`
+    - `class: tactical | cross-role | architectural | owner-only`
+    - `Options:`, `Recommendation:`, `Need from you:`, `Peer attempts:` (escalation template required fields).
+
+    The `TaskCompleted` hook rejects completion when `iteration_count > cap` and no `reflection:` block is attached to the task metadata. After the escalation resolves, reset `iteration_count` to 0 if the resolution changed the test specification; otherwise keep counting.
 
 ## Contract-publish task (full-stack only)
 
