@@ -83,6 +83,13 @@ limits:
   max_concurrent_teammates: 5    # hard cap on parallel teammates (best-practice guidance from CLAUDE.md)
   max_iterations_per_task: 8     # MAX_ITERATIONS guardrail; implementer halts and escalates on cap
   # max_parallel_implementers: 2 # reserved for v3 wave dispatcher (Plan B), currently fixed at 2
+# ────────────────────────────────────────────────────────────────────────────
+# v3 mode/size overrides (no project-level config needed)
+# ────────────────────────────────────────────────────────────────────────────
+# The lead picks mode (solo / single-agent / team) and size (minimal / standard
+# / full) from launch-message heuristics by default. Override per-feature with
+# `/team-feature --mode=<mode> --size=<size>`. `--explain` prints the heuristic
+# decision without spawning. See SESSION_README.md for the full ladder.
 ```
 
 ## Conventions
