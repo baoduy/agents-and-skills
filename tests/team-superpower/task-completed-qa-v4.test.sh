@@ -2,7 +2,7 @@
 # v4: per-task QA verification hook checks.
 set -euo pipefail
 
-HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/hooks/task-completed.sh"
+HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../plugins/team-superpower" && pwd)/hooks/task-completed.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PLUGIN_ROOT="$(cd "$(dirname "$0")/../../plugins/team-superpower" && pwd)"
 HOOK="$PLUGIN_ROOT/hooks/task-created.sh"
 
 fail=0

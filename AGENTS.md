@@ -28,7 +28,7 @@ Personal Claude Code **plugin marketplace** (`drunkcoding`) published as the npm
   4. `package.json` — no change needed (`files: ["plugins/**", ...]` already covers any new plugin); only touch if a new top-level file needs shipping, which should be rare.
 - Edits to a single plugin (skill prose, agent prompt, script tweak) only touch files inside that plugin's directory — no manifest churn needed.
 - Plugin and root `version` fields stay at `0.1.0` in source; CI rewrites them on release. Do not bump versions by hand unless cutting a manual release.
-- No tests at the repo root. Plugins may ship their own (`plugins/<name>/tests/`); run with `node --test plugins/<name>/tests/`. Run `npx gitnexus analyze` only if the GitNexus block needs refresh after large structural changes. Run `npm publish --access public` only when explicitly asked.
+- Tests live at the **repo-root `tests/<plugin>/`** tree (not inside `plugins/`, so they are not packaged for npm). Run Node tests with `node --test tests/<plugin>/*.test.js` and bash tests with `bash tests/<plugin>/<file>.test.sh`. Run `npx gitnexus analyze` only if the GitNexus block needs refresh after large structural changes. Run `npm publish --access public` only when explicitly asked.
 - After manifest edits, validate before committing:
   ```bash
   python3 -c "import json, glob; [json.load(open(p)) for p in ['.claude-plugin/marketplace.json', *glob.glob('plugins/*/.claude-plugin/plugin.json')]]; print('OK')"
