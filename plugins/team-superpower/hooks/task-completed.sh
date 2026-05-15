@@ -53,6 +53,38 @@ case "$title" in
     ;;
 esac
 
+# v3: MAX_ITERATIONS guardrail. impl:* completions whose iteration_count
+# exceeds the per-project cap (default 8) must carry a reflection: block.
+case "$title" in
+  impl:*)
+    iteration_count="$(printf '%s' "$payload" | jq -r '.task.metadata.iteration_count // .metadata.iteration_count // 0' 2>/dev/null || echo 0)"
+    reflection="$(printf '%s' "$payload" | jq -r '.task.metadata.reflection // .metadata.reflection // ""' 2>/dev/null || echo "")"
+
+    cap=8
+    parse_helper="${CLAUDE_PLUGIN_ROOT:-}/scripts/parse-claudemd.sh"
+    if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+      # Fall back to a relative path the hook can find when CLAUDE_PLUGIN_ROOT is unset.
+      hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+      parse_helper="$hook_dir/../scripts/parse-claudemd.sh"
+    fi
+    if [ -f "$parse_helper" ] && [ -f "${CLAUDE_PROJECT_DIR:-$PWD}/CLAUDE.md" ]; then
+      configured="$(bash "$parse_helper" get limits.max_iterations_per_task "${CLAUDE_PROJECT_DIR:-$PWD}/CLAUDE.md" 2>/dev/null || true)"
+      if [ -n "$configured" ] && printf '%s' "$configured" | grep -qE '^[0-9]+$'; then
+        cap="$configured"
+      fi
+    fi
+
+    if [ "${iteration_count:-0}" -gt "$cap" ] && [ -z "$reflection" ]; then
+      printf '{"ts":"%s","hook":"task-completed","warn":"ITERATION_CAP_EXCEEDED","title":%s,"iteration_count":%d,"cap":%d}\n' \
+        "$ts" \
+        "$(printf '%s' "$title" | jq -Rs .)" \
+        "$iteration_count" \
+        "$cap" \
+        >> "$LOG_FILE"
+    fi
+    ;;
+esac
+
 # v2: migration serialization. If this is a migration task, verify no other
 # `impl:be-migration-*` task is currently in_progress in the shared task list
 # (payload.tasks[]). The lead also enforces this; the hook is a backstop.
