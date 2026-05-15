@@ -123,7 +123,7 @@ stack_shape: full-stack | be-only | fe-only
 
 ## Phase 0.5 — Complexity assessment (mode and size)
 
-This phase runs after stack detection and BEFORE preflight. It picks an execution mode (solo / single-agent / team) and, when applicable, a team size (minimal / standard / full). The decision is autonomous — the owner can override via `--mode` / `--size` but there is NO owner touchpoint here.
+This phase runs after stack detection and before the initial checkpoint. It picks an execution mode (solo / single-agent / team) and, when applicable, a team size (minimal / standard / full). The decision is autonomous — the owner can override via `--mode` / `--size` but there is NO owner touchpoint here.
 
 ### 0.5.1 — Determine mode and size
 
@@ -199,13 +199,13 @@ The phase chain that follows depends on the mode:
 
 ### Team mode
 
-Run the full v2 phase chain with the chosen size (per the existing spawn table in §0.5 of this file). Size determines whether `software-architect`, `security-engineer`, and `qa-engineer` are spawned:
+Run the full v2 phase chain with the chosen size (per the existing spawn table in Phase 0 section 0.5 of this file). Size determines whether `software-architect`, `security-engineer`, and `qa-engineer` are spawned:
 
 - `minimal`: designer, planner, implementer(s), reviewer (no architect / security / QA).
 - `standard`: + `qa-engineer`.
 - `full`: + `software-architect` + `security-engineer`.
 
-The existing v2 phase chain (design → plan → arch+sec → impl → QA → review → finish) runs unchanged. The shape-adaptive spawn from §0.5 still applies on top of size.
+The existing v2 phase chain (design → plan → arch+sec → impl → QA → review → finish) runs unchanged. The shape-adaptive spawn from Phase 0 section 0.5 still applies on top of size.
 
 ## Preflight — detect stale or orphaned state
 
@@ -234,7 +234,7 @@ Same-session check: if the current Claude Code session already manages an agent 
 
 ## Initial checkpoint and heartbeat
 
-After preflight clears AND phase 0 has decided the shape:
+After preflight clears AND phase 0 has decided the shape AND phase 0.5 has decided the mode/size:
 
 1. Write the initial checkpoint `docs/superpowers/sessions/YYYY-MM-DD-<slug>.md` per the format in the **Checkpointing** section — including the v2 frontmatter fields (`superpowers_version`, `plugin_version`, `claude_code_version`, `stack_shape`) — and commit it.
 2. `touch docs/superpowers/sessions/<slug>.heartbeat` and commit (or leave uncommitted — the file is intentionally ephemeral; either is fine). **Touch this heartbeat at every phase boundary** and any time you remain active for more than ~10 minutes inside a phase. The cleanup script uses its mtime to decide whether a future session is allowed to wipe state.
