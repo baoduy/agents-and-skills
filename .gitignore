@@ -148,3 +148,4 @@ vite.config.ts.timestamp-*
 
 # Plugin-owned scratch (see plugins/<name>/scripts/_tmp.js)
 .tmp/
+**/log.jsonl

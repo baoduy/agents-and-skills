@@ -17,7 +17,9 @@
       "Bash(rm -f .tmp-hook-test/.claude/hooks/log.jsonl)",
       "Bash(CLAUDE_PROJECT_DIR=\"$\\(pwd\\)/.tmp-hook-test\" printf '%s' '{\"task\":{\"title\":\"review:finalize\",\"metadata\":{\"blocked_questions\":[\"BLOCKED: foo\\\\nPhase: plan\\\\nContext: x\\\\nOptions: A. y\\\\nRecommendation: A\\\\nNeed from you: A/B\"]}}}')",
       "Bash(rtk read *)",
-      "Bash(export CLAUDE_PROJECT_DIR=\"$\\(pwd\\)/.tmp-hook-test\")"
+      "Bash(export CLAUDE_PROJECT_DIR=\"$\\(pwd\\)/.tmp-hook-test\")",
+      "Bash(bash /Users/steven/_CODE/GIT/agents-and-skills/plugins/team-superpower/tests/task-completed-iterations.test.sh)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }
