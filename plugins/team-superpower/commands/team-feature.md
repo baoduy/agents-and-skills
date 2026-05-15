@@ -590,6 +590,11 @@ superpowers_version: <e.g. 5.0.7>
 plugin_version: <team-superpower plugin version>
 claude_code_version: <e.g. 2.1.32>
 stack_shape: full-stack | be-only | fe-only
+mode: solo | single-agent | team       # v3, written in phase 0.5
+size: minimal | standard | full        # v3, only when mode=team
+mode_reasoning: |                      # v3, populated by scripts/assess-complexity.sh or "owner override via ..."
+  <multi-line reasoning trace>
+overrides_applied: []                  # v3, list of flag strings, e.g. ["--mode=team", "--size=full"]
 ---
 
 # Session: <slug>
