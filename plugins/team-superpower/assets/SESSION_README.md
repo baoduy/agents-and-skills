@@ -86,6 +86,53 @@ The reviewer pushes the branch in phase 7, then (when `ci.provider != none`) pol
 
 The lead reads the installed Superpowers version in phase 0 and writes it to the checkpoint frontmatter (`superpowers_version`). On `/team-feature-resume`, the lead checks whether the installed version still matches. If not, you see a 3-option menu (continue anyway / roll back Superpowers / discard this feature). The pin is informational + safety — never a hard block; you can always continue.
 
+### 8. Complexity assessment (v3 — mode and size)
+
+In phase 0.5 the lead runs a heuristic ladder against the launch message and picks one of three modes:
+
+- **solo** — lead does the work itself; 2 owner touchpoints (plan-and-diff + finish). Triggers on trivial keywords (typo, rename, bump, comment-out) or single-file launches.
+- **single-agent** — one implementer (BE or FE) spawned; 3 touchpoints. Triggers on small-scope verbs + single-side signal + no discovery language.
+- **team** — full v2 flow at the chosen size. Default.
+
+When mode is `team`, the lead also picks a size:
+
+- **minimal** — designer + planner + 1 BE + 1 FE + reviewer (5 teammates).
+- **standard** (default) — adds qa-engineer (6 teammates).
+- **full** — adds software-architect + security-engineer (8 teammates). Forced by `security.domain: payments | healthcare` or regulated keywords.
+
+The decision lands in the checkpoint's `mode`, `size`, `mode_reasoning`, `overrides_applied` fields. Override per feature with `/team-feature --mode=<mode> --size=<size>`. Preview with `/team-feature --explain <message>` (prints the decision and exits).
+
+If the lead picks an unexpected mode, read `mode_reasoning` in the checkpoint — it names the ladder rung and the matching keyword. Bias future launches by phrasing the request explicitly, or use the override flags.
+
+### 9. Wave schedule (v3 — phase 4)
+
+In phase 4 the lead reads the plan's `## Waves` section. Each wave's tasks have an explicit `Depends on:` list. Independent tasks within a wave run concurrently, up to **2 backend-developer instances + 2 frontend-developer instances at peak**. Subsequent waves wait for the previous wave to fully complete.
+
+Read the plan's `## Waves` section to see how the planner decomposed the work. Each task carries `Files:` (paths) and `Depends on:` (task IDs) — the lead uses `Files:` for collision detection (`wave-collision-check.sh`) and `Depends on:` for wave ordering.
+
+If two tasks in the same wave collide on a shared file, the wave **hard-fails**. The lead pings the planner with `WAVE_COLLISION`; planner adds a dependency edge between them so they end up in different waves; lead retries. Cap is 3 retries (`wave_replans: K/3` in the checkpoint), then owner escalation. Hard-failing is intentional — graceful serialization would mask planner bugs.
+
+Wave progress shows up in checkpoint as `wave: N/M, tasks_complete: X/Y`.
+
+### 10. Iteration cap (v3 — MAX_ITERATIONS)
+
+Every `impl:` task carries an `iteration_count:` integer. If an implementer retries the same failing test 8 times, it halts and posts a §7 escalation with `what_failed:`, `one_change_to_fix:`, and `class:`. The `task-completed` hook rejects completions where `iteration_count > 8` unless a `reflection:` block is attached.
+
+Configure per project in CLAUDE.md `limits.max_iterations_per_task` (default 8). Lower for slow-feedback environments; never raise above 12 — past that, retry is masking a structural issue.
+
+When you see an `ITERATION_CAP_EXCEEDED` escalation, the right move is usually to address the `one_change_to_fix:` field — it's the implementer's single best guess at the root cause.
+
+### 11. Model fallback (v3 — preflight attestation)
+
+Each agent role is pinned to a model (Opus for designer/architect/security/reviewer; Sonnet for planner/BE/FE/QA — see spec §11.3). At spawn, the lead captures each teammate's first heartbeat:
+
+- `model_actual:` — the model the teammate is actually running on.
+- `effort_set:` — the effort level it set on first turn.
+
+If `model_actual` does not match the frontmatter `model:` pin (e.g. a usage-threshold fallback dropped Opus to Sonnet), the lead surfaces a single owner touchpoint asking whether to continue. This is a **recovery touchpoint** and does NOT count against the 3-touchpoint budget — it only fires on fallback.
+
+If `effort_set` is missing or wrong, the lead logs a warning to the checkpoint but does not surface to the owner. Soft enforcement.
+
 ## Layout
 
 ```
