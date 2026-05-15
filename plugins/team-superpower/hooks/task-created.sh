@@ -59,10 +59,17 @@ if [ -d "$SESSIONS_DIR" ]; then
   fi
 fi
 
-printf '{"ts":"%s","hook":"task-created","title":%s,"shape":%s}\n' \
+wave="$(printf '%s' "$payload" | jq -r '.task.metadata.wave // .metadata.wave // ""' 2>/dev/null || echo "")"
+wave_json="null"
+if printf '%s' "$wave" | grep -qE '^[0-9]+$'; then
+  wave_json="$wave"
+fi
+
+printf '{"ts":"%s","hook":"task-created","title":%s,"shape":%s,"wave":%s}\n' \
   "$ts" \
   "$(printf '%s' "$title" | jq -Rs .)" \
   "$(printf '%s' "$shape" | jq -Rs .)" \
+  "$wave_json" \
   >> "$LOG_FILE"
 
 # Top-level prefix check
@@ -74,6 +81,40 @@ case "$title" in
     ;;
   *)
     printf '{"ts":"%s","hook":"task-created","warn":"bad_prefix","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    ;;
+esac
+
+# v3: solo-mode guard. If checkpoint mode is solo, impl:* tasks are invalid
+# (solo means the lead does the work itself; no implementer is spawned).
+mode_meta="$(printf '%s' "$payload" | jq -r '.task.metadata.mode // .metadata.mode // ""' 2>/dev/null || echo "")"
+mode_marker=""
+if [ -z "$mode_meta" ] && [ -d "$SESSIONS_DIR" ]; then
+  # Look for a <slug>.mode file the lead writes when it picks a mode.
+  marker_file=""
+  if [ -n "$slug" ] && [ -f "$SESSIONS_DIR/$slug.mode" ]; then
+    marker_file="$SESSIONS_DIR/$slug.mode"
+  else
+    count="$(find "$SESSIONS_DIR" -maxdepth 1 -type f -name '*.mode' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$count" = "1" ]; then
+      marker_file="$(find "$SESSIONS_DIR" -maxdepth 1 -type f -name '*.mode' 2>/dev/null | head -n1)"
+    fi
+  fi
+  if [ -n "$marker_file" ] && [ -f "$marker_file" ]; then
+    mode_marker="$(head -n1 "$marker_file" | tr -d '[:space:]')"
+  fi
+fi
+effective_mode="${mode_meta:-$mode_marker}"
+
+case "$title" in
+  impl:*)
+    if [ "$effective_mode" = "solo" ]; then
+      printf '{"ts":"%s","hook":"task-created","warn":"INVALID_FOR_SOLO_MODE","title":%s}\n' \
+        "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    fi
+    if [ -z "$wave" ]; then
+      printf '{"ts":"%s","hook":"task-created","warn":"MISSING_WAVE_METADATA","title":%s}\n' \
+        "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    fi
     ;;
 esac
 

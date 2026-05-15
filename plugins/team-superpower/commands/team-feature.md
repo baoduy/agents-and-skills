@@ -13,6 +13,21 @@ Owner's feature request:
 
 $ARGUMENTS
 
+## Parsing the launch flags
+
+Before doing anything else, parse override flags from the owner's request. The flags are space-separated tokens, may appear before the feature description, and use `=` to bind their value:
+
+- `--mode=<solo|single-agent|team>` — force the execution mode; skip the heuristic ladder.
+- `--size=<minimal|standard|full>` — force the team size (only meaningful with `--mode=team`; ignored otherwise — log the override but proceed).
+- `--explain` — run Phase 0.5 to compute the decision, print it to the owner, and STOP. Do not spawn anything.
+
+If any of these flags appear, strip them from `$ARGUMENTS` and treat the remainder as the actual launch message. Record the flags used in the checkpoint field `overrides_applied:` (a list of strings, empty if none).
+
+Examples:
+- `/team-feature --mode=solo update copy in welcome banner` → mode=solo, launch_message="update copy in welcome banner".
+- `/team-feature --explain redesign the checkout flow` → run heuristic, print decision, stop.
+- `/team-feature --mode=team --size=full add /healthcheck` → mode=team, size=full, launch_message="add /healthcheck".
+
 ## Your job
 
 You are a **conductor**, not an implementer. Spawn teammates and coordinate them through the canonical Superpowers skill chain. Do not run skills yourself — delegate every skill to the correct teammate. The team-superpower agent definitions (`designer`, `planner`, `software-architect`, `security-engineer`, `backend-developer`, `frontend-developer`, `qa-engineer`, `reviewer`) shipped with this plugin tell each teammate exactly which Superpowers skill to run.
@@ -20,6 +35,17 @@ You are a **conductor**, not an implementer. Spawn teammates and coordinate them
 ## Required prechecks (run these first, in order)
 
 0. **Lead-model self-attestation.** Before doing anything else, state which model you (the lead) are currently running on. If you are not running on Opus, halt and instruct the owner: "Lead must be on Opus. Relaunch this session with `claude --model opus` (or pick Opus in the model switcher) and rerun `/team-feature`." Teammates are pinned to Sonnet via their agent frontmatter; only the lead model is set by the session.
+0b. **Teammate model attestation (v3).** When you spawn each teammate, capture the teammate's first heartbeat/checkpoint message and parse two self-report fields:
+    - `model_actual:` — the model the teammate is actually running on (per its `/model` output).
+    - `effort_set:` — the effort level it set on first turn.
+
+    Compare `model_actual` against the teammate's frontmatter `model:` pin (`opus` or `sonnet` alias). If they differ — usually because a usage-threshold fallback dropped Opus to Sonnet, or vice versa — log the mismatch to the checkpoint and surface a one-question **recovery touchpoint** to the owner:
+
+    > Teammate `<role>` is running `<actual>` instead of the pinned `<expected>` (likely a usage-threshold fallback). Continue or abort?
+
+    This recovery touchpoint is NOT counted against the 3-touchpoint budget — it only fires on fallback, which is rare. Owner answers `continue` (proceed) or `abort` (halt and re-launch when usage resets).
+
+    If `effort_set` is missing or differs from the recommended level for that role (per §11.1: designer/architect/security/reviewer/planner/qa = `high`; backend/frontend = `medium`), log a warning to the checkpoint but do NOT surface to owner — soft enforcement only.
 1. Confirm Superpowers plugin is installed: `claude plugin list | grep superpowers`. If missing, **halt** and instruct the owner: `/plugin install superpowers@claude-plugins-official`. Capture the version string from `claude plugin list --json` (e.g. `5.0.7`) — you'll write it to the checkpoint in phase 0 step 5 below.
 2. Confirm Claude Code version is `2.1.32` or later: `claude --version`. If older, halt.
 3. Confirm `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is set in the environment. If not, halt and instruct the owner to add it to `~/.claude/settings.json` under `env`.
@@ -93,6 +119,20 @@ The `TaskCreated` hook reads this marker to enforce shape-appropriate `impl:` su
 
 Spawning happens at phase boundaries (you don't spawn implementers until phase 4 starts; you don't spawn the reviewer until phase 6) — this section just decides which teammates the team will EVER spawn for this feature. Record the list in the checkpoint.
 
+### 0.5b — Scaffold AGENTS.md (v4 §7)
+
+Check for `docs/superpowers/AGENTS.md`. If it does NOT exist, create it from the asset template:
+
+```bash
+if [ ! -f docs/superpowers/AGENTS.md ]; then
+  mkdir -p docs/superpowers
+  cp "${CLAUDE_PLUGIN_ROOT}/assets/AGENTS.md.template" docs/superpowers/AGENTS.md
+  git add docs/superpowers/AGENTS.md
+fi
+```
+
+If the file already exists, leave it untouched — `AGENTS.md` is owner-curated; you NEVER overwrite it. The template stub has empty sections that the reviewer suggests filling via `AGENTS.suggestions.md` at end of feature.
+
 ### 0.6 — Pin the Superpowers version
 
 Read the installed Superpowers version (from precheck step 1) and write it to the checkpoint frontmatter. This pins the skill-set for this feature. `/team-feature-resume` reads it back and refuses to continue if the installed version has drifted.
@@ -105,6 +145,94 @@ plugin_version: <team-superpower plugin version>
 claude_code_version: <e.g. 2.1.32>
 stack_shape: full-stack | be-only | fe-only
 ```
+
+## Phase 0.5 — Complexity assessment (mode and size)
+
+This phase runs after stack detection and before the initial checkpoint. It picks an execution mode (solo / single-agent / team) and, when applicable, a team size (minimal / standard / full). The decision is autonomous — the owner can override via `--mode` / `--size` but there is NO owner touchpoint here.
+
+### 0.5.1 — Determine mode and size
+
+1. If `--mode=` was supplied in the launch flags: use it directly. Skip step 2.
+2. Otherwise, run the heuristic ladder:
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/assess-complexity.sh "$LAUNCH_MESSAGE" "$PWD"
+   ```
+   Capture stdout — it is YAML containing `mode:`, optionally `size:`, `shape:`, and `mode_reasoning:`. Exit 0 = confident; exit 1 = ambiguous (the script defaults to team and includes the ambiguity in `mode_reasoning`).
+3. If `--size=` was supplied AND the resolved mode is `team`, override the `size:` field with the flag value. If the resolved mode is `solo` or `single-agent`, log that `--size=` was ignored.
+
+### 0.5.2 — Handle `--explain`
+
+If `--explain` was supplied, print the YAML decision to the owner with this header and STOP — do not write the marker file, do not write the checkpoint, do not spawn anything:
+
+```
+Heuristic decision for your launch message:
+
+<paste the YAML block from assess-complexity.sh>
+
+Re-run without `--explain` to proceed, or supply `--mode=` / `--size=` to override.
+```
+
+### 0.5.3 — Write the mode marker
+
+Otherwise, write the mode to a marker file the hooks can read:
+
+```bash
+mkdir -p docs/superpowers/sessions
+echo "$mode" > docs/superpowers/sessions/<slug>.mode
+git add docs/superpowers/sessions/<slug>.mode
+```
+
+The `TaskCreated` hook reads this marker to reject `impl:*` titles when `mode=solo`.
+
+### 0.5.4 — Write mode and size to the checkpoint frontmatter
+
+Extend the checkpoint frontmatter with:
+
+```yaml
+mode: solo | single-agent | team
+size: minimal | standard | full       # only when mode=team
+mode_reasoning: |
+  <copy of mode_reasoning from assess-complexity.sh output, or "owner override via --mode=..." when flagged>
+overrides_applied: []                 # list of flag strings, e.g. ["--mode=team", "--size=full"]
+```
+
+`mode_reasoning` is mandatory — it makes a wrong heuristic call debuggable later.
+
+Phase 4 adds three more frontmatter fields (`wave`, `wave_replans`, `tasks_complete`) tracking wave progress; see the canonical checkpoint block under "## Checkpointing" below.
+
+## Mode-specific execution
+
+The phase chain that follows depends on the mode:
+
+### Solo mode
+
+- Do NOT spawn any teammates. Do NOT create a team. Skip `TeamCreate`.
+- The lead does the work itself in its own session.
+- Touchpoint 1 — **Plan-and-diff review**: write a one-paragraph description of the change + the proposed diff; ask the owner "Approve and apply?".
+- On approval, apply the change.
+- Touchpoint 2 — **Finish decision**: present the change as applied and ask the owner "Commit / discard?".
+- On commit, write the commit and stop. Do NOT run a CI gate — solo changes are too small to justify it.
+- The 3-touchpoint promise becomes 2 for solo mode (spec §4.6).
+
+### Single-agent mode
+
+- Skip designer, planner, software-architect, security-engineer, qa-engineer, reviewer.
+- Spawn exactly ONE implementer matching shape: `backend-developer` if `side: be-only`, `frontend-developer` if `side: fe-only`. (Use the `side_signal:` line from `assess-complexity.sh`'s `mode_reasoning` to decide.)
+- Touchpoint 1 — **Inline spec sign-off**: lead writes a one-paragraph spec at `docs/superpowers/specs/<slug>.md` and asks the owner "Ok to proceed?".
+- Touchpoint 2 — **Plan approval**: lead writes a one-task inline plan at `docs/superpowers/plans/<slug>.md` (the single task usually 5 lines: `Files`, `Depends on: []`, `Verification`, code outline) and asks the owner "Approve plan?".
+- Dispatch the implementer with that single task. Wait for `done`.
+- Lead reviews the implementer's diff itself in a single pass (no separate reviewer teammate).
+- Touchpoint 3 — **Finish decision**: run `superpowers:finishing-a-development-branch` (CI gate per `CLAUDE.md`'s `ci` block).
+
+### Team mode
+
+Run the full v2 phase chain with the chosen size (per the existing spawn table in Phase 0 section 0.5 of this file). Size determines whether `software-architect`, `security-engineer`, and `qa-engineer` are spawned:
+
+- `minimal`: designer, planner, implementer(s), reviewer (no architect / security / QA).
+- `standard`: + `qa-engineer`.
+- `full`: + `software-architect` + `security-engineer`.
+
+The existing v2 phase chain (design → plan → arch+sec → impl → QA → review → finish) runs unchanged. The shape-adaptive spawn from Phase 0 section 0.5 still applies on top of size.
 
 ## Preflight — detect stale or orphaned state
 
@@ -133,7 +261,7 @@ Same-session check: if the current Claude Code session already manages an agent 
 
 ## Initial checkpoint and heartbeat
 
-After preflight clears AND phase 0 has decided the shape:
+After preflight clears AND phase 0 has decided the shape AND phase 0.5 has decided the mode/size:
 
 1. Write the initial checkpoint `docs/superpowers/sessions/YYYY-MM-DD-<slug>.md` per the format in the **Checkpointing** section — including the v2 frontmatter fields (`superpowers_version`, `plugin_version`, `claude_code_version`, `stack_shape`) — and commit it.
 2. `touch docs/superpowers/sessions/<slug>.heartbeat` and commit (or leave uncommitted — the file is intentionally ephemeral; either is fine). **Touch this heartbeat at every phase boundary** and any time you remain active for more than ~10 minutes inside a phase. The cleanup script uses its mtime to decide whether a future session is allowed to wipe state.
@@ -229,6 +357,15 @@ Mailbox signal expected back: <e.g. DESIGN_APPROVED <path>, PLAN_READY <path>, A
 
 Fill every field. If a field is genuinely N/A for a role (e.g. there is no QA report when spawning the designer), write `n/a` rather than omitting the line — the template's stability is what keeps respawns deterministic.
 
+**Heartbeat self-reports (v3).** Every teammate's first checkpoint message back to the lead MUST include these self-report fields so preflight model attestation works:
+
+```
+effort_set: <level the teammate set with /effort>
+model_actual: <model from /model output>
+```
+
+If a teammate omits these, the lead logs `MISSING_MODEL_ATTESTATION` to the checkpoint and asks the teammate once to add them. Persistent omission is logged but not blocked — soft enforcement.
+
 ## Phase chain (strict order — no skipping, no inlining)
 
 1. **Design (designer).** Spawn the `designer` teammate. Hand it `<slug>` and the owner's request. Wait for `DESIGN_APPROVED <path>` in your mailbox. If the designer asks a clarifying question, answer from project context if unambiguous; otherwise batch with any open questions and use the §7 escalation template to the owner. Checkpoint: `phase: design, status: complete`. Touch heartbeat.
@@ -237,22 +374,40 @@ Fill every field. If a field is genuinely N/A for a role (e.g. there is no QA re
 
 3. **Pre-impl review gate (software-architect + security-engineer, parallel).** Spawn both. Hand each the design doc path AND the plan path. Wait for `ARCH_PASSED <path>` AND `SEC_PASSED <path>`. If either posts `ARCH_BLOCKED` / `SEC_BLOCKED`, route the findings to `planner` for a plan revision, then re-route to whichever gate is still blocking. Cap at three plan-revision rounds — escalate to owner via §7 if it does not converge. Checkpoint: `phase: pre_impl_review, status: passed | blocked`. Touch heartbeat.
 
-4. **Implementation (shape-adaptive, parallel where allowed).** Read the approved plan. Create one shared-task-list entry per plan task with the planner's assigned title (`impl:be-*`, `impl:fe-*`, `impl:be-migration-*`, `impl:be-contract-publish-*`), body = full task text including verification, and `depends_on` + `files` + `tests` + `estimated_minutes` + `plan_approved_at` metadata from the plan.
+4. **Implementation — Phase 4 wave dispatcher (wave-based, shape-adaptive).** Read the approved plan's `## Waves` section. For each wave N in order:
 
-   **Spawn rule (shape-adaptive):**
-   - `full-stack`: spawn one `backend-developer` AND one `frontend-developer`.
-   - `be-only`: spawn one `backend-developer` only. Do NOT spawn `frontend-developer`.
-   - `fe-only`: spawn one `frontend-developer` only. Do NOT spawn `backend-developer`.
+   **4.1 Collision check.** Build a wave manifest by concatenating each task's `id` + space-separated `files:` metadata, one task per line. Pipe it to `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wave-collision-check.sh`. Exit 0 → proceed. Exit 1 → halt the wave, do NOT dispatch any task in it, post `WAVE_COLLISION wave=N tasks=[…] shared_files=[…]` to the planner's mailbox (verbatim from the helper output), and wait for a fresh `PLAN_READY <path>`. Re-read the plan, re-build the manifest, re-run the collision check. Cap the loop at **3 re-plan retries on the same wave** (`wave_replans: K/3` in the checkpoint). On the 4th attempt, escalate to owner via §7 template — planner cannot converge on this dependency graph.
 
-   **Contract publish (full-stack only).** If the planner emitted `impl:be-contract-publish-<slug>` as the first task, the backend-developer claims it first. Do NOT release any `impl:fe-*` task to the frontend-developer until you see `CONTRACT_PUBLISHED <task-id>` in your mailbox. The plan tasks already encode `depends_on: [impl:be-contract-publish-<slug>]` on every FE task, but you enforce the gate at the assignment level too.
+   **4.2 Create task entries.** For every task in this wave, create one shared-task-list entry with title from the plan (`impl:be-*`, `impl:fe-*`, `impl:be-migration-*`, `impl:be-contract-publish-*`, `impl:contract-update-*`). Set metadata: `wave: N`, `depends_on: [...]`, `files: [...]`, `tests: [...]`, `estimated_minutes`, `plan_approved_at`, `iteration_count: 0`. The `TaskCreated` hook will warn on missing wave.
 
-   **Mid-implementation contract drift.** If you receive `CONTRACT_DRIFT_DETECTED` from frontend-developer, or backend-developer files an `impl:contract-update-*` task on its own, pause all `impl:fe-*` in-flight work (post a "pause" message to frontend-developer's mailbox; it will idle on its current task). Wait for `CONTRACT_UPDATED <task-id>` from backend-developer, then unpause FE. Frontend-developer re-pulls the contract hash on resume.
+   **4.3 Spawn counts.**
+   - `be_count = count(impl:be-* tasks in wave N)`; `fe_count = count(impl:fe-* tasks in wave N)`.
+   - Live BE instances target = `min(be_count, 2)`; FE target = `min(fe_count, 2)`.
+   - If a live instance is below target, spawn additional implementer(s) for that side using the canonical spawn-prompt template (§Spawn prompt template). Reuse already-spawned implementers across waves — do NOT respawn.
+   - If a live instance is above target (previous wave had more tasks than this one), let it idle. Idle instances do NOT trigger `TeammateIdle` because that hook checks unanswered peer mail, not work activity.
 
-   **Migration serialization.** `impl:be-migration-*` tasks must run one at a time. The planner chains them via `depends_on`, the `TaskCompleted` hook is a backstop with `MIGRATION_RACE`, and you enforce it at assignment: do not release a second migration task while one is `in_progress`.
+   **4.4 Task claim.** Each implementer self-claims one task from the wave queue matching its side prefix. The lead does NOT assign tasks explicitly — implementers pull from the queue. If a side has more tasks than instances, the extras get claimed serially by whichever instance frees up first.
 
-   **File-scope conflict check.** Verify no two active implementer tasks overlap in file scope — if a conflict appears, serialize by holding the second task. Watch for `BE_DONE` / `FE_DONE`.
+   **4.5 Contract gate.** If the wave contains `impl:be-contract-publish-<slug>`, do NOT release any `impl:fe-*` queue items until `CONTRACT_PUBLISHED <task-id>` arrives, even if the FE tasks technically live in a later wave. Plan dependencies already enforce this; the gate is a backstop.
 
-   Checkpoint after each task transition: `phase: implementation, tasks_complete: M/N`. Touch heartbeat at every transition.
+   **4.6 Migration serialization.** `impl:be-migration-*` tasks must occupy a wave alone on the BE side. The planner enforces upfront via `Depends on:`; the `TaskCompleted` hook is a final backstop with `MIGRATION_RACE`.
+
+   **4.7 Mid-wave collision.** If an implementer posts `WAVE_COLLISION` mid-wave (an undeclared overlap surfaced during work), halt the wave: keep in-flight tasks running to completion, do not claim any further task, route the collision to planner as in 4.1. Same 3-retry cap.
+
+   **4.8 Mid-implementation contract drift.** If `CONTRACT_DRIFT_DETECTED` arrives from frontend-developer, or backend-developer files `impl:contract-update-*` on its own, pause all `impl:fe-*` claims until `CONTRACT_UPDATED <task-id>` arrives. Frontend-developer re-pulls the contract hash on resume.
+
+   **4.9 Wave completion.** A wave completes when:
+   - every task in the wave has status `done`,
+   - every task's `TaskCompleted` hook returned 0 (verified via the JSONL log),
+   - no implementer holds unanswered peer mail relevant to this wave.
+
+   On completion, checkpoint: `phase: implementation, wave: N/M, tasks_complete: X/Y` and advance to wave N+1.
+
+   **4.10 Task failure inside a wave.** If any task fails (`iteration_count` exceeded with no reflection, two-stage review rejects, test never goes green), halt the wave at that task. Other in-flight tasks finish; no new claims until the failure resolves via the four-class clarification routing. On resolution: resume the wave from where it stopped — do NOT restart.
+
+   **4.11 Idle implementer cleanup.** Between waves, if any implementer instance has been idle for the entire previous wave AND no upcoming wave will use it, the lead MAY shut it down to free context. Fresh implementers spawn for later waves on demand. (Optional; harmless to leave idle implementers alive.)
+
+   Checkpoint after each wave: `phase: implementation, wave: N/M, tasks_complete: X/Y`. Touch heartbeat. Do not advance to phase 5 until wave M/M completes.
 
 5. **QA gate (qa-engineer).** Once every `impl:` task is complete, spawn `qa-engineer`. Wait for `QA_PASSED <path>` or `QA_BLOCKED <path>`. If blocked, the QA report contains `impl:qa-fix-be-` / `impl:qa-fix-fe-` tasks — file them in the shared task list and loop to phase 4. Checkpoint: `phase: qa, status: passed | blocked`. Touch heartbeat.
 
@@ -469,6 +624,49 @@ The watchdog is **not** an owner touchpoint by itself — pinging the teammate i
 
 Reset the watchdog on every received mailbox message and every task transition. Touch the heartbeat each time you reset.
 
+## v4 mailbox handlers (per-task QA, token budget, retrieval)
+
+These handlers run inside your normal mailbox-processing loop. They are non-touchpoint by construction — handle inline, never page the owner.
+
+### Handler: `BUDGET_85_REACHED <task-id> tokens=<used>/<cap> current_state=<...> blocker=<...>`
+
+Decision matrix:
+
+- If `current_state` is `QA-loop round=2`, `QA-loop round=3`, or `REFACTOR` → respond `BUDGET_EXTEND <task-id> additional=50000` (close to completion, worth extending).
+- If `blocker` mentions "task scope larger than estimated" / "scope" / "decomposition" → respond `BUDGET_ABORT <task-id>` and post `TASK_OVERSCOPED <task-id>` to the planner for re-decomposition.
+- If `current_state` is `RED` or `GREEN` and `tokens > 200000` (mostly exploration with no clear completion path) → respond `BUDGET_REASSIGN <task-id>` (kill, unclaim, let a fresh implementer try).
+- Otherwise respond `BUDGET_EXTEND <task-id> additional=50000` and log a warning to the checkpoint for retrospective tuning.
+
+Increment the task's `task_token_budget` metadata by `additional` on EXTEND so subsequent 85% checks use the new ceiling.
+
+### Handler: `RETRIEVAL_REQUEST <task-id> cycle=<N> need=<...> because=<...>`
+
+Steps:
+
+1. Validate `because` clause is specific. Reject vague phrasings (matches: "might need", "more context", "to be safe", "in case", "not sure if"). If vague → respond `RETRIEVAL_DENIED <task-id> reason="be specific — what exactly and why?"`. Vague rejections DO NOT count against the budget.
+2. Validate `cycle ≤ 2`. If exceeded → respond `RETRIEVAL_DENIED <task-id> reason="budget exhausted, produce best-effort with Flagged-assumptions:"`.
+3. Locate the requested files / symbols / ADR contents. Read them with `Read` tool.
+4. Respond `RETRIEVAL_RESPONSE <task-id> cycle=<N> content=<inline file contents>`.
+5. Increment the task's `retrieval_requests` metadata counter (this is the value the hook checks against the cap).
+
+### Handler: AGENTS.md suggestions (post-`REVIEW_PASSED`)
+
+After `reviewer` posts `REVIEW_PASSED`, check `docs/superpowers/AGENTS.suggestions.md`:
+
+1. Count the `## Candidate <N>` entries (if any).
+2. Read the `## Stale entries to remove` section; count its non-empty bullets.
+3. When you compose the owner's finish notification (in phase 7 after `FINISH_DONE`), include:
+   ```
+   📝 Reviewer suggested <N> lessons for AGENTS.md<and flagged <M> stale entry|stale entries> — see docs/superpowers/AGENTS.suggestions.md
+   ```
+   Show the line only when N > 0 or M > 0. Omit entirely otherwise.
+
+Never auto-promote a candidate to `AGENTS.md` — the owner is the only role that may promote entries. The hook backstops this (`AGENT_WROTE_AGENTS_MD`).
+
+### Handler: `VERIFY_REQUEST <task-id> round=<N>` (lead is a passthrough)
+
+You do NOT process `VERIFY_REQUEST` messages yourself — they are addressed to `qa-engineer`. If a message accidentally lands in your queue, forward it to `qa-engineer` and log a routing warning. Only QA responses (`QA_PASS` / `QA_ISSUES`) flow back to implementers without your involvement; you track `qa_rounds` from the §7 escalations only.
+
 ## Owner touchpoints (the ONLY allowed pings to the owner)
 
 1. Design sign-off (phase 1, the brainstorming skill's built-in step).
@@ -489,6 +687,14 @@ superpowers_version: <e.g. 5.0.7>
 plugin_version: <team-superpower plugin version>
 claude_code_version: <e.g. 2.1.32>
 stack_shape: full-stack | be-only | fe-only
+mode: solo | single-agent | team       # v3, written in phase 0.5
+size: minimal | standard | full        # v3, only when mode=team
+mode_reasoning: |                      # v3, populated by scripts/assess-complexity.sh or "owner override via ..."
+  <multi-line reasoning trace>
+overrides_applied: []                  # v3, list of flag strings, e.g. ["--mode=team", "--size=full"]
+wave: 0/0                              # v3, current wave / total waves during phase 4 (set when phase 4 starts)
+wave_replans: 0/3                      # v3, collision-driven re-plans for the current wave; cap 3 before owner escalation
+tasks_complete: 0/0                    # v3, tasks complete in current wave / wave size
 ---
 
 # Session: <slug>

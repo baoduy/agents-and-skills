@@ -14,6 +14,29 @@ Published on npm as [`@drunkcoding/agents-and-skills`](https://www.npmjs.com/pac
 | [`plugin-validator`](plugins/plugin-validator) | Orchestrated validator that checks every plugin's skills, agents, commands, and hooks for spec compliance — runs in parallel and proposes batched fixes. |
 | [`auto-power`](plugins/auto-power) | Single-command hands-off pipeline that wraps `obra/superpowers`. Auto-answers safe clarifying questions during spec, then runs plan → arch+sec → impl → verify → review → ff-merge with no further touchpoints. Checkpointed and resumable. Escalates on substantive failures. |
 
+## team-superpower v3
+
+The `team-superpower` plugin shipped a v3 amendment in 2026-05. Three additions on top of v2:
+
+1. **Autonomous complexity assessment (phase 0.5).** The lead picks mode (`solo` / `single-agent` / `team`) and size (`minimal` / `standard` / `full`) from launch-message heuristics. No extra owner touchpoint; the 3-touchpoint promise is preserved. Override per feature with `/team-feature --mode=<mode> --size=<size>`; preview with `--explain`.
+
+2. **Dependency-grouped parallel waves (phase 4).** The planner emits a `## Waves` section. Independent tasks within a wave run concurrently across up to **2 BE + 2 FE implementers** at peak. Collisions on shared files hard-fail and force a planner re-plan; cap is 3 retries before owner escalation.
+
+3. **Per-role model and effort configuration.** Each agent file pins `model:` (alias) and `effort:`:
+   - **Opus** for orchestration / design / architecture / security / final review (lead + designer + software-architect + security-engineer + reviewer).
+   - **Sonnet** for planning / implementation / QA (planner + backend-developer + frontend-developer + qa-engineer).
+
+   For production teams, pin specific versions via env vars:
+
+   ```bash
+   export ANTHROPIC_DEFAULT_OPUS_MODEL="claude-opus-4-7"
+   export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-4-6"
+   ```
+
+   Agent files use aliases so version bumps are intentional.
+
+A typical full-stack `team-standard` feature runs ~3 Opus sessions (lead, designer, reviewer) and ~5–7 Sonnet sessions (planner, BE×1–2, FE×1–2, QA). See `plugins/team-superpower/docs/superpowers/team-superpower-v3-spec.md` for the full spec and `plugins/team-superpower/assets/SESSION_README.md` for owner-facing operational notes.
+
 ## Install
 
 ### Claude Code marketplace

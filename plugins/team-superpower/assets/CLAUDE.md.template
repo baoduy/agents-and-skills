@@ -30,6 +30,8 @@ backend:
   build_command: dotnet build
   test_command: dotnet test
   format_command: dotnet format --verify-no-changes   # set to "none" if no style check is wired
+  lint_command: dotnet build /p:TreatWarningsAsErrors=true   # v4 QA: runs per task (set "none" to skip)
+  typecheck_command: dotnet build --no-incremental           # v4 QA: runs per task (set "none" to skip)
   migration_tool: ef-core       # ef-core | flyway | liquibase | alembic | django-migrations | prisma | typeorm | knex | none
   package_manager: nuget        # nuget | npm | pnpm | yarn | bun | pip | poetry | pipenv | go-modules | cargo | maven | gradle
 
@@ -47,6 +49,9 @@ frontend:
   package_manager: pnpm         # npm | pnpm | yarn | bun
   build_command: pnpm build
   test_command: pnpm test
+  lint_command: pnpm eslint .                 # v4 QA: runs per task (set "none" to skip)
+  typecheck_command: pnpm tsc --noEmit        # v4 QA: runs per task (set "none" to skip)
+  format_command: pnpm prettier --check .     # v4 QA: runs per task (set "none" to skip)
 
 # ────────────────────────────────────────────────────────────────────────────
 # Contracts — only relevant when both backend AND frontend are present.
@@ -81,6 +86,18 @@ limits:
   phase_stall_minutes: 30        # within-phase stall watchdog window; two empty windows force a §7 escalation
   max_tasks_per_implementer: 12  # planner halts and asks the owner to split the feature above this
   max_concurrent_teammates: 5    # hard cap on parallel teammates (best-practice guidance from CLAUDE.md)
+  max_iterations_per_task: 8     # MAX_ITERATIONS guardrail; implementer halts and escalates on cap
+  max_qa_rounds_per_task: 3      # v4 dev↔QA loop cap (§4); implementer escalates on round 4
+  task_token_budget: 250000      # v4 per-task token cap (§5); implementer auto-pauses at 85%
+  retrieval_budget_per_task: 2   # v4 implementer retrieval cycles (§6)
+  # max_parallel_implementers: 2 # reserved for v3 wave dispatcher (Plan B), currently fixed at 2
+# ────────────────────────────────────────────────────────────────────────────
+# v3 mode/size overrides (no project-level config needed)
+# ────────────────────────────────────────────────────────────────────────────
+# The lead picks mode (solo / single-agent / team) and size (minimal / standard
+# / full) from launch-message heuristics by default. Override per-feature with
+# `/team-feature --mode=<mode> --size=<size>`. `--explain` prints the heuristic
+# decision without spawning. See SESSION_README.md for the full ladder.
 ```
 
 ## Conventions

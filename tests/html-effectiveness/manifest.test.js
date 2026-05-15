@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PLUGIN_ROOT = dirname(HERE);
+const PLUGIN_ROOT = join(HERE, '..', '..', 'plugins', 'html-effectiveness');
 const MANIFEST = JSON.parse(readFileSync(join(PLUGIN_ROOT, 'templates/manifest.json'), 'utf8'));
 const VALID_BUNDLES = new Set(['base', 'components', 'charts']);
 
@@ -48,8 +48,8 @@ for (const [id, entry] of entries) {
   });
 
   test(`${id}: fixture file exists`, () => {
-    const fix = join(PLUGIN_ROOT, `tests/fixtures/${id}.data.json`);
-    assert.ok(existsSync(fix), `${id} fixture missing: tests/fixtures/${id}.data.json`);
+    const fix = join(HERE, `fixtures/${id}.data.json`);
+    assert.ok(existsSync(fix), `${id} fixture missing: fixtures/${id}.data.json`);
     const data = JSON.parse(readFileSync(fix, 'utf8'));
     for (const [slot, schemaRaw] of Object.entries(entry.slots)) {
       const schema = typeof schemaRaw === 'string' ? { type: schemaRaw } : schemaRaw;

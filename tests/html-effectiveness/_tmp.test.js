@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getTmpDir, cleanup, withTmp, ROOT } from '../scripts/_tmp.js';
+import { getTmpDir, cleanup, withTmp, ROOT } from '../../plugins/html-effectiveness/scripts/_tmp.js';
 
 test('getTmpDir creates a fresh dir under .tmp/html-effectiveness/', () => {
   const dir = getTmpDir('unit-a');
