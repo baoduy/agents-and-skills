@@ -77,6 +77,36 @@ case "$title" in
     ;;
 esac
 
+# v3: solo-mode guard. If checkpoint mode is solo, impl:* tasks are invalid
+# (solo means the lead does the work itself; no implementer is spawned).
+mode_meta="$(printf '%s' "$payload" | jq -r '.task.metadata.mode // .metadata.mode // ""' 2>/dev/null || echo "")"
+mode_marker=""
+if [ -z "$mode_meta" ] && [ -d "$SESSIONS_DIR" ]; then
+  # Look for a <slug>.mode file the lead writes when it picks a mode.
+  marker_file=""
+  if [ -n "$slug" ] && [ -f "$SESSIONS_DIR/$slug.mode" ]; then
+    marker_file="$SESSIONS_DIR/$slug.mode"
+  else
+    count="$(find "$SESSIONS_DIR" -maxdepth 1 -type f -name '*.mode' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "$count" = "1" ]; then
+      marker_file="$(find "$SESSIONS_DIR" -maxdepth 1 -type f -name '*.mode' 2>/dev/null | head -n1)"
+    fi
+  fi
+  if [ -n "$marker_file" ] && [ -f "$marker_file" ]; then
+    mode_marker="$(head -n1 "$marker_file" | tr -d '[:space:]')"
+  fi
+fi
+effective_mode="${mode_meta:-$mode_marker}"
+
+case "$title" in
+  impl:*)
+    if [ "$effective_mode" = "solo" ]; then
+      printf '{"ts":"%s","hook":"task-created","warn":"INVALID_FOR_SOLO_MODE","title":%s}\n' \
+        "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    fi
+    ;;
+esac
+
 # At this point title starts with `impl:`. Strip prefix and require a known
 # sub-prefix.
 rest="${title#impl:}"
