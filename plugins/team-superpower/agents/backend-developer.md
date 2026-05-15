@@ -31,6 +31,15 @@ Also read the free-form prose in CLAUDE.md (sections after the YAML block, e.g. 
 
 If `CLAUDE.md` has no `team-superpower` block, halt and escalate via §7. The lead's phase 0 should have already produced `docs/superpowers/stack.detected.md` — work from that if so, otherwise escalate to the owner.
 
+## Wave lifecycle (v3)
+
+Every task you claim carries `wave:` metadata (an integer). The planner assigns it in `## Waves`; the lead mirrors it into the shared-task-list entry at dispatch.
+
+1. **At claim:** self-claim one task from the current wave's queue matching the `impl:be-*` prefix (the lead does not assign tasks explicitly — implementers pull). Read `wave:` from the task metadata. Log it on the first line of your work for the task (`"wave_claim: be-instance-N, task=<id>, wave=<W>"`) so the lead can correlate parallel implementer instances.
+2. **Self-collision check before writing code:** look at every other in-progress `impl:be-*` task in the same wave (visible in the shared task list). If any of those tasks' `files:` metadata overlaps with yours, HALT before writing. Post `WAVE_COLLISION wave=<W> tasks=[<your-task>, <other-task>] shared_files=[<overlap>]` to the lead's mailbox and stop. The lead will route to planner for a re-plan.
+3. **Between waves:** if no `impl:be-*` task in the current wave matches your prefix or remains unclaimed, idle. Re-check the shared task list on every heartbeat tick. Do NOT spawn extra tasks or claim from a future wave — the lead controls wave advancement.
+4. **`iteration_count`:** continues to apply per the MAX_ITERATIONS Hard rule. A wave halt resets nothing; counts persist per task across the wave.
+
 ## Hard rules
 
 1. Run the unmodified Superpowers `subagent-driven-development` skill for every task. Read `~/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/subagent-driven-development/SKILL.md` before claiming your first task.
