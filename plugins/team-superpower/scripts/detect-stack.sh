@@ -22,6 +22,45 @@
 
 set -euo pipefail
 
+# ---- subcommand: detect-side ---------------------------------------------
+# Usage:
+#   bash detect-stack.sh detect-side "<launch message>"
+# Outputs one of: be-only | fe-only | mixed | none
+# Used by scripts/assess-complexity.sh for the rung-2 single-side signal.
+if [ "${1:-}" = "detect-side" ]; then
+  shift
+  text="${1:-}"
+  # Normalize to lowercase for case-insensitive matching.
+  lc="$(printf '%s' "$text" | tr '[:upper:]' '[:lower:]')"
+
+  be_keywords=(
+    "endpoint" "api" "/api" "/auth" "/health" "route" "controller" "service"
+    "repository" "schema" "migration" "database" "column" "table"
+    "queue" "worker" "cron" "webhook" "grpc" "rpc"
+  )
+  fe_keywords=(
+    "component" "page" "form" "button" "modal" "input" "field"
+    "ui" "layout" "css" "tailwind" "tsx" "jsx" "react" "vue"
+    "svelte" "stylesheet" "wireframe" "design system" "screen"
+  )
+
+  has_be=0
+  has_fe=0
+  for kw in "${be_keywords[@]}"; do
+    case "$lc" in *"$kw"*) has_be=1; break ;; esac
+  done
+  for kw in "${fe_keywords[@]}"; do
+    case "$lc" in *"$kw"*) has_fe=1; break ;; esac
+  done
+
+  if [ "$has_be" -eq 1 ] && [ "$has_fe" -eq 1 ]; then echo "mixed"
+  elif [ "$has_be" -eq 1 ]; then echo "be-only"
+  elif [ "$has_fe" -eq 1 ]; then echo "fe-only"
+  else echo "none"
+  fi
+  exit 0
+fi
+
 ROOT="${1:-$PWD}"
 cd "$ROOT"
 
