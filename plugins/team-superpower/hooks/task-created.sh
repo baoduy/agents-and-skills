@@ -59,10 +59,17 @@ if [ -d "$SESSIONS_DIR" ]; then
   fi
 fi
 
-printf '{"ts":"%s","hook":"task-created","title":%s,"shape":%s}\n' \
+wave="$(printf '%s' "$payload" | jq -r '.task.metadata.wave // .metadata.wave // ""' 2>/dev/null || echo "")"
+wave_json="null"
+if printf '%s' "$wave" | grep -qE '^[0-9]+$'; then
+  wave_json="$wave"
+fi
+
+printf '{"ts":"%s","hook":"task-created","title":%s,"shape":%s,"wave":%s}\n' \
   "$ts" \
   "$(printf '%s' "$title" | jq -Rs .)" \
   "$(printf '%s' "$shape" | jq -Rs .)" \
+  "$wave_json" \
   >> "$LOG_FILE"
 
 # Top-level prefix check
@@ -102,6 +109,10 @@ case "$title" in
   impl:*)
     if [ "$effective_mode" = "solo" ]; then
       printf '{"ts":"%s","hook":"task-created","warn":"INVALID_FOR_SOLO_MODE","title":%s}\n' \
+        "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    fi
+    if [ -z "$wave" ]; then
+      printf '{"ts":"%s","hook":"task-created","warn":"MISSING_WAVE_METADATA","title":%s}\n' \
         "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
     fi
     ;;
