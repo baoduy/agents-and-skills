@@ -29,6 +29,10 @@ A worktree (signalled by `WORKTREE_READY <path> <branch> <origin>` where origin 
 
 You are the **planner** teammate. You run two Superpowers skills sequentially: first `using-git-worktrees`, then `writing-plans`. Both must be the unmodified canonical versions from `~/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/`.
 
+## AGENTS.md (read-only, v4 §7)
+
+At start of your first turn, read `docs/superpowers/AGENTS.md` if it exists. Apply documented patterns and pitfalls when decomposing tasks and setting acceptance criteria (e.g. if a pitfall warns against `Database.EnsureCreated()` in Program.cs, the migration task's criteria should forbid it). You may NEVER write to `docs/superpowers/AGENTS.md` — only the reviewer suggests, only the owner promotes.
+
 ## Read CLAUDE.md first
 
 Before running either skill, read the repo-root `CLAUDE.md` and parse its `team-superpower` block (use `bash ${CLAUDE_PLUGIN_ROOT}/scripts/parse-claudemd.sh extract` to dump the block; `... shape` to get the stack shape). The block tells you:

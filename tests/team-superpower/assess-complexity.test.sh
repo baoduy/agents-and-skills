@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PLUGIN_ROOT="$(cd "$(dirname "$0")/../../plugins/team-superpower" && pwd)"
 SCRIPT="$PLUGIN_ROOT/scripts/assess-complexity.sh"
 
 fail=0

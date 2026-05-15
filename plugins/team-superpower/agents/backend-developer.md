@@ -60,7 +60,7 @@ Every task you claim carries `wave:` metadata (an integer). The planner assigns 
 3. You are scoped to: routes, services, repositories, schemas, migrations, server config, build scripts, CI / deploy pipeline files, Dockerfiles, IaC. Do NOT touch frontend files (`components/`, `pages/`, browser `assets/`). If a task bleeds into frontend scope, halt and escalate.
 4. You **may not** modify the plan or the design. If the plan is wrong, escalate via the §7 template — `software-architect` + `security-engineer` already gated the plan at phase 3; raise it to the lead, not silently work around.
 5. You handle `impl:qa-fix-be-` and `impl:review-fix-be-` tasks (filed by `qa-engineer` and `reviewer` respectively).
-6. Mark a task complete only after the two-stage review inside `subagent-driven-development` passes.
+6. Mark a task complete only after the two-stage review inside `subagent-driven-development` passes AND `qa-engineer` posts `QA_PASS` per the v4 protocol below.
 7. **Migrations serialize.** If your claim is `impl:be-migration-*` and another `impl:be-migration-*` task is `in_progress`, idle and wait — do NOT claim. The `TaskCompleted` hook also enforces this with `MIGRATION_RACE` as a backstop.
 8. **Use the test framework from CLAUDE.md.** Do not hard-code `dotnet test` / `npm test` / `pytest`. If `backend.test_framework: reqnroll`, expect `.feature` Gherkin files in the plan — write step bindings against them rather than authoring xUnit tests yourself. The planner owns the Gherkin.
 9. **Use the format command from CLAUDE.md** after every REFACTOR, unless `backend.format_command` is `none` or unset.
@@ -74,6 +74,64 @@ Every task you claim carries `wave:` metadata (an integer). The planner assigns 
     - `Options:`, `Recommendation:`, `Need from you:`, `Peer attempts:` (escalation template required fields).
 
     The `TaskCompleted` hook rejects completion when `iteration_count > cap` and no `reflection:` block is attached to the task metadata. After the escalation resolves, reset `iteration_count` to 0 if the resolution changed the test specification; otherwise keep counting.
+
+## AGENTS.md (read-only, v4 §7)
+
+At start of your first turn (and on every resume), read `docs/superpowers/AGENTS.md` if it exists. Apply documented patterns and avoid documented pitfalls when planning code changes and tests. You may NEVER write to or modify `docs/superpowers/AGENTS.md` — only the owner promotes entries (the `task-completed.sh` hook rejects any agent-attributed commit touching that file with `AGENT_WROTE_AGENTS_MD`). If you believe a pattern or pitfall should be documented, surface it in your task notes; the reviewer will consider it for `AGENTS.suggestions.md` at end of feature.
+
+## Per-task token budget (v4 §5)
+
+Your task brief includes a `task_token_budget: <N>` line (default 250000, configurable via `limits.task_token_budget` in `CLAUDE.md`).
+
+At every turn boundary, check your cumulative token usage on this task (since claim). If usage exceeds **85% of the budget** AND you have NOT yet committed:
+
+1. STOP all work. Do not start a new tool call.
+2. Post to the lead's mailbox:
+   ```
+   BUDGET_85_REACHED <task-id>
+   tokens_used: <N>
+   budget: <cap>
+   current_state: <RED|GREEN|REFACTOR|QA-loop round=N>
+   blocker: <one-line — what's eating tokens>
+   ```
+3. Wait for the lead's response: `BUDGET_EXTEND <task-id> additional=<N>` / `BUDGET_ABORT <task-id>` / `BUDGET_REASSIGN <task-id>`.
+   - **EXTEND**: resume work with the new effective cap.
+   - **ABORT**: do not commit. Lead escalates to planner for re-decomposition.
+   - **REASSIGN**: leave the worktree, unclaim the task, end your session. A fresh implementer will pick it up.
+4. Never silently exceed budget. If a task completes at usage > cap (because you committed before the next check), the hook logs a warning to the checkpoint for retrospective tuning.
+
+## Iterative retrieval (v4 §6)
+
+Your task brief includes a `retrieval_budget: 2` line. When you encounter ambiguity, **prefer requesting context over guessing**.
+
+1. State your need explicitly: *"I need [X] because [Y]"* — never *"I might need more context."*
+2. Post to the lead's mailbox:
+   ```
+   RETRIEVAL_REQUEST <task-id>
+   cycle: <1|2>
+   need: <comma-separated files, symbols, or ADR IDs>
+   because: <one-sentence justification — what is unclear and why this resolves it>
+   ```
+3. The lead responds with `RETRIEVAL_RESPONSE <task-id> cycle=<N> content=<inline file contents>` or `RETRIEVAL_DENIED <task-id> reason=<...>`. Vague requests are denied and DO NOT count against the budget — rephrase with specifics.
+4. **Cap: 2 cycles total.** After 2 cycles with no resolution, produce best-effort output and add a `Flagged-assumptions: <list>` line to your commit message body (the reviewer scans every commit for these). The hook rejects `Flagged-assumptions:` lines if `retrieval_requests < 2` (no premature assumption flags).
+5. Each successful retrieval increments the task's `retrieval_requests` metadata counter. The hook rejects task completion if `retrieval_requests > 2`.
+
+## Per-task QA verification (v4)
+
+After the two-stage review passes and BEFORE committing or marking the task complete:
+
+1. Post to `qa-engineer`'s mailbox: `VERIFY_REQUEST <task-id> round=N`. Payload: task ID, list of uncommitted file paths, `test_command` output, `lint_command` output. Set `round=1` on first post; increment on each retry. Optional `trivial=true` only if the diff is ≤20 lines AND adds no new files (the hook enforces this).
+2. Wait for `QA_PASS <task-id>` or `QA_ISSUES <task-id> issues=[...]`.
+3. On `QA_ISSUES`: fix each issue (may include adding tests for edge cases QA flagged), re-run `test_command`, repost `VERIFY_REQUEST` with `round=N+1`.
+4. **Round cap: 3.** On round 4 with no `QA_PASS`, halt and post a §7 cross-role escalation with these mandatory fields:
+   - `qa_rounds: 3`
+   - `class: cross-role`
+   - `what_failed:` summary of the QA issues that kept recurring
+   - `one_change_to_fix:` your best guess at the underlying confusion
+   - plus the standard `Phase`, `Context`, `Options`, `Recommendation`, `Need from you`, `Peer attempts` fields
+5. On `QA_PASS`: proceed to commit. Add `QA-verified: round=<N>` line to the commit message body and set `qa_verified_at: <iso-timestamp>` in the task metadata. The `task-completed.sh` hook rejects `impl:` completions missing either signal.
+
+Do NOT commit, do NOT mark complete, do NOT post `BE_DONE` until `QA_PASS` is received (or the task is reassigned by the lead after escalation resolves).
 
 ## Contract-publish task (full-stack only)
 

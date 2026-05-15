@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { render } from '../scripts/mustache.js';
+import { render } from '../../plugins/html-effectiveness/scripts/mustache.js';
 
 test('renders bare variable, escaped by default', () => {
   assert.equal(render('Hello {{name}}', { name: 'World' }), 'Hello World');

@@ -97,6 +97,165 @@ case "$title" in
     ;;
 esac
 
+# v4: per-task QA verification. impl:* completions must carry
+# `qa_verified_at:` metadata AND a `QA-verified: round=N` line in at least one
+# commit message body (N ≤ max_qa_rounds_per_task, default 3). The hook also
+# rejects `trivial=true` claims for diffs >20 lines or new-file additions, and
+# rejects `qa_rounds: 3` escalations missing the cross-role fields.
+case "$title" in
+  impl:*)
+    qa_verified_at="$(printf '%s' "$payload" | jq -r '.task.metadata.qa_verified_at // .metadata.qa_verified_at // ""' 2>/dev/null || echo "")"
+    qa_rounds="$(printf '%s' "$payload" | jq -r '.task.metadata.qa_rounds // .metadata.qa_rounds // 0' 2>/dev/null || echo 0)"
+    trivial_claim="$(printf '%s' "$payload" | jq -r '.task.metadata.trivial // .metadata.trivial // false' 2>/dev/null || echo false)"
+
+    qa_cap=3
+    if [ -f "$parse_helper" ] && [ -f "${CLAUDE_PROJECT_DIR:-$PWD}/CLAUDE.md" ]; then
+      configured_qa="$(bash "$parse_helper" get limits.max_qa_rounds_per_task "${CLAUDE_PROJECT_DIR:-$PWD}/CLAUDE.md" 2>/dev/null || true)"
+      if [ -n "$configured_qa" ] && printf '%s' "$configured_qa" | grep -qE '^[0-9]+$'; then
+        qa_cap="$configured_qa"
+      fi
+    fi
+
+    # Check 7a: qa_verified_at metadata present.
+    if [ -z "$qa_verified_at" ]; then
+      printf '{"ts":"%s","hook":"task-completed","warn":"MISSING_QA_VERIFICATION","title":%s,"reason":"qa_verified_at metadata missing"}\n' \
+        "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    fi
+
+    # Check 7b: QA-verified: round=N commit body line, verified via git log if commits recorded.
+    if command -v git >/dev/null 2>&1; then
+      qa_commits="$(printf '%s' "$payload" | jq -r '(.task.metadata.commits // .metadata.commits // [])[]?' 2>/dev/null || true)"
+      if [ -n "$qa_commits" ]; then
+        qa_line_found=0
+        qa_round_observed=0
+        while IFS= read -r sha; do
+          [ -z "$sha" ] && continue
+          body="$(git show --no-color --no-patch --format=%B "$sha" 2>/dev/null || true)"
+          line="$(printf '%s\n' "$body" | grep -E '^QA-verified:[[:space:]]*round=[0-9]+' | head -n1 || true)"
+          if [ -n "$line" ]; then
+            qa_line_found=1
+            n="$(printf '%s' "$line" | sed -nE 's/^QA-verified:[[:space:]]*round=([0-9]+).*/\1/p')"
+            if [ -n "$n" ] && [ "$n" -gt "$qa_round_observed" ]; then
+              qa_round_observed="$n"
+            fi
+          fi
+        done <<< "$qa_commits"
+        if [ "$qa_line_found" -ne 1 ]; then
+          printf '{"ts":"%s","hook":"task-completed","warn":"MISSING_QA_VERIFICATION","title":%s,"reason":"no QA-verified line in commit body"}\n' \
+            "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+        elif [ "$qa_round_observed" -gt "$qa_cap" ]; then
+          printf '{"ts":"%s","hook":"task-completed","warn":"QA_ROUND_OVER_CAP","title":%s,"round":%d,"cap":%d}\n' \
+            "$ts" "$(printf '%s' "$title" | jq -Rs .)" "$qa_round_observed" "$qa_cap" >> "$LOG_FILE"
+        fi
+      fi
+    fi
+
+    # Check 8: qa_rounds at cap requires §7 cross-role escalation.
+    if [ "${qa_rounds:-0}" -ge "$qa_cap" ] && [ -z "$qa_verified_at" ]; then
+      # An escalation entry tagged class:cross-role with qa_rounds, what_failed, one_change_to_fix must be present.
+      escalation_ok=0
+      escalation_entries="$(printf '%s' "$payload" | jq -c '(.task.metadata.blocked_questions // .metadata.blocked_questions // [])[]?' 2>/dev/null || true)"
+      if [ -n "$escalation_entries" ]; then
+        while IFS= read -r entry; do
+          [ -z "$entry" ] && continue
+          raw="$(printf '%s' "$entry" | jq -r '.' 2>/dev/null || printf '%s' "$entry")"
+          if printf '%s' "$raw" | grep -qE 'class[[:space:]]*:[[:space:]]*cross-role' \
+            && printf '%s' "$raw" | grep -qE 'qa_rounds[[:space:]]*:' \
+            && printf '%s' "$raw" | grep -qE 'what_failed[[:space:]]*:' \
+            && printf '%s' "$raw" | grep -qE 'one_change_to_fix[[:space:]]*:'; then
+            escalation_ok=1
+            break
+          fi
+        done <<< "$escalation_entries"
+      fi
+      if [ "$escalation_ok" -ne 1 ]; then
+        printf '{"ts":"%s","hook":"task-completed","warn":"QA_CAP_EXCEEDED","title":%s,"qa_rounds":%d,"cap":%d}\n' \
+          "$ts" "$(printf '%s' "$title" | jq -Rs .)" "$qa_rounds" "$qa_cap" >> "$LOG_FILE"
+      fi
+    fi
+
+    # Pre-check: INVALID_TRIVIAL_CLAIM — trivial=true requires diff ≤20 lines AND no new files.
+    if [ "$trivial_claim" = "true" ] && command -v git >/dev/null 2>&1; then
+      tc_commits="$(printf '%s' "$payload" | jq -r '(.task.metadata.commits // .metadata.commits // [])[]?' 2>/dev/null || true)"
+      tc_added=0
+      tc_lines=0
+      if [ -n "$tc_commits" ]; then
+        while IFS= read -r sha; do
+          [ -z "$sha" ] && continue
+          st="$(git show --no-color --name-status --pretty=format: "$sha" 2>/dev/null || true)"
+          if printf '%s\n' "$st" | grep -qE '^A[[:space:]]'; then
+            tc_added=1
+          fi
+          n="$(git show --no-color --shortstat --pretty=format: "$sha" 2>/dev/null | grep -oE '[0-9]+ insertion' | head -n1 | grep -oE '[0-9]+' || echo 0)"
+          tc_lines=$((tc_lines + ${n:-0}))
+        done <<< "$tc_commits"
+        if [ "$tc_added" -eq 1 ] || [ "$tc_lines" -gt 20 ]; then
+          printf '{"ts":"%s","hook":"task-completed","warn":"INVALID_TRIVIAL_CLAIM","title":%s,"added_files":%d,"insertions":%d}\n' \
+            "$ts" "$(printf '%s' "$title" | jq -Rs .)" "$tc_added" "$tc_lines" >> "$LOG_FILE"
+        fi
+      fi
+    fi
+    ;;
+esac
+
+# v4: retrieval budget. impl:* tasks may not exceed `retrieval_budget_per_task`
+# (default 2). Also: a `Flagged-assumptions:` line in a commit body is only
+# permitted when retrieval_requests == budget (cannot flag assumptions
+# prematurely without exhausting the budget).
+case "$title" in
+  impl:*)
+    retrieval_requests="$(printf '%s' "$payload" | jq -r '.task.metadata.retrieval_requests // .metadata.retrieval_requests // 0' 2>/dev/null || echo 0)"
+    retrieval_cap=2
+    if [ -f "$parse_helper" ] && [ -f "${CLAUDE_PROJECT_DIR:-$PWD}/CLAUDE.md" ]; then
+      configured_r="$(bash "$parse_helper" get limits.retrieval_budget_per_task "${CLAUDE_PROJECT_DIR:-$PWD}/CLAUDE.md" 2>/dev/null || true)"
+      if [ -n "$configured_r" ] && printf '%s' "$configured_r" | grep -qE '^[0-9]+$'; then
+        retrieval_cap="$configured_r"
+      fi
+    fi
+
+    if [ "${retrieval_requests:-0}" -gt "$retrieval_cap" ]; then
+      printf '{"ts":"%s","hook":"task-completed","warn":"RETRIEVAL_BUDGET_EXCEEDED","title":%s,"requests":%d,"cap":%d}\n' \
+        "$ts" "$(printf '%s' "$title" | jq -Rs .)" "$retrieval_requests" "$retrieval_cap" >> "$LOG_FILE"
+    fi
+
+    if command -v git >/dev/null 2>&1; then
+      r_commits="$(printf '%s' "$payload" | jq -r '(.task.metadata.commits // .metadata.commits // [])[]?' 2>/dev/null || true)"
+      if [ -n "$r_commits" ]; then
+        flagged=0
+        while IFS= read -r sha; do
+          [ -z "$sha" ] && continue
+          body="$(git show --no-color --no-patch --format=%B "$sha" 2>/dev/null || true)"
+          if printf '%s\n' "$body" | grep -qE '^Flagged-assumptions:'; then
+            flagged=1; break
+          fi
+        done <<< "$r_commits"
+        if [ "$flagged" -eq 1 ] && [ "${retrieval_requests:-0}" -lt "$retrieval_cap" ]; then
+          printf '{"ts":"%s","hook":"task-completed","warn":"PREMATURE_ASSUMPTION_FLAG","title":%s,"requests":%d,"cap":%d}\n' \
+            "$ts" "$(printf '%s' "$title" | jq -Rs .)" "$retrieval_requests" "$retrieval_cap" >> "$LOG_FILE"
+        fi
+      fi
+    fi
+    ;;
+esac
+
+# v4: AGENTS.md protection. Agents never write to docs/superpowers/AGENTS.md.
+# Reviewer writes only to docs/superpowers/AGENTS.suggestions.md. If any commit
+# on this task touches AGENTS.md, warn AGENT_WROTE_AGENTS_MD — the owner is the
+# only role that may promote suggestions to AGENTS.md.
+if command -v git >/dev/null 2>&1; then
+  agm_commits="$(printf '%s' "$payload" | jq -r '(.task.metadata.commits // .metadata.commits // [])[]?' 2>/dev/null || true)"
+  if [ -n "$agm_commits" ]; then
+    while IFS= read -r sha; do
+      [ -z "$sha" ] && continue
+      files="$(git show --no-color --name-only --pretty=format: "$sha" 2>/dev/null || true)"
+      if printf '%s\n' "$files" | grep -qE '^docs/superpowers/AGENTS\.md$'; then
+        printf '{"ts":"%s","hook":"task-completed","warn":"AGENT_WROTE_AGENTS_MD","title":%s,"sha":%s}\n' \
+          "$ts" "$(printf '%s' "$title" | jq -Rs .)" "$(printf '%s' "$sha" | jq -Rs .)" >> "$LOG_FILE"
+      fi
+    done <<< "$agm_commits"
+  fi
+fi
+
 # v2: migration serialization. If this is a migration task, verify no other
 # `impl:be-migration-*` task is currently in_progress in the shared task list
 # (payload.tasks[]). The lead also enforces this; the hook is a backstop.

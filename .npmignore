@@ -8,6 +8,7 @@ node_modules
 .vscode
 .idea
 docs
+tests
 CLAUDE.md
 AGENTS.md
 CONTRIBUTING.md
