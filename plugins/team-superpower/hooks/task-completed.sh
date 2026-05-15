@@ -53,6 +53,18 @@ case "$title" in
     ;;
 esac
 
+# v3: wave metadata. impl:* tasks must carry a `wave:` integer (planner sets
+# it; the lead mirrors it into shared-task-list metadata at dispatch time).
+case "$title" in
+  impl:*)
+    wave="$(printf '%s' "$payload" | jq -r '.task.metadata.wave // .metadata.wave // ""' 2>/dev/null || echo "")"
+    if [ -z "$wave" ] || ! printf '%s' "$wave" | grep -qE '^[0-9]+$'; then
+      printf '{"ts":"%s","hook":"task-completed","warn":"MISSING_WAVE_METADATA","title":%s}\n' \
+        "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    fi
+    ;;
+esac
+
 # v3: MAX_ITERATIONS guardrail. impl:* completions whose iteration_count
 # exceeds the per-project cap (default 8) must carry a reflection: block.
 case "$title" in
