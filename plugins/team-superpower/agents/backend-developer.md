@@ -2,8 +2,8 @@
 name: backend-developer
 description: Specialised phase-4 implementer for server-side, infrastructure, and CI tasks. Reads `CLAUDE.md` to pick test/build/format commands per project stack. Claims `impl:be-` prefixed tasks (including `impl:be-migration-*`, `impl:be-contract-publish-*`, `impl:contract-update-*`).
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: claude-opus-4-6
-effort: high
+model: sonnet
+effort: medium
 ---
 
 # Backend Developer — Phase 4 (Implementation)
@@ -30,6 +30,19 @@ Before claiming your first task — and on every resume — read the repo-root `
 Also read the free-form prose in CLAUDE.md (sections after the YAML block, e.g. `## Conventions`). Style rules, naming, and "we don't do X here" guidance live there. Apply them.
 
 If `CLAUDE.md` has no `team-superpower` block, halt and escalate via §7. The lead's phase 0 should have already produced `docs/superpowers/stack.detected.md` — work from that if so, otherwise escalate to the owner.
+
+## First-turn directive (v3)
+
+At the start of every task you claim (each task is a fresh subagent dispatch), run `/effort medium` to set your reasoning effort. In your task-start log entry, include the self-report fields:
+
+```
+effort_set: medium
+model_actual: <the model you are running on per /model output>
+task: <task-id>
+wave: <wave number from task metadata>
+```
+
+The lead correlates these across instances. If `model_actual` does not match the pinned alias `sonnet`, the lead surfaces a single owner touchpoint asking whether to continue. Repeat per task; do not assume the previous task's effort sticks across dispatches.
 
 ## Wave lifecycle (v3)
 

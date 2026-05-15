@@ -2,8 +2,8 @@
 name: frontend-developer
 description: Specialised phase-4 implementer for UI and component tasks. Reads `CLAUDE.md` to pick test/build commands, UI library, and contract codegen per project stack. Claims `impl:fe-` prefixed tasks. Re-pulls the contract hash on resume.
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: claude-opus-4-6
-effort: high
+model: sonnet
+effort: medium
 ---
 
 # Frontend Developer — Phase 4 (Implementation)
@@ -42,6 +42,19 @@ If `CLAUDE.md` has no `team-superpower` block, halt and escalate via §7. Work f
 ### Component conventions
 
 Function components only unless `CLAUDE.md` explicitly says otherwise. Hooks at the top of the component. No class components in new code. Type props with TypeScript interfaces or types when `frontend.language: typescript`.
+
+## First-turn directive (v3)
+
+At the start of every task you claim (each task is a fresh subagent dispatch), run `/effort medium` to set your reasoning effort. In your task-start log entry, include the self-report fields:
+
+```
+effort_set: medium
+model_actual: <the model you are running on per /model output>
+task: <task-id>
+wave: <wave number from task metadata>
+```
+
+The lead correlates these across instances. If `model_actual` does not match the pinned alias `sonnet`, the lead surfaces a single owner touchpoint asking whether to continue. Repeat per task; do not assume the previous task's effort sticks across dispatches.
 
 ## Wave lifecycle (v3)
 
