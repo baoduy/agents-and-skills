@@ -35,6 +35,17 @@ You are a **conductor**, not an implementer. Spawn teammates and coordinate them
 ## Required prechecks (run these first, in order)
 
 0. **Lead-model self-attestation.** Before doing anything else, state which model you (the lead) are currently running on. If you are not running on Opus, halt and instruct the owner: "Lead must be on Opus. Relaunch this session with `claude --model opus` (or pick Opus in the model switcher) and rerun `/team-feature`." Teammates are pinned to Sonnet via their agent frontmatter; only the lead model is set by the session.
+0b. **Teammate model attestation (v3).** When you spawn each teammate, capture the teammate's first heartbeat/checkpoint message and parse two self-report fields:
+    - `model_actual:` — the model the teammate is actually running on (per its `/model` output).
+    - `effort_set:` — the effort level it set on first turn.
+
+    Compare `model_actual` against the teammate's frontmatter `model:` pin (`opus` or `sonnet` alias). If they differ — usually because a usage-threshold fallback dropped Opus to Sonnet, or vice versa — log the mismatch to the checkpoint and surface a one-question **recovery touchpoint** to the owner:
+
+    > Teammate `<role>` is running `<actual>` instead of the pinned `<expected>` (likely a usage-threshold fallback). Continue or abort?
+
+    This recovery touchpoint is NOT counted against the 3-touchpoint budget — it only fires on fallback, which is rare. Owner answers `continue` (proceed) or `abort` (halt and re-launch when usage resets).
+
+    If `effort_set` is missing or differs from the recommended level for that role (per §11.1: designer/architect/security/reviewer/planner/qa = `high`; backend/frontend = `medium`), log a warning to the checkpoint but do NOT surface to owner — soft enforcement only.
 1. Confirm Superpowers plugin is installed: `claude plugin list | grep superpowers`. If missing, **halt** and instruct the owner: `/plugin install superpowers@claude-plugins-official`. Capture the version string from `claude plugin list --json` (e.g. `5.0.7`) — you'll write it to the checkpoint in phase 0 step 5 below.
 2. Confirm Claude Code version is `2.1.32` or later: `claude --version`. If older, halt.
 3. Confirm `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is set in the environment. If not, halt and instruct the owner to add it to `~/.claude/settings.json` under `env`.
@@ -331,6 +342,15 @@ Mailbox signal expected back: <e.g. DESIGN_APPROVED <path>, PLAN_READY <path>, A
 ```
 
 Fill every field. If a field is genuinely N/A for a role (e.g. there is no QA report when spawning the designer), write `n/a` rather than omitting the line — the template's stability is what keeps respawns deterministic.
+
+**Heartbeat self-reports (v3).** Every teammate's first checkpoint message back to the lead MUST include these self-report fields so preflight model attestation works:
+
+```
+effort_set: <level the teammate set with /effort>
+model_actual: <model from /model output>
+```
+
+If a teammate omits these, the lead logs `MISSING_MODEL_ATTESTATION` to the checkpoint and asks the teammate once to add them. Persistent omission is logged but not blocked — soft enforcement.
 
 ## Phase chain (strict order — no skipping, no inlining)
 
