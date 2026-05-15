@@ -119,6 +119,20 @@ The `TaskCreated` hook reads this marker to enforce shape-appropriate `impl:` su
 
 Spawning happens at phase boundaries (you don't spawn implementers until phase 4 starts; you don't spawn the reviewer until phase 6) — this section just decides which teammates the team will EVER spawn for this feature. Record the list in the checkpoint.
 
+### 0.5b — Scaffold AGENTS.md (v4 §7)
+
+Check for `docs/superpowers/AGENTS.md`. If it does NOT exist, create it from the asset template:
+
+```bash
+if [ ! -f docs/superpowers/AGENTS.md ]; then
+  mkdir -p docs/superpowers
+  cp "${CLAUDE_PLUGIN_ROOT}/assets/AGENTS.md.template" docs/superpowers/AGENTS.md
+  git add docs/superpowers/AGENTS.md
+fi
+```
+
+If the file already exists, leave it untouched — `AGENTS.md` is owner-curated; you NEVER overwrite it. The template stub has empty sections that the reviewer suggests filling via `AGENTS.suggestions.md` at end of feature.
+
 ### 0.6 — Pin the Superpowers version
 
 Read the installed Superpowers version (from precheck step 1) and write it to the checkpoint frontmatter. This pins the skill-set for this feature. `/team-feature-resume` reads it back and refuses to continue if the installed version has drifted.
@@ -609,6 +623,49 @@ Heartbeat at phase boundaries is not enough — a teammate can hang silently mid
 The watchdog is **not** an owner touchpoint by itself — pinging the teammate is internal. Escalation step 3 is what reaches the owner, and only via the §7 template (so it doesn't count against the 3 allowed touchpoints either).
 
 Reset the watchdog on every received mailbox message and every task transition. Touch the heartbeat each time you reset.
+
+## v4 mailbox handlers (per-task QA, token budget, retrieval)
+
+These handlers run inside your normal mailbox-processing loop. They are non-touchpoint by construction — handle inline, never page the owner.
+
+### Handler: `BUDGET_85_REACHED <task-id> tokens=<used>/<cap> current_state=<...> blocker=<...>`
+
+Decision matrix:
+
+- If `current_state` is `QA-loop round=2`, `QA-loop round=3`, or `REFACTOR` → respond `BUDGET_EXTEND <task-id> additional=50000` (close to completion, worth extending).
+- If `blocker` mentions "task scope larger than estimated" / "scope" / "decomposition" → respond `BUDGET_ABORT <task-id>` and post `TASK_OVERSCOPED <task-id>` to the planner for re-decomposition.
+- If `current_state` is `RED` or `GREEN` and `tokens > 200000` (mostly exploration with no clear completion path) → respond `BUDGET_REASSIGN <task-id>` (kill, unclaim, let a fresh implementer try).
+- Otherwise respond `BUDGET_EXTEND <task-id> additional=50000` and log a warning to the checkpoint for retrospective tuning.
+
+Increment the task's `task_token_budget` metadata by `additional` on EXTEND so subsequent 85% checks use the new ceiling.
+
+### Handler: `RETRIEVAL_REQUEST <task-id> cycle=<N> need=<...> because=<...>`
+
+Steps:
+
+1. Validate `because` clause is specific. Reject vague phrasings (matches: "might need", "more context", "to be safe", "in case", "not sure if"). If vague → respond `RETRIEVAL_DENIED <task-id> reason="be specific — what exactly and why?"`. Vague rejections DO NOT count against the budget.
+2. Validate `cycle ≤ 2`. If exceeded → respond `RETRIEVAL_DENIED <task-id> reason="budget exhausted, produce best-effort with Flagged-assumptions:"`.
+3. Locate the requested files / symbols / ADR contents. Read them with `Read` tool.
+4. Respond `RETRIEVAL_RESPONSE <task-id> cycle=<N> content=<inline file contents>`.
+5. Increment the task's `retrieval_requests` metadata counter (this is the value the hook checks against the cap).
+
+### Handler: AGENTS.md suggestions (post-`REVIEW_PASSED`)
+
+After `reviewer` posts `REVIEW_PASSED`, check `docs/superpowers/AGENTS.suggestions.md`:
+
+1. Count the `## Candidate <N>` entries (if any).
+2. Read the `## Stale entries to remove` section; count its non-empty bullets.
+3. When you compose the owner's finish notification (in phase 7 after `FINISH_DONE`), include:
+   ```
+   📝 Reviewer suggested <N> lessons for AGENTS.md<and flagged <M> stale entry|stale entries> — see docs/superpowers/AGENTS.suggestions.md
+   ```
+   Show the line only when N > 0 or M > 0. Omit entirely otherwise.
+
+Never auto-promote a candidate to `AGENTS.md` — the owner is the only role that may promote entries. The hook backstops this (`AGENT_WROTE_AGENTS_MD`).
+
+### Handler: `VERIFY_REQUEST <task-id> round=<N>` (lead is a passthrough)
+
+You do NOT process `VERIFY_REQUEST` messages yourself — they are addressed to `qa-engineer`. If a message accidentally lands in your queue, forward it to `qa-engineer` and log a routing warning. Only QA responses (`QA_PASS` / `QA_ISSUES`) flow back to implementers without your involvement; you track `qa_rounds` from the §7 escalations only.
 
 ## Owner touchpoints (the ONLY allowed pings to the owner)
 

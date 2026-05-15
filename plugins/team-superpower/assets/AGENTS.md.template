@@ -1,0 +1,23 @@
+# Agent Team Learnings
+
+This file accumulates lessons from completed features. **Every line is approved by the project owner.**
+
+Agents READ this file at the start of each feature; agents NEVER WRITE to this file directly. Suggestions from the reviewer arrive in `AGENTS.suggestions.md` for owner review — copy-paste approved entries here manually.
+
+The `task-completed.sh` hook warns `AGENT_WROTE_AGENTS_MD` if any agent commit modifies this file. The reviewer is the only role that may suggest entries (via `AGENTS.suggestions.md`); the owner is the only role that may promote them.
+
+## Proven Patterns
+<!-- Patterns that worked well in this codebase. -->
+- (empty on first run)
+
+## Pitfalls
+<!-- Things that broke in past features. Avoid them. -->
+- (empty on first run)
+
+## Style
+<!-- Project-specific style and convention rules beyond what CLAUDE.md captures. -->
+- (empty on first run)
+
+## Stale entries to remove
+<!-- Reviewer flags entries here at start of feature if they contradict current design. -->
+- (empty on first run)
