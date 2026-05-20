@@ -9,11 +9,11 @@ This plugin is *not* a fork of Superpowers. It consumes Superpowers skills
 as-installed and adds the orchestration: who runs which skill, when, and how
 teammates talk without bothering the owner.
 
-## Overview (v5)
+## Overview (v6)
 
 team-superpower runs **one Agent Teams team** per feature across all phases.
-The lead (orchestrator) is the sole spawner; a coordinating teammate
-(team-leader) requests spawns via `SPAWN_REQUEST`.
+The main session is the sole spawner; a coordinating teammate (team-leader)
+requests spawns via `SPAWN_REQUEST`.
 
 **Modes:**
 
@@ -52,13 +52,14 @@ security-engineer is only spawned when `security.domain ∈
 - Two slash commands: `/team-feature` and `/team-cleanup`. There is **no
   separate resume command in v5** — `/team-feature` auto-detects in-progress
   features.
-- **Eight agent roles**, each with a tightly-scoped system prompt:
+- **Seven agent roles** (v6 — the main session itself runs the lifecycle),
+  each with a tightly-scoped system prompt:
 
 ## Agents
 
 | Agent | Lifetime | Role |
 |---|---|---|
-| `orchestrator` | Whole feature | Lead session; sole spawner; SPAWN_REQUEST + RESTART_REQUEST handler; cleanup + push. |
+| _main session_ (the `/team-feature` invocation itself) | Whole feature | Sole spawner; mode pick, TeamCreate, SPAWN_REQUEST + RESTART_REQUEST handler, cleanup + push. |
 | `solution-architect` | Phase A only | Spec + arch-map. |
 | `feature-planner` | Phase A only | Plan (plan-phase grouped, waves). |
 | `security-engineer` | Phase A only (regulated domains only) | Regulatory + threat-model review. |
@@ -89,10 +90,10 @@ security-engineer is only spawned when `security.domain ∈
   - **Heartbeat file** at `docs/superpowers/sessions/<slug>.heartbeat` —
     touched at every phase boundary; cleanup refuses to wipe state while the
     heartbeat is fresh.
-  - **Automatic cleanup after `FINISH_DONE`** — the lead verifies all phases
-    complete, all commits in place, teammates idle, then runs the canonical
-    "clean up the team" primitive followed by a verification scan.
-  - **`/team-cleanup [slug]`** for the case where a previous lead crashed.
+  - **Automatic cleanup after `FINISH_DONE`** — the main session verifies all
+    phases complete, all commits in place, teammates idle, then runs the
+    canonical "clean up the team" primitive followed by a verification scan.
+  - **`/team-cleanup [slug]`** for the case where a previous main session crashed.
 - Templates seeded into your project on first use:
   `docs/superpowers/ESCALATION.md` (template + three worked examples),
   `docs/superpowers/README.md` (onboarding + troubleshooting), and
@@ -105,7 +106,7 @@ security-engineer is only spawned when `security.domain ∈
 | A — Analysis | `solution-architect` + `feature-planner` [+ `security-engineer`] | Spec, arch-map, plan, handover | Spec sign-off + plan approval (2 touchpoints) |
 | B–F — Implementation (one per plan-phase) | `team-leader` + `backend-developer` / `frontend-developer` | TDD commits per wave + phase-end leader review | `PHASE_COMPLETE` per plan-phase |
 | G — End-of-plan QC | `qc-engineer` | `<date>-<slug>-qc-report.md` | `QC_PASS` (max 3 rework rounds) |
-| H — Finish | `orchestrator` | Push + merge/PR/keep/discard | Owner decision (finish touchpoint) |
+| H — Finish | _main session_ | Push + merge/PR/keep/discard | Owner decision (finish touchpoint) |
 
 ## Requirements
 
@@ -220,7 +221,6 @@ plugins/team-superpower/
 ├── .claude-plugin/plugin.json
 ├── README.md
 ├── agents/
-│   ├── orchestrator.md
 │   ├── solution-architect.md
 │   ├── feature-planner.md
 │   ├── security-engineer.md
@@ -229,7 +229,7 @@ plugins/team-superpower/
 │   ├── frontend-developer.md
 │   └── qc-engineer.md
 ├── commands/
-│   ├── team-feature.md          # v5 single-team lifecycle + auto-resume
+│   ├── team-feature.md          # v6 single-session lifecycle + auto-resume
 │   └── team-cleanup.md
 ├── hooks/
 │   ├── hooks.json
@@ -259,7 +259,7 @@ owner. Every clarification is classified into one of three classes —
   reply → log + proceed; no consensus → escalate citing attempts.
 - **Architectural** — implementers send `ESCALATE class=architectural` to
   team-leader. If team-leader cannot resolve from arch-map, team-leader posts
-  `RESTART_REQUEST` to the orchestrator (recovery touchpoint, not counted
+  `RESTART_REQUEST` to the main session (recovery touchpoint, not counted
   against the 3-budget).
 
 Per-role rubrics live in each agent file under `agents/<role>.md`.

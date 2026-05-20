@@ -4,7 +4,7 @@
 # Reads the hook event payload from stdin. Expected JSON fields:
 #   - mailbox: array of { from, kind, replied, ... } — recent SendMessage history
 #   - teammate: string (the idling teammate's role; one of
-#       orchestrator | team-leader | solution-architect | feature-planner |
+#       team-leader | solution-architect | feature-planner |
 #       security-engineer | backend-developer | frontend-developer | qc-engineer)
 #
 # v5 behaviour: routing depends on role.
@@ -16,7 +16,7 @@
 #
 #   team-leader:
 #     - block if SPAWN_REQUEST or RESTART_REQUEST has no SPAWN_DONE / RESTART_DONE
-#       reply from lead/orchestrator within heartbeat (must keep coordinating)
+#       reply from the main session within heartbeat (must keep coordinating)
 #     - block if any unanswered ESCALATE from an implementer (must route)
 #     - otherwise advisory tick
 #
@@ -26,12 +26,11 @@
 #
 #   solution-architect / feature-planner / security-engineer (phase A roles):
 #     - block if owner sign-off touchpoint message has no reply yet
-#     - otherwise advisory tick (shutdown is owner-driven via lead)
+#     - otherwise advisory tick (shutdown is owner-driven via the main session)
 #
-#   orchestrator (lead):
-#     - block if any unanswered SPAWN_REQUEST / RESTART_REQUEST inbound from
-#       team-leader (lead is the single spawner)
-#     - otherwise advisory tick (lead drives owner touchpoints separately)
+# v6 note: the lifecycle owner is the main session (the `/team-feature`
+# invocation itself), not a spawned coordinator teammate. The main session
+# is owner-visible by construction, so there is no orphan-main detection branch.
 #
 # Logs every invocation to .claude/hooks/log.jsonl in the project root for tuning.
 
@@ -112,12 +111,6 @@ case "$teammate" in
     handover_pending="$(count_outbound_unanswered_kind 'HANDOVER_READY|SEC_PASSED|SEC_BLOCKED')"
     if [ "${handover_pending:-0}" -gt 0 ]; then
       warn="BLOCKED_IDLE_phaseA_awaiting_owner_signoff"
-    fi
-    ;;
-  orchestrator)
-    lead_inbound_pending="$(count_unanswered_from '^team-leader$')"
-    if [ "${lead_inbound_pending:-0}" -gt 0 ]; then
-      warn="BLOCKED_IDLE_orchestrator_unhandled_team-leader_request"
     fi
     ;;
   "")

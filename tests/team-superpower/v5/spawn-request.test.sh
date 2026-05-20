@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# v5 spawn-request brief-format test.
-# Validates the shape a team-leader spawn brief MUST have so the orchestrator
+# v6 spawn-request brief-format test.
+# Validates the shape a team-leader spawn brief MUST have so the main session
 # can TaskCreate from it: one block per task, each with the required fields.
 set -euo pipefail
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# v5 resume-detect smoke test.
-# Mirrors the orchestrator's auto-resume scan: a handover without a
+# v6 resume-detect smoke test.
+# Mirrors the main session's auto-resume scan: a handover without a
 # matching qc-report signals an in-flight feature to resume.
 set -euo pipefail
 
