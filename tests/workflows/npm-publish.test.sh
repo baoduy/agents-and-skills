@@ -20,7 +20,8 @@ assert publish, "Publish to npm step not found"
 
 body = publish.group("body")
 assert "if: steps.flag.outputs.enable == 'true'" in body, "Publish step must honor release flag"
-assert "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}" in body, "Publish step must use secrets.NPM_TOKEN"
+assert "npm publish --provenance --access public" in body, "Publish step must use trusted publishing provenance"
+assert "NODE_AUTH_TOKEN" not in body, "Publish step should not require npm token when using trusted publishing"
 
 release_idx = text.index("- name: Create GitHub Release")
 publish_idx = text.index("- name: Publish to npm")
