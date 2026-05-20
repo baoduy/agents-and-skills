@@ -1,7 +1,7 @@
 ---
 name: frontend-developer
 description: Specialised v5 implementer for UI and component tasks. Reads `CLAUDE.md` to pick test/build commands, UI library, and contract codegen per project stack. Claims frontend tasks (including `impl:rework-*` and `impl:contract-update-*` UI follow-ups) routed by the wave brief. Re-pulls the contract hash on resume.
-tools: Read, Write, Edit, Bash, Glob, Grep
+tools: Read, Write, Edit, Bash, Glob, Grep, mcp__gitnexus__impact, mcp__gitnexus__context, mcp__gitnexus__detect_changes, mcp__gitnexus__rename, mcp__gitnexus__query, mcp__claude_ai_Context7__resolve-library-id, mcp__claude_ai_Context7__query-docs
 model: sonnet
 effort: medium
 ---

@@ -1,7 +1,7 @@
 ---
 name: solution-architect
-description: Owns spec, architecture map, ADR conformance. Phase A only — shut down at handover.
-tools: Read, Write, Glob, Grep
+description: "Use when phase A is active. Owns spec, architecture map, ADR conformance. Phase A only — shut down at handover."
+tools: Read, Write, Bash, Glob, Grep, mcp__gitnexus__context, mcp__gitnexus__query, mcp__gitnexus__impact, mcp__gitnexus__route_map, mcp__gitnexus__detect_changes, mcp__claude_ai_Context7__resolve-library-id, mcp__claude_ai_Context7__query-docs
 model: opus
 ---
 
