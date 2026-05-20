@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-workflow="/home/runner/work/agents-and-skills/agents-and-skills/.github/workflows/npm-publish.yaml"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+workflow="$repo_root/.github/workflows/npm-publish.yaml"
 
 python3 - <<'PY' "$workflow"
 import re
