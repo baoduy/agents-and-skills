@@ -1,6 +1,8 @@
 # Agent Team — Flow by Work Type (v5, Agent-Teams-native)
 
-Three modes the orchestrator picks **automatically** from your launch message.
+> **DEPRECATED (2026-05-20).** Superseded by the v6 single-session lifecycle, which collapses the `orchestrator` teammate into the `/team-feature` main session. See `docs/superpowers/specs/2026-05-20-team-superpower-v6-collapse-orchestrator-design.md`. Historical reference only.
+
+Three modes the main session picks **automatically** from your launch message.
 Owner touchpoints are marked 👤.
 
 **v5 touchpoint policy:**

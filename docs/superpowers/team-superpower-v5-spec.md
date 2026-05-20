@@ -1,5 +1,8 @@
 # Spec: team-superpower v5 (Agent-Teams-native)
 
+> **DEPRECATED (2026-05-20).** Superseded by the v6 single-session lifecycle, which collapses the `orchestrator` teammate into the `/team-feature` main session. See `docs/superpowers/specs/2026-05-20-team-superpower-v6-collapse-orchestrator-design.md` for current behaviour. Historical reference only — do not implement against this document.
+
+
 **Owner:** Steven
 **Date:** 2026-05-12 (amended 2026-05-20 for Claude Code Agent Teams platform fit)
 **Status:** Ready for implementation
