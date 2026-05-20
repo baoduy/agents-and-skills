@@ -54,24 +54,24 @@ Write `docs/superpowers/reviews/YYYY-MM-DD-<slug>-qc-report.md` per spec §7.2 t
 ## Flagged assumptions
 - [✓] Assumption "RBAC uses Admin role" verified against ADR-0017.
 
-## Issues for orchestrator
+## Issues for main session
 <one block per blocking issue>
 ```
 
 ## On blocking issues (spec §7.3)
 
 1. For each blocking issue, TaskCreate with prefix `impl:rework-qc-<topic>` and body: violation desc + remediation guidance. Include `wave: qc-rework` and `Reworks: qc-issue-<n>` lines for hooks.
-2. Post `QC_REWORK_NEEDED <task-count>` to lead. Lead re-spawns team-leader to dispatch.
-3. Approve shutdown when lead requests it. You will be re-spawned after rework for a re-check.
+2. Post `QC_REWORK_NEEDED <task-count>` to main session (`to: main`). Main session re-spawns team-leader to dispatch.
+3. Approve shutdown when the main session requests it. You will be re-spawned after rework for a re-check.
 
 ## On pass
 
-1. Post `QC_PASS <slug>` to lead.
-2. Approve shutdown when lead requests it.
+1. Post `QC_PASS <slug>` to main session (`to: main`).
+2. Approve shutdown when the main session requests it.
 
 ## Round cap
 
-Max 3 QC rounds per feature (lead enforces). 4th round → owner escalation.
+Max 3 QC rounds per feature (main session enforces). 4th round → owner escalation.
 
 ## Also write AGENTS.suggestions.md
 

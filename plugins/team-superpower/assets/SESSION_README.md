@@ -297,7 +297,6 @@ bash plugins/team-superpower/scripts/team-state.sh members <slug>
 | `BLOCKED_IDLE_team-leader_owes_implementer_escalate_reply` | An implementer sent ESCALATE that team-leader hasn't routed | Route it (tactical/cross-role/architectural) or escalate to owner |
 | `BLOCKED_IDLE_qc-engineer_awaiting_lead_ack` | qc-engineer posted QC_REWORK_NEEDED and lead hasn't replied | Lead acknowledges, files `impl:rework-*` via team-leader |
 | `BLOCKED_IDLE_phaseA_awaiting_owner_signoff` | analytics team sent HANDOVER_READY / SEC_PASSED / SEC_BLOCKED with no reply | Owner reviews and replies |
-| `BLOCKED_IDLE_orchestrator_unhandled_team-leader_request` | team-leader sent something the lead hasn't acted on | Lead acts (spawn / restart / route) |
 | `bad_prefix` on a new task | Lead created a task without the `impl:`/`review:`/`meta:`/`block:` prefix | Lead's bug — fix the task title |
 | `bad_subprefix` on `impl:*` | Missing `be-` / `fe-` / `rework-` / `contract-update-` sub-prefix | Re-emit with correct prefix |
 | `INVALID_WAVE_REFERENCE` on a new task | Wave metadata missing or not in `<plan-phase>.<wave>` / `<plan-phase>.rework` / `qc-rework` shape | Fix the wave metadata before re-creating |

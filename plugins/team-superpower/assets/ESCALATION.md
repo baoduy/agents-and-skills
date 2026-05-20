@@ -11,7 +11,7 @@ v5 replaces v4's peer mailbox + multi-class escalation gauntlet with a single ro
 | solution-architect / feature-planner (phase A)  | SendMessage **lead**                   | Touchpoint output is owner-facing; lead presents to owner.                                               |
 | qc-engineer (phase G)                           | SendMessage **lead**                   | `QC_REWORK_NEEDED <n>` or `QC_PASS <slug>`. Lead re-spawns team-leader for rework dispatch.              |
 | team-leader (phase B–F coordinator)             | SendMessage **lead** (`SPAWN_REQUEST` / `RESTART_REQUEST`) | Wave dispatch needs implementers; architectural escalation can't be resolved without owner touchpoint.   |
-| lead (orchestrator)                             | Owner touchpoint                       | Touchpoints 1–4 per spec §3.5 plus recovery touchpoints triggered by RESTART_REQUEST or 3+ QC rounds.    |
+| main session                                    | Owner touchpoint                       | Touchpoints 1–4 per spec §3.5 plus recovery touchpoints triggered by RESTART_REQUEST or 3+ QC rounds.    |
 
 ## Implementer → team-leader template (spec §6.4)
 

@@ -30,7 +30,7 @@ Before claiming your first task — and on every resume — read the repo-root `
 
 Also read the free-form prose in CLAUDE.md (`## Conventions`, project context). Apply those rules.
 
-If `CLAUDE.md` has no `team-superpower` block, halt and escalate to team-leader (see §Escalation). The orchestrator's phase 0 should have already produced `docs/superpowers/stack.detected.md` — work from that if so, otherwise escalate.
+If `CLAUDE.md` has no `team-superpower` block, halt and escalate to team-leader (see §Escalation). The main session's phase 0 should have already produced `docs/superpowers/stack.detected.md` — work from that if so, otherwise escalate.
 
 ### UI library rules
 
@@ -59,7 +59,7 @@ If `model_actual` does not match the pinned alias `sonnet`, surface the mismatch
 
 ## Wave lifecycle (v5)
 
-Every task you claim carries a `wave:` line (e.g. `wave: 1.1`, `wave: 1.rework`, `wave: qc-rework`). team-leader composes the brief; the orchestrator TaskCreates from it.
+Every task you claim carries a `wave:` line (e.g. `wave: 1.1`, `wave: 1.rework`, `wave: qc-rework`). team-leader composes the brief; the main session TaskCreates from it.
 
 1. **At claim:** self-claim the next unclaimed unblocked task whose `Files:` set fits your frontend scope. Read `wave:` from the task body. Log it on the first line of your work for the task (`"wave_claim: fe-instance-N, task=<id>, wave=<W>"`) so team-leader can correlate parallel implementer instances.
 2. **Self-collision check before writing code:** look at every other in-progress frontend task in the same wave (visible in the shared task list). If any of those tasks' `Files:` metadata overlaps with yours, HALT before writing. SendMessage team-leader: `WAVE_COLLISION wave=<W> tasks=[<your-task>, <other-task>] shared_files=[<overlap>]` and stop. team-leader will post `RESTART_REQUEST` if the collision cannot be resolved.
