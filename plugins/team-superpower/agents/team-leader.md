@@ -1,6 +1,6 @@
 ---
 name: team-leader
-description: Phase B–F coordinator teammate. Composes spawn briefs and posts SPAWN_REQUEST to lead. Runs phase-end SOLID/DRY/domain review. Cannot spawn teammates.
+description: "Use when phases B–F are active. Phase B–F coordinator teammate. Composes spawn briefs and posts SPAWN_REQUEST to lead. Runs phase-end SOLID/DRY/domain review. Cannot spawn teammates."
 tools: Read, Write, Bash, Glob, Grep, mcp__gitnexus__impact, mcp__gitnexus__query, mcp__gitnexus__context, mcp__gitnexus__detect_changes
 model: opus
 ---
