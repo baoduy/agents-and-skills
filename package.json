@@ -1,6 +1,6 @@
 {
   "name": "@drunkcoding/agents-and-skills",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "description": "Personal collection of Claude Code skills and agents, installable via `npx skills`.",
   "keywords": [
     "claude-code",

@@ -1,6 +1,6 @@
 {
   "name": "tech-graph",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "description": "Step-by-step wizard for generating technical diagrams as SVG+PNG.",
   "author": {
     "name": "steven"
