@@ -12,7 +12,7 @@
       "name": "tech-graph",
       "source": "./plugins/tech-graph",
       "description": "6-step wizard for technical diagrams (SVG/PNG) via fireworks-tech-graph",
-      "version": "0.0.19",
+      "version": "0.0.20",
       "category": "diagram",
       "keywords": [
         "diagram",
@@ -26,7 +26,7 @@
       "name": "html-effectiveness",
       "source": "./plugins/html-effectiveness",
       "description": "Generate self-contained interactive HTML reports from 20 upstream templates via a conversational agent.",
-      "version": "0.0.19",
+      "version": "0.0.20",
       "category": "reports",
       "keywords": [
         "html",
@@ -41,7 +41,7 @@
       "name": "team-superpower",
       "source": "./plugins/team-superpower",
       "description": "Shape-adaptive engineering team that runs the Superpowers skill chain across up to 8 roles — designer, planner, software-architect, security-engineer, backend-developer, frontend-developer, qa-engineer, reviewer — driven by a `team-superpower` block in CLAUDE.md. Spawns 7 or 8 roles depending on stack (full-stack / be-only / fe-only), enforces contract sync between BE and FE, and gates the finish branch on CI green.",
-      "version": "0.0.19",
+      "version": "0.0.20",
       "category": "workflow",
       "keywords": [
         "agent-teams",
@@ -60,7 +60,7 @@
       "name": "plugin-validator",
       "source": "./plugins/plugin-validator",
       "description": "Orchestrated validator for Claude Code plugins — validates skills, agents, commands, and hooks across every plugin under plugins/**.",
-      "version": "0.0.19",
+      "version": "0.0.20",
       "category": "tooling",
       "keywords": [
         "validation",
@@ -76,7 +76,7 @@
       "name": "auto-power",
       "source": "./plugins/auto-power",
       "description": "Single-command hands-off pipeline wrapping obra/superpowers. Auto-answers safe clarifying questions during spec, then runs plan → arch+sec → impl → verify → review → ff-merge with no further touchpoints. Checkpointed and resumable; escalates only on substantive failures.",
-      "version": "0.0.19",
+      "version": "0.0.20",
       "category": "workflow",
       "keywords": [
         "superpowers",
