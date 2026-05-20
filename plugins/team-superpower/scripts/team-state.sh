@@ -1,25 +1,36 @@
 #!/usr/bin/env bash
-# team-state.sh — inspect and clean up team-superpower team state.
+# team-state.sh — inspect and clean up team-superpower v5 team state.
 #
 # Subcommands:
 #   scan                     List every known superpower-* team on this machine.
 #   scan <slug>              Inspect a single slug; print state for the lead/owner.
+#   members <slug>           Read team config.json and list current members + roles.
 #   cleanup <slug>           Dry-run cleanup; print what would be removed (exit 1).
-#   cleanup <slug> --force   Remove team config, task list, tmux session.
+#   cleanup <slug> --force   Remove team config, task list, .team-superpower/ artefacts.
 #
 # Flags (cleanup only):
 #   --force                  Apply the cleanup (otherwise dry-run).
 #   --ignore-heartbeat       Skip the "lead may still be alive" refusal.
 #                            Required when the heartbeat file is < 10 min old.
 #
+# v5 changes (delta from v4):
+#   - Removed: tmux session handling (Agent Teams runs in-process, not in tmux).
+#   - Added: `members` subcommand reads ~/.claude/teams/superpower-<slug>/config.json
+#     and lists current teammates + roles (single-team lifecycle visibility).
+#   - Added: cleanup now removes .team-superpower/ work artefacts (spawn-briefs,
+#     static-check logs, handover artefacts the lead created).
+#   - Added: scan shows cycle_restart_count from docs/superpowers/sessions/<slug>.cycle
+#     if present (for v5's restart-on-stuck telemetry).
+#
 # What this script preserves (always):
-#   - docs/superpowers/{specs,plans,reviews}      durable artefacts
-#   - the project-side checkpoint markdown        kept; appended with a Cleanup record
+#   - docs/superpowers/{specs,plans,reviews,handovers}   durable artefacts
+#   - the project-side checkpoint markdown               kept; appended with a Cleanup record
 #
 # What it removes (with --force):
-#   - ~/.claude/teams/superpower-<slug>/          team config
-#   - ~/.claude/tasks/superpower-<slug>/          shared task list
-#   - tmux session "claude-superpower-<slug>"     best-effort
+#   - ~/.claude/teams/superpower-<slug>/                team config
+#   - ~/.claude/tasks/superpower-<slug>/                shared task list
+#   - .team-superpower/spawn-briefs/                    wave brief files
+#   - .team-superpower/static-check-*.log               per-task static-check logs
 #
 # Idempotent: re-running is safe.
 #
@@ -37,6 +48,7 @@ TEAMS_DIR="$CLAUDE_HOME/teams"
 TASKS_DIR="$CLAUDE_HOME/tasks"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 SESSIONS_DIR="$PROJECT_DIR/docs/superpowers/sessions"
+ARTEFACTS_DIR="$PROJECT_DIR/.team-superpower"
 HEARTBEAT_TTL_SECONDS=600  # 10 min
 
 print_usage() {
@@ -44,11 +56,15 @@ print_usage() {
 }
 
 team_name_for_slug() { printf 'superpower-%s' "$1"; }
-tmux_name_for_slug() { printf 'claude-superpower-%s' "$1"; }
 
 heartbeat_file_for_slug() {
   local slug="$1"
   printf '%s/%s.heartbeat' "$SESSIONS_DIR" "$slug"
+}
+
+cycle_file_for_slug() {
+  local slug="$1"
+  printf '%s/%s.cycle' "$SESSIONS_DIR" "$slug"
 }
 
 checkpoint_for_slug() {
@@ -87,9 +103,7 @@ cmd_scan() {
     echo "team-superpower teams on this machine:"
     while IFS= read -r s; do
       [ -z "$s" ] && continue
-      local team team_dir hb age
-      team="$(team_name_for_slug "$s")"
-      team_dir="$TEAMS_DIR/$team"
+      local hb age
       hb="$(heartbeat_file_for_slug "$s")"
       age="$(heartbeat_age_seconds "$hb")"
       if [ "$age" -lt 0 ]; then
@@ -101,39 +115,73 @@ cmd_scan() {
     return 0
   fi
 
-  local team team_dir task_dir hb age ckpt tmux_name
+  local team team_dir task_dir hb age ckpt cycle_file restart_count
   team="$(team_name_for_slug "$slug")"
   team_dir="$TEAMS_DIR/$team"
   task_dir="$TASKS_DIR/$team"
   hb="$(heartbeat_file_for_slug "$slug")"
   age="$(heartbeat_age_seconds "$hb")"
   ckpt="$(checkpoint_for_slug "$slug")"
-  tmux_name="$(tmux_name_for_slug "$slug")"
+  cycle_file="$(cycle_file_for_slug "$slug")"
+  restart_count=0
+  if [ -f "$cycle_file" ]; then
+    restart_count="$(head -n1 "$cycle_file" | tr -d '[:space:]')"
+  fi
 
-  printf 'slug:              %s\n' "$slug"
-  printf 'team_name:         %s\n' "$team"
-  printf 'team_config:       %s\n' "$team_dir"
-  if [ -d "$team_dir" ]; then printf 'team_config_state: present\n'; else printf 'team_config_state: absent\n'; fi
-  printf 'task_list:         %s\n' "$task_dir"
-  if [ -d "$task_dir" ]; then printf 'task_list_state:   present\n'; else printf 'task_list_state:   absent\n'; fi
-  printf 'checkpoint:        %s\n' "${ckpt:-<none>}"
+  printf 'slug:                  %s\n' "$slug"
+  printf 'team_name:             %s\n' "$team"
+  printf 'team_config:           %s\n' "$team_dir"
+  if [ -d "$team_dir" ]; then printf 'team_config_state:     present\n'; else printf 'team_config_state:     absent\n'; fi
+  printf 'task_list:             %s\n' "$task_dir"
+  if [ -d "$task_dir" ]; then printf 'task_list_state:       present\n'; else printf 'task_list_state:       absent\n'; fi
+  printf 'checkpoint:            %s\n' "${ckpt:-<none>}"
+  printf 'cycle_restart_count:   %s\n' "${restart_count:-0}"
   if [ "$age" -lt 0 ]; then
-    printf 'heartbeat:         <none>\n'
-    printf 'liveness:          unknown (no heartbeat — treat as stale)\n'
+    printf 'heartbeat:             <none>\n'
+    printf 'liveness:              unknown (no heartbeat — treat as stale)\n'
   else
-    printf 'heartbeat:         %s (%ds ago)\n' "$hb" "$age"
+    printf 'heartbeat:             %s (%ds ago)\n' "$hb" "$age"
     if [ "$age" -lt "$HEARTBEAT_TTL_SECONDS" ]; then
-      printf 'liveness:          LIKELY ALIVE (heartbeat < %ds)\n' "$HEARTBEAT_TTL_SECONDS"
+      printf 'liveness:              LIKELY ALIVE (heartbeat < %ds)\n' "$HEARTBEAT_TTL_SECONDS"
     else
-      printf 'liveness:          stale\n'
+      printf 'liveness:              stale\n'
     fi
   fi
-  printf 'tmux_session:      %s\n' "$tmux_name"
-  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$tmux_name" 2>/dev/null; then
-    printf 'tmux_state:        present\n'
+  if [ -d "$ARTEFACTS_DIR" ]; then
+    local brief_count log_count
+    brief_count="$(find "$ARTEFACTS_DIR/spawn-briefs" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    log_count="$(find "$ARTEFACTS_DIR" -maxdepth 1 -type f -name 'static-check-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+    printf 'spawn_briefs:          %s file(s)\n' "${brief_count:-0}"
+    printf 'static_check_logs:     %s file(s)\n' "${log_count:-0}"
   else
-    printf 'tmux_state:        absent\n'
+    printf 'artefacts_dir:         absent\n'
   fi
+}
+
+cmd_members() {
+  local slug="${1:-}"
+  if [ -z "$slug" ]; then
+    echo "usage: team-state.sh members <slug>" >&2
+    return 2
+  fi
+  local team team_dir config
+  team="$(team_name_for_slug "$slug")"
+  team_dir="$TEAMS_DIR/$team"
+  config="$team_dir/config.json"
+  if [ ! -f "$config" ]; then
+    echo "team config not found: $config" >&2
+    return 4
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "jq not installed; raw config follows:" >&2
+    cat "$config"
+    return 0
+  fi
+  printf 'team:    %s\n' "$team"
+  printf 'config:  %s\n' "$config"
+  printf 'members:\n'
+  jq -r '.members[]? | "  - " + (.role // "<no-role>") + "  (id: " + (.id // "<no-id>") + ", status: " + (.status // "unknown") + ")"' "$config" 2>/dev/null \
+    || jq -r '. | tostring' "$config"
 }
 
 cmd_cleanup() {
@@ -153,21 +201,27 @@ cmd_cleanup() {
     return 2
   fi
 
-  local team team_dir task_dir hb age ckpt tmux_name
+  local team team_dir task_dir hb age ckpt
   team="$(team_name_for_slug "$slug")"
   team_dir="$TEAMS_DIR/$team"
   task_dir="$TASKS_DIR/$team"
   hb="$(heartbeat_file_for_slug "$slug")"
   age="$(heartbeat_age_seconds "$hb")"
   ckpt="$(checkpoint_for_slug "$slug")"
-  tmux_name="$(tmux_name_for_slug "$slug")"
 
   # Build the work list.
   local items=()
   [ -d "$team_dir" ] && items+=("team_config:$team_dir")
   [ -d "$task_dir" ] && items+=("task_list:$task_dir")
-  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$tmux_name" 2>/dev/null; then
-    items+=("tmux_session:$tmux_name")
+  if [ -d "$ARTEFACTS_DIR/spawn-briefs" ]; then
+    local n
+    n="$(find "$ARTEFACTS_DIR/spawn-briefs" -maxdepth 1 -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    [ "${n:-0}" -gt 0 ] && items+=("spawn_briefs:$ARTEFACTS_DIR/spawn-briefs (${n} files)")
+  fi
+  if [ -d "$ARTEFACTS_DIR" ]; then
+    local n
+    n="$(find "$ARTEFACTS_DIR" -maxdepth 1 -type f -name 'static-check-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+    [ "${n:-0}" -gt 0 ] && items+=("static_check_logs:$ARTEFACTS_DIR/static-check-*.log (${n} files)")
   fi
 
   if [ ${#items[@]} -eq 0 ]; then
@@ -202,9 +256,23 @@ cmd_cleanup() {
     echo "removed: $task_dir"
     removed=$((removed+1))
   fi
-  if command -v tmux >/dev/null 2>&1 && tmux has-session -t "$tmux_name" 2>/dev/null; then
-    tmux kill-session -t "$tmux_name" && echo "killed tmux session: $tmux_name"
+  if [ -d "$ARTEFACTS_DIR/spawn-briefs" ]; then
+    rm -rf -- "$ARTEFACTS_DIR/spawn-briefs"
+    echo "removed: $ARTEFACTS_DIR/spawn-briefs"
     removed=$((removed+1))
+  fi
+  if [ -d "$ARTEFACTS_DIR" ]; then
+    local cleared
+    cleared="$(find "$ARTEFACTS_DIR" -maxdepth 1 -type f -name 'static-check-*.log' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ "${cleared:-0}" -gt 0 ]; then
+      find "$ARTEFACTS_DIR" -maxdepth 1 -type f -name 'static-check-*.log' -delete 2>/dev/null || true
+      echo "removed: ${cleared} static-check log(s) under $ARTEFACTS_DIR"
+      removed=$((removed+1))
+    fi
+    # If .team-superpower/ is now empty, drop it too.
+    if [ -z "$(ls -A "$ARTEFACTS_DIR" 2>/dev/null)" ]; then
+      rmdir "$ARTEFACTS_DIR" 2>/dev/null || true
+    fi
   fi
   # Heartbeat is informational; remove it so future scans don't see a stale "alive" signal.
   if [ -f "$hb" ]; then
@@ -219,7 +287,7 @@ cmd_cleanup() {
       {
         printf '\n## Cleanup\n'
         printf -- '- cleaned at: %s\n' "$ts"
-        printf -- '- removed: %d resource(s) (team_config, task_list, tmux_session as applicable)\n' "$removed"
+        printf -- '- removed: %d resource(s) (team_config, task_list, spawn_briefs, static_check_logs as applicable)\n' "$removed"
         printf -- '- status: cleaned\n'
       } >> "$ckpt"
       echo "appended cleanup record to: $ckpt"
@@ -235,6 +303,7 @@ main() {
   shift || true
   case "$sub" in
     scan)    cmd_scan "$@" ;;
+    members) cmd_members "$@" ;;
     cleanup) cmd_cleanup "$@" ;;
     -h|--help|help|"") print_usage; [ -z "$sub" ] && return 2 || return 0 ;;
     *) echo "unknown subcommand: $sub" >&2; print_usage; return 2 ;;

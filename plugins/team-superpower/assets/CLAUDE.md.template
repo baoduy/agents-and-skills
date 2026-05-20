@@ -30,8 +30,8 @@ backend:
   build_command: dotnet build
   test_command: dotnet test
   format_command: dotnet format --verify-no-changes   # set to "none" if no style check is wired
-  lint_command: dotnet build /p:TreatWarningsAsErrors=true   # v4 QA: runs per task (set "none" to skip)
-  typecheck_command: dotnet build --no-incremental           # v4 QA: runs per task (set "none" to skip)
+  lint_command: dotnet build /p:TreatWarningsAsErrors=true   # v5 static-check: implementer runs before every commit; hook gates on log exit=0 (set "none" to skip)
+  typecheck_command: dotnet build --no-incremental           # v5 static-check: implementer runs before every commit; hook gates on log exit=0 (set "none" to skip)
   migration_tool: ef-core       # ef-core | flyway | liquibase | alembic | django-migrations | prisma | typeorm | knex | none
   package_manager: nuget        # nuget | npm | pnpm | yarn | bun | pip | poetry | pipenv | go-modules | cargo | maven | gradle
 
@@ -49,9 +49,9 @@ frontend:
   package_manager: pnpm         # npm | pnpm | yarn | bun
   build_command: pnpm build
   test_command: pnpm test
-  lint_command: pnpm eslint .                 # v4 QA: runs per task (set "none" to skip)
-  typecheck_command: pnpm tsc --noEmit        # v4 QA: runs per task (set "none" to skip)
-  format_command: pnpm prettier --check .     # v4 QA: runs per task (set "none" to skip)
+  lint_command: pnpm eslint .                 # v5 static-check: implementer runs before every commit; hook gates on log exit=0 (set "none" to skip)
+  typecheck_command: pnpm tsc --noEmit        # v5 static-check: implementer runs before every commit; hook gates on log exit=0 (set "none" to skip)
+  format_command: pnpm prettier --check .     # v5 static-check: implementer runs before every commit; hook gates on log exit=0 (set "none" to skip)
 
 # ────────────────────────────────────────────────────────────────────────────
 # Contracts — only relevant when both backend AND frontend are present.
@@ -62,7 +62,7 @@ contracts:
   ts_gen_command: pnpm generate:api-types   # command that regenerates FE-consumable types from the contract
 
 # ────────────────────────────────────────────────────────────────────────────
-# CI — read by reviewer in phase 7 to gate the finish-branch decision.
+# CI — read by team-leader at the finish-branch decision (phase H).
 # ────────────────────────────────────────────────────────────────────────────
 ci:
   provider: github-actions       # github-actions | azure-pipelines | gitlab-ci | circleci | none
@@ -71,7 +71,10 @@ ci:
   poll_timeout_minutes: 20
 
 # ────────────────────────────────────────────────────────────────────────────
-# Security — drives the security-engineer's checklist (phase 3).
+# Security — drives the security-engineer's phase A checklist. The lead spawns
+# security-engineer ONLY when domain in {payments, healthcare} OR pii: yes.
+# For domain: generic / internal-only with pii: no, solution-architect runs
+# the lightweight security pass alone.
 # ────────────────────────────────────────────────────────────────────────────
 security:
   domain: payments               # payments | healthcare | generic | internal-only
@@ -83,21 +86,22 @@ security:
 # Limits — operational tuning. Defaults are sensible; override only if needed.
 # ────────────────────────────────────────────────────────────────────────────
 limits:
-  phase_stall_minutes: 30        # within-phase stall watchdog window; two empty windows force a §7 escalation
-  max_tasks_per_implementer: 12  # planner halts and asks the owner to split the feature above this
+  phase_stall_minutes: 30        # within-phase stall watchdog window; team-leader pings teammates and escalates after two empty windows
+  max_tasks_per_implementer: 12  # feature-planner halts and asks the owner to split the feature above this
   max_concurrent_teammates: 5    # hard cap on parallel teammates (best-practice guidance from CLAUDE.md)
   max_iterations_per_task: 8     # MAX_ITERATIONS guardrail; implementer halts and escalates on cap
-  max_qa_rounds_per_task: 3      # v4 dev↔QA loop cap (§4); implementer escalates on round 4
-  task_token_budget: 250000      # v4 per-task token cap (§5); implementer auto-pauses at 85%
-  retrieval_budget_per_task: 2   # v4 implementer retrieval cycles (§6)
-  # max_parallel_implementers: 2 # reserved for v3 wave dispatcher (Plan B), currently fixed at 2
+  task_token_budget: 250000      # per-task token cap (§5); implementer auto-pauses at 85%
+  retrieval_budget_per_task: 2   # implementer retrieval cycles (§6); hook rejects task completion if exceeded
+  max_qc_rounds: 3               # v5 end-of-plan QC rounds; 4th round triggers owner escalation
+  max_cycle_restarts: 2          # v5 RESTART_REQUEST cap; 3rd restart triggers owner "feature not tractable" escalation
 # ────────────────────────────────────────────────────────────────────────────
-# v3 mode/size overrides (no project-level config needed)
+# v5 single-team lifecycle (no project-level config needed)
 # ────────────────────────────────────────────────────────────────────────────
-# The lead picks mode (solo / single-agent / team) and size (minimal / standard
-# / full) from launch-message heuristics by default. Override per-feature with
-# `/team-feature --mode=<mode> --size=<size>`. `--explain` prints the heuristic
-# decision without spawning. See SESSION_README.md for the full ladder.
+# The lead spawns ONE TeamCreate per feature; membership rolls over by
+# spawn+shutdown across phases A–H. team-leader composes wave briefs and posts
+# SPAWN_REQUEST to lead; lead is the sole spawner. RESTART_REQUEST re-runs
+# phase A on architectural blockers with prior artefacts + partial commits as
+# input. See SESSION_README.md for the full lifecycle map.
 ```
 
 ## Conventions

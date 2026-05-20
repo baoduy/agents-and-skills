@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
-# TaskCreated hook — enforce title prefix on shared task list entries.
+# TaskCreated hook — v5 prefix + wave validation for shared task list entries.
 #
 # Accepts a JSON payload on stdin. Required field:
 #   - task.title: string
 #
-# Title MUST start with one of: impl:, review:, meta:, block:
-# v2 additions:
-#   - impl: tasks MUST carry a sub-prefix (be-, fe-, qa-fix-be-, qa-fix-fe-,
-#     review-fix-be-, review-fix-fe-, contract-update-, be-migration-,
-#     be-contract-publish-) — bare `impl:foo` is rejected.
-#   - Shape-marker file at docs/superpowers/sessions/<slug>.shape (written by
-#     the lead in phase 0) restricts which sub-prefixes are allowed:
-#       be-only      → only `impl:be-*`, `impl:contract-update-*` allowed
-#       fe-only      → only `impl:fe-*`, `impl:contract-update-*` allowed
-#       full-stack   → all sub-prefixes allowed
-#   - Slug is taken from .task.metadata.slug or .metadata.slug, with fallback
-#     to the most-recent .shape file when only one exists.
+# v5 changes (delta from v4):
+#   - ADDED: impl:rework-* allowed top-level. Rework tasks dispatched by
+#     team-leader (phase-end SOLID/DRY review) or qc-engineer (end-of-plan QC)
+#     do not carry a be-/fe- prefix; their original-task id is in the
+#     `Reworks:` line of the implementer's commit body and validated by
+#     task-completed.sh.
+#   - ADDED: INVALID_WAVE_REFERENCE — v5 waves are dotted strings, not single
+#     integers. Accepted shapes: "<plan-phase>.<wave>" (e.g. "1.1", "2.3"),
+#     "<plan-phase>.rework" (e.g. "1.rework"), or "qc-rework".
+#   - REMOVED: qa-fix-be-, qa-fix-fe-, review-fix-be-, review-fix-fe- prefixes
+#     (v4 QA loop is gone). Use impl:rework-* instead.
+#   - REMOVED: bare integer wave format.
+#
+# Preserved checks:
+#   - Top-level prefix must be impl: / review: / meta: / block:.
+#   - impl:* must carry a known sub-prefix per the shape file.
+#   - solo-mode guard: impl:* invalid when checkpoint mode is solo.
+#   - Shape-marker file at docs/superpowers/sessions/<slug>.shape restricts
+#     allowed sub-prefixes (be-only / fe-only / full-stack).
 
 set -euo pipefail
 
@@ -60,16 +67,12 @@ if [ -d "$SESSIONS_DIR" ]; then
 fi
 
 wave="$(printf '%s' "$payload" | jq -r '.task.metadata.wave // .metadata.wave // ""' 2>/dev/null || echo "")"
-wave_json="null"
-if printf '%s' "$wave" | grep -qE '^[0-9]+$'; then
-  wave_json="$wave"
-fi
 
 printf '{"ts":"%s","hook":"task-created","title":%s,"shape":%s,"wave":%s}\n' \
   "$ts" \
   "$(printf '%s' "$title" | jq -Rs .)" \
   "$(printf '%s' "$shape" | jq -Rs .)" \
-  "$wave_json" \
+  "$(printf '%s' "$wave" | jq -Rs .)" \
   >> "$LOG_FILE"
 
 # Top-level prefix check
@@ -78,18 +81,18 @@ case "$title" in
   impl:*) ;;
   "")
     printf '{"ts":"%s","hook":"task-created","warn":"bad_prefix","reason":"title missing"}\n' "$ts" >> "$LOG_FILE"
+    exit 0
     ;;
   *)
     printf '{"ts":"%s","hook":"task-created","warn":"bad_prefix","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+    exit 0
     ;;
 esac
 
-# v3: solo-mode guard. If checkpoint mode is solo, impl:* tasks are invalid
-# (solo means the lead does the work itself; no implementer is spawned).
+# v3: solo-mode guard. If checkpoint mode is solo, impl:* tasks are invalid.
 mode_meta="$(printf '%s' "$payload" | jq -r '.task.metadata.mode // .metadata.mode // ""' 2>/dev/null || echo "")"
 mode_marker=""
 if [ -z "$mode_meta" ] && [ -d "$SESSIONS_DIR" ]; then
-  # Look for a <slug>.mode file the lead writes when it picks a mode.
   marker_file=""
   if [ -n "$slug" ] && [ -f "$SESSIONS_DIR/$slug.mode" ]; then
     marker_file="$SESSIONS_DIR/$slug.mode"
@@ -105,27 +108,38 @@ if [ -z "$mode_meta" ] && [ -d "$SESSIONS_DIR" ]; then
 fi
 effective_mode="${mode_meta:-$mode_marker}"
 
-case "$title" in
-  impl:*)
-    if [ "$effective_mode" = "solo" ]; then
-      printf '{"ts":"%s","hook":"task-created","warn":"INVALID_FOR_SOLO_MODE","title":%s}\n' \
-        "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
-    fi
-    if [ -z "$wave" ]; then
-      printf '{"ts":"%s","hook":"task-created","warn":"MISSING_WAVE_METADATA","title":%s}\n' \
-        "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
-    fi
-    ;;
-esac
+if [ "$effective_mode" = "solo" ]; then
+  printf '{"ts":"%s","hook":"task-created","warn":"INVALID_FOR_SOLO_MODE","title":%s}\n' \
+    "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+fi
+
+# v5 INVALID_WAVE_REFERENCE: wave metadata is required and must match the v5 shape.
+if [ -z "$wave" ]; then
+  printf '{"ts":"%s","hook":"task-created","warn":"INVALID_WAVE_REFERENCE","title":%s,"reason":"wave metadata missing"}\n' \
+    "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
+elif ! printf '%s' "$wave" | grep -qE '^([0-9]+\.[0-9]+|[0-9]+\.rework|qc-rework)$'; then
+  printf '{"ts":"%s","hook":"task-created","warn":"INVALID_WAVE_REFERENCE","title":%s,"wave":%s,"reason":"unrecognised wave shape"}\n' \
+    "$ts" \
+    "$(printf '%s' "$title" | jq -Rs .)" \
+    "$(printf '%s' "$wave" | jq -Rs .)" \
+    >> "$LOG_FILE"
+fi
 
 # At this point title starts with `impl:`. Strip prefix and require a known
-# sub-prefix.
+# v5 sub-prefix.
 rest="${title#impl:}"
 case "$rest" in
-  be-*|qa-fix-be-*|review-fix-be-*|be-migration-*|be-contract-publish-*)
+  rework-*)
+    # Rework tasks dispatched by team-leader (phase-end review) or qc-engineer
+    # (end-of-plan QC). The Reworks: <orig-id> line in the commit body is
+    # validated by task-completed.sh (MISSING_REWORK_REFERENCE). No shape check
+    # — rework inherits the originating task's scope.
+    sub="rework"
+    ;;
+  be-*|be-migration-*|be-contract-publish-*)
     sub="be"
     ;;
-  fe-*|qa-fix-fe-*|review-fix-fe-*)
+  fe-*)
     sub="fe"
     ;;
   contract-update-*)
@@ -133,10 +147,13 @@ case "$rest" in
     ;;
   *)
     printf '{"ts":"%s","hook":"task-created","warn":"bad_subprefix","title":%s}\n' "$ts" "$(printf '%s' "$title" | jq -Rs .)" >> "$LOG_FILE"
-    exit 0 ;;
+    exit 0
+    ;;
 esac
 
-# Shape-aware enforcement
+# Shape-aware enforcement. rework + contract-update are scope-neutral and
+# allowed under any shape — they inherit scope from the originating task or
+# from BE ownership of the contract.
 case "$shape" in
   be-only)
     if [ "$sub" = "fe" ]; then
