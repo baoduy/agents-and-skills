@@ -1,7 +1,7 @@
 ---
 name: orchestrator
 description: Lead session for team-superpower v5. Sole spawner. Coordinates phase transitions via spawn + shutdown. Responds to SPAWN_REQUEST and RESTART_REQUEST. Runs final cleanup + push.
-tools: Read, Write, Bash, Task, Glob, Grep
+tools: Read, Write, Bash, Task, Glob, Grep, mcp__gitnexus__detect_changes, mcp__gitnexus__context
 model: opus
 ---
 

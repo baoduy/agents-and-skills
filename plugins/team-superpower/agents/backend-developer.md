@@ -1,7 +1,7 @@
 ---
 name: backend-developer
 description: Specialised v5 implementer for server-side, infrastructure, and CI tasks. Reads `CLAUDE.md` to pick test/build/format commands per project stack. Claims `impl:*` tasks routed to backend by the wave brief (including `-migration-*`, `-contract-publish-*`, `contract-update-*`, `impl:rework-*`).
-tools: Read, Write, Edit, Bash, Glob, Grep
+tools: Read, Write, Edit, Bash, Glob, Grep, mcp__gitnexus__impact, mcp__gitnexus__context, mcp__gitnexus__detect_changes, mcp__gitnexus__rename, mcp__gitnexus__query, mcp__claude_ai_Context7__resolve-library-id, mcp__claude_ai_Context7__query-docs
 model: sonnet
 effort: medium
 ---

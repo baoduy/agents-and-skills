@@ -1,7 +1,7 @@
 ---
 name: qc-engineer
 description: End-of-plan quality check teammate. One instance per feature. Replaces v4 per-task QA.
-tools: Read, Write, Bash, Glob, Grep
+tools: Read, Write, Bash, Glob, Grep, mcp__gitnexus__detect_changes, mcp__gitnexus__impact
 model: sonnet
 ---
 

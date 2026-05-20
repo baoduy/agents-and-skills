@@ -1,7 +1,7 @@
 ---
 name: feature-planner
 description: Owns plan production. Phase A only — shut down at handover.
-tools: Read, Write, Bash, Glob, Grep
+tools: Read, Write, Bash, Glob, Grep, mcp__gitnexus__context, mcp__gitnexus__query, mcp__gitnexus__impact, mcp__claude_ai_Context7__resolve-library-id, mcp__claude_ai_Context7__query-docs
 model: sonnet
 ---
 
