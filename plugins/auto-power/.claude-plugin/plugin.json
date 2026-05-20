@@ -1,7 +1,7 @@
 {
   "name": "auto-power",
   "displayName": "Auto Power",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "description": "Single-command, hands-off pipeline that wraps obra/superpowers: auto-answers safe clarifying questions during spec, then runs plan → arch+sec → impl → verify → review → ff-merge with no further touchpoints. Checkpointed and resumable; escalates only on substantive failures (security, architecture, repeated QA fail, semantic conflict).",
   "author": {
     "name": "Steven Hoang"
