@@ -12,6 +12,7 @@ Published on npm as [`@drunkcoding/agents-and-skills`](https://www.npmjs.com/pac
 | [`html-effectiveness`](plugins/html-effectiveness) | Conversational agent that generates self-contained interactive HTML reports from 20 templates. |
 | [`team-superpower`](plugins/team-superpower) | Shape-adaptive engineering team running the Superpowers skill chain — up to 8 roles (designer, planner, software-architect, security-engineer, backend-developer, frontend-developer, qa-engineer, reviewer); spawns 7 or 8 depending on stack (`full-stack` / `be-only` / `fe-only`) declared in `CLAUDE.md`. Test/build commands, contract publish + sync, security checklist, and CI gate before merge are all driven by the project's `CLAUDE.md` `team-superpower` block. |
 | [`plugin-validator`](plugins/plugin-validator) | Orchestrated validator that checks every plugin's skills, agents, commands, and hooks for spec compliance — runs in parallel and proposes batched fixes. |
+| [`team-share`](plugins/team-share) | Onboarding helper that shares Claude plugin settings, scaffolds `CLAUDE.md` when missing, refreshes the Understand-Anything graph, and stages the resulting repo artifacts for review. |
 | [`auto-power`](plugins/auto-power) | Single-command hands-off pipeline that wraps `obra/superpowers`. Auto-answers safe clarifying questions during spec, then runs plan → arch+sec → impl → verify → review → ff-merge with no further touchpoints. Checkpointed and resumable. Escalates on substantive failures. |
 
 ## team-superpower v3

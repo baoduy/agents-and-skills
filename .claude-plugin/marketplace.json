@@ -38,25 +38,6 @@
       ]
     },
     {
-      "name": "team-superpower",
-      "source": "./plugins/team-superpower",
-      "description": "Shape-adaptive engineering team that runs the Superpowers skill chain across up to 8 roles — designer, planner, software-architect, security-engineer, backend-developer, frontend-developer, qa-engineer, reviewer — driven by a `team-superpower` block in CLAUDE.md. Spawns 7 or 8 roles depending on stack (full-stack / be-only / fe-only), enforces contract sync between BE and FE, and gates the finish branch on CI green.",
-      "version": "0.0.25",
-      "category": "workflow",
-      "keywords": [
-        "agent-teams",
-        "superpowers",
-        "tdd",
-        "orchestration",
-        "workflow",
-        "brainstorming",
-        "code-review",
-        "architecture",
-        "security",
-        "qa"
-      ]
-    },
-    {
       "name": "plugin-validator",
       "source": "./plugins/plugin-validator",
       "description": "Orchestrated validator for Claude Code plugins — validates skills, agents, commands, and hooks across every plugin under plugins/**.",
@@ -73,18 +54,18 @@
       ]
     },
     {
-      "name": "auto-power",
-      "source": "./plugins/auto-power",
-      "description": "Single-command hands-off pipeline wrapping obra/superpowers. Auto-answers safe clarifying questions during spec, then runs plan → arch+sec → impl → verify → review → ff-merge with no further touchpoints. Checkpointed and resumable; escalates only on substantive failures.",
+      "name": "team-share",
+      "source": "./plugins/team-share",
+      "description": "Share Claude plugin settings with a team, scaffold CLAUDE.md when needed, refresh the Understand-Anything graph, and stage the onboarding artifacts for review.",
       "version": "0.0.25",
-      "category": "workflow",
+      "category": "tooling",
       "keywords": [
-        "superpowers",
-        "automation",
-        "pipeline",
-        "tdd",
-        "auto-merge",
-        "checkpoint"
+        "onboarding",
+        "team",
+        "claude",
+        "settings",
+        "understand-anything",
+        "git-lfs"
       ]
     }
   ]
