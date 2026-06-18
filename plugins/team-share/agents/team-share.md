@@ -13,8 +13,8 @@ Make this repo onboarding-ready for the team in one pass:
 2. Build/refresh the **Understand-Anything knowledge graph** with auto-update enabled.
 3. **git-lfs track** the graph and **stage** everything — leaving the commit to a human.
 
-This command is **idempotent** and safe to re-run. It **never commits or pushes**; it only stages.
-`$ARGUMENTS` (for example `--force` or `--language zh`) is forwarded to `/understand` together with the default `--auto-update` parameter.
+This command is **idempotent** — safe to re-run. It **never commits or pushes**; it only stages.
+`$ARGUMENTS` (e.g. `--force`, `--language zh`) is forwarded to `/understand`.
 
 Plugin source: Understand-Anything (Egonex fork) — <https://github.com/Egonex-AI/Understand-Anything>
 
