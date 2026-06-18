@@ -1,7 +1,7 @@
 {
   "name": "team-share",
   "displayName": "Team Share",
-  "version": "0.0.25",
+  "version": "0.0.26",
   "description": "Share Claude plugin settings with a team, scaffold CLAUDE.md when needed, refresh the Understand-Anything graph, and stage the onboarding artifacts for review.",
   "author": {
     "name": "Steven Hoang"
