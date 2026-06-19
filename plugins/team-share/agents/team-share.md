@@ -91,6 +91,69 @@ Notes:
 - The plugin must already be available in the `claude-plugins-official` marketplace (it is already listed in `enabledPlugins` in the repo settings).
 - If the team prefers a custom `CLAUDE.md` template, commit one *before* running this command so the guard `[ -f CLAUDE.md ]` skips the plugin step.
 
+### 1c — Inject the Understand-Anything code-research section into `CLAUDE.md`
+
+Goal: every teammate's AI assistant knows to use the Understand-Anything commands when doing code research, without duplicating the section on re-runs.
+
+```bash
+# Only append when the section marker is not already present (idempotent).
+if grep -qF '## Code research with Understand-Anything' CLAUDE.md 2>/dev/null; then
+  echo "✅ Understand-Anything section already in CLAUDE.md — skipping."
+else
+  cat >> CLAUDE.md << 'EOF'
+
+## Code research with Understand-Anything
+
+This project uses the [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) plugin to maintain an interactive knowledge graph of the codebase. **Always prefer these commands over raw grep/glob when researching code structure, relationships, or logic:**
+
+| Goal | Command |
+|------|---------|
+| Explore the full codebase graph | `/understand` |
+| Ask a free-form question about the code | `/understand-chat <question>` |
+| Deep-dive into a specific file or function | `/understand-explain <path/symbol>` |
+| See impact of your current changes before committing | `/understand-diff` |
+| Open the interactive visual dashboard | `/understand-dashboard` |
+| Extract business-domain knowledge (domains, flows, steps) | `/understand-domain` |
+| Generate an onboarding guide for new teammates | `/understand-onboard` |
+
+The knowledge graph lives in `.understand-anything/knowledge-graph.json` and is kept up-to-date automatically on every commit (auto-update is enabled). Re-run `/understand` after large refactors to force a full rebuild, or pass `--force` to rebuild from scratch.
+EOF
+  echo "✅ Understand-Anything code-research section appended to CLAUDE.md."
+fi
+```
+
+Notes:
+- The section is appended at the end of `CLAUDE.md` so it does not disturb existing content.
+- The marker string `## Code research with Understand-Anything` is used as the idempotency guard — do not rename the heading without updating the guard.
+- If `MIRRORS.md` / `AGENTS.md` or other agent-config files exist alongside `CLAUDE.md` (e.g. for non-Claude runtimes), apply the same append to them so all agent runtimes get the guidance. The loop below covers `AGENTS.md` and `MIRRORS.md` — add more filenames to the `for` list if the project uses additional agent-config files.
+
+```bash
+# Mirror to AGENTS.md / MIRRORS.md if they exist (non-Claude runtimes).
+for f in AGENTS.md MIRRORS.md; do
+  if [ -f "$f" ] && ! grep -qF '## Code research with Understand-Anything' "$f" 2>/dev/null; then
+    cat >> "$f" << 'EOF'
+
+## Code research with Understand-Anything
+
+This project uses the [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) plugin to maintain an interactive knowledge graph of the codebase. **Always prefer these commands over raw grep/glob when researching code structure, relationships, or logic:**
+
+| Goal | Command |
+|------|---------|
+| Explore the full codebase graph | `/understand` |
+| Ask a free-form question about the code | `/understand-chat <question>` |
+| Deep-dive into a specific file or function | `/understand-explain <path/symbol>` |
+| See impact of your current changes before committing | `/understand-diff` |
+| Open the interactive visual dashboard | `/understand-dashboard` |
+| Extract business-domain knowledge (domains, flows, steps) | `/understand-domain` |
+| Generate an onboarding guide for new teammates | `/understand-onboard` |
+
+The knowledge graph lives in `.understand-anything/knowledge-graph.json` and is kept up-to-date automatically on every commit (auto-update is enabled). Re-run `/understand` after large refactors to force a full rebuild, or pass `--force` to rebuild from scratch.
+EOF
+    echo "✅ Understand-Anything section also appended to $f."
+  fi
+done
+```
+
 ---
 
 ## Step 2 — Build / refresh the knowledge graph (auto-update on)
@@ -122,7 +185,9 @@ git lfs install
 git lfs track ".understand-anything/*.json"
 
 # Stage — but DO NOT commit. A human reviews and commits.
-git add .gitattributes .gitignore .claude/settings.json .understand-anything/
+git add .gitattributes .gitignore .claude/settings.json .understand-anything/ CLAUDE.md
+# Also stage AGENTS.md / MIRRORS.md if they were modified.
+for f in AGENTS.md MIRRORS.md; do [ -f "$f" ] && git add "$f"; done
 
 git status
 git lfs ls-files          # confirm the graph json is LFS-tracked
@@ -134,7 +199,8 @@ git lfs ls-files          # confirm the graph json is LFS-tracked
 
 Summarize for the user:
 - Which plugins/marketplaces were written into `.claude/settings.json` (call out any private ones).
-- `CLAUDE.md` status: already existed vs created by `claude-code-setup`.
+- `CLAUDE.md` status: already existed vs created by `claude-code-setup`; Understand-Anything section added vs already present.
+- `AGENTS.md` status (if applicable): Understand-Anything section added vs already present / not found.
 - Graph status: created vs incrementally updated; `autoUpdate` on/off.
 - What is staged and confirmed LFS-tracked.
 - Remind them: **review, then commit yourself** (e.g. `git commit -m "chore: share team onboarding (claude settings + CLAUDE.md + understand graph)"`). The auto-update hook keeps the graph fresh on every future commit.
