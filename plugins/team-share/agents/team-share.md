@@ -125,11 +125,11 @@ fi
 Notes:
 - The section is appended at the end of `CLAUDE.md` so it does not disturb existing content.
 - The marker string `## Code research with Understand-Anything` is used as the idempotency guard — do not rename the heading without updating the guard.
-- If `MIRRORS.md` / `AGENTS.md` or other agent-config files exist alongside `CLAUDE.md` (e.g. for non-Claude runtimes), apply the same append to them so all agent runtimes get the guidance.
+- If `MIRRORS.md` / `AGENTS.md` or other agent-config files exist alongside `CLAUDE.md` (e.g. for non-Claude runtimes), apply the same append to them so all agent runtimes get the guidance. The loop below covers `AGENTS.md` and `MIRRORS.md` — add more filenames to the `for` list if the project uses additional agent-config files.
 
 ```bash
-# Mirror to AGENTS.md if it exists (non-Claude runtimes).
-for f in AGENTS.md; do
+# Mirror to AGENTS.md / MIRRORS.md if they exist (non-Claude runtimes).
+for f in AGENTS.md MIRRORS.md; do
   if [ -f "$f" ] && ! grep -qF '## Code research with Understand-Anything' "$f" 2>/dev/null; then
     cat >> "$f" << 'EOF'
 
@@ -186,8 +186,8 @@ git lfs track ".understand-anything/*.json"
 
 # Stage — but DO NOT commit. A human reviews and commits.
 git add .gitattributes .gitignore .claude/settings.json .understand-anything/ CLAUDE.md
-# Also stage AGENTS.md if it was modified.
-[ -f AGENTS.md ] && git add AGENTS.md
+# Also stage AGENTS.md / MIRRORS.md if they were modified.
+for f in AGENTS.md MIRRORS.md; do [ -f "$f" ] && git add "$f"; done
 
 git status
 git lfs ls-files          # confirm the graph json is LFS-tracked
