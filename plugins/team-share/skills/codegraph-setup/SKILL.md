@@ -54,7 +54,7 @@ fi
 
 Note: on Windows with Git Bash, `uname -s` returns `MINGW64_NT-*` or similar, which falls through to the `*)` case and attempts PowerShell. This is correct behaviour.
 
-## Step 3 — Wire to Claude Code
+## Step 3 — Wire to your AI tool
 
 Register the CodeGraph MCP server for this project (auto-detects AI tool; config written to project-local settings):
 
@@ -62,7 +62,7 @@ Register the CodeGraph MCP server for this project (auto-detects AI tool; config
 codegraph install --target=auto --location=local
 ```
 
-This makes CodeGraph's context tools available inside Claude Code sessions.
+This makes CodeGraph's context tools available inside your AI tool's sessions.
 
 ## Step 4 — Initialise the project
 
