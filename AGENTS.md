@@ -9,7 +9,7 @@ Personal Claude Code **plugin marketplace** (`drunkcoding`) published as the npm
 ## Layout
 
 - `.claude-plugin/marketplace.json` — marketplace manifest. Lists every plugin under `plugins/`. Single source of truth for what ships.
-- `plugins/<name>/.claude-plugin/plugin.json` — per-plugin manifest (`name`, `version`, `description`, optional `skills[]`, `agents[]`).
+- `plugins/<name>/.claude-plugin/plugin.json` — per-plugin manifest (`name`, `version`, `description`). Do NOT add a `skills` key — skills, agents, and commands are auto-discovered by convention from their respective subdirectories.
 - `plugins/<name>/{agents,commands,skills,scripts,assets,templates,...}/` — plugin contents. Auto-discovered by convention unless the plugin manifest explicitly lists them.
 - `package.json` — npm metadata for `@drunkcoding/agents-and-skills`. `files` whitelist publishes **only** `plugins/**`, `.claude-plugin/marketplace.json`, `README.md`, `LICENSE`. Versions are auto-rewritten by `.github/workflows/npm-publish.yaml` (via `paulhatch/semantic-version`) — the workflow updates the root `package.json` version plus every `plugins/*/.claude-plugin/plugin.json` and the per-plugin `version` inside `marketplace.json` on push to `main`.
 - `.npmignore` — excludes `.git`, `.gitnexus/`, `.claude/`, `docs/`, internal markdown (`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`). The `files` whitelist in `package.json` takes precedence.
@@ -35,6 +35,7 @@ Personal Claude Code **plugin marketplace** (`drunkcoding`) published as the npm
   ```
   For a full smoke test inside Claude Code: `/plugin marketplace add file://$(pwd)` then `/plugin install <name>@drunkcoding`.
 - **When adding or editing a `SKILL.md` under `plugins/<name>/skills/<skill>/`, run the `validate-skills` skill against it** before committing. Committed at `.claude/skills/validate-skills/` (vendored from `callstackincubator/agent-skills`, MIT). Already adapted to scan `plugins/` + `.claude/skills/` — invoke via `/validate-skills` in Claude Code.
+- **After completing any plugin implementation, run the `plugin-validator` agent against the plugin** before marking work done. Invoke via the `plugin-validator:plugin-validator` agent type or `/plugin-validator` command. It validates skills, agents, commands, and hooks and proposes fixes for any `[FAIL]` items. A "skill is invalid" error at runtime is a sign this step was skipped.
 - House style: minimal diff, no scope creep, preserve existing prose unless the task requires changes. Think before coding; surgical edits only.
 
 ## Agent team best practices (when designing or editing team plugins)
