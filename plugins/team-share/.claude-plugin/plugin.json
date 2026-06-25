@@ -2,7 +2,7 @@
   "name": "team-share",
   "displayName": "Team Share",
   "version": "0.0.28",
-  "description": "Share Claude plugin settings with a team, scaffold CLAUDE.md when needed, refresh the Understand-Anything graph, and stage the onboarding artifacts for review.",
+  "description": "Onboard your team with an interactive setup menu: install CodeGraph, build the Understand-Anything knowledge graph, and share Claude Code settings — run any combination, all idempotent.",
   "author": {
     "name": "Steven Hoang"
   },
@@ -11,7 +11,13 @@
     "team",
     "claude",
     "settings",
+    "codegraph",
     "understand-anything",
     "git-lfs"
+  ],
+  "skills": [
+    "skills/codegraph-setup",
+    "skills/understand-setup",
+    "skills/claude-config"
   ]
 }
