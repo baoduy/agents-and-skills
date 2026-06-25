@@ -1,30 +1,46 @@
 # team-share
 
-Share repo-level Claude Code onboarding artifacts with your team in one pass.
+Onboard your team with an interactive setup menu. Run `/team-share` and choose which actions to execute — only selected actions run.
 
 ## What it does
 
-The `team-share` agent prepares a repository for teammates by:
+The `team-share` agent presents a multi-select menu with four options:
 
-1. Writing a shareable `.claude/settings.json` from the maintainer's enabled plugins and marketplaces.
-2. Ensuring `CLAUDE.md` exists when the project does not already have one.
-3. Refreshing the Understand-Anything knowledge graph with auto-update enabled.
-4. Tracking the graph with `git-lfs` and staging the resulting onboarding files for human review.
+| Option | What runs |
+|--------|-----------|
+| **Default (CodeGraph + Claude config)** *(Recommended)* | `codegraph-setup` + `claude-config` |
+| Setup CodeGraph | `codegraph-setup` |
+| Setup Understand-Anything | `understand-setup` |
+| Setup team Claude config | `claude-config` |
 
-It is designed to be idempotent and intentionally stops short of committing or pushing.
+## Skills (independently invocable)
+
+Each action is also available as a standalone skill:
+
+### `/codegraph-setup`
+
+Installs the [CodeGraph](https://github.com/colbymchenry/codegraph) CLI, wires it to Claude Code via MCP (`codegraph install`), and initialises the current project (`codegraph init`). Works on macOS, Linux, and Windows.
+
+### `/understand-setup`
+
+Installs the [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) plugin, builds the knowledge graph with `--auto-update`, generates `docs/wiki`, git-lfs tracks the graph, and stages all artefacts.
+
+### `/claude-config`
+
+Merges `enabledPlugins` and `extraKnownMarketplaces` from the maintainer's user settings into `.claude/settings.json`, scaffolds `CLAUDE.md` when missing, injects the Understand-Anything code-research section, and stages the result.
 
 ## Usage
-
-Run:
 
 ```text
 /team-share [--force] [--language <lang>]
 ```
 
-Arguments are passed through to `/understand` alongside the default `--auto-update` behavior.
+Arguments are forwarded to `/understand` when `understand-setup` is selected.
 
 ## Notes
 
-- The command expects `git-lfs` and `jq` to be installed.
-- It stages files for review but does not create commits.
-- The knowledge graph flow depends on the `understand-anything` plugin being available to teammates.
+- `codegraph-setup` requires internet access to download the CLI.
+- `understand-setup` requires `git-lfs` and `jq` to be installed.
+- `claude-config` requires `jq` to be installed.
+- All skills stage files but never commit or push — a human reviews and commits.
+- All skills are idempotent — safe to re-run.
