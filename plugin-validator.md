@@ -1,0 +1,1 @@
+../../plugins/plugin-validator/agents/plugin-validator.md

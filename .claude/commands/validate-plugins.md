@@ -1,0 +1,1 @@
+../../plugins/plugin-validator/commands/validate-plugins.md
