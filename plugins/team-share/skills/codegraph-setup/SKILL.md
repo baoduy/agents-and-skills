@@ -16,22 +16,15 @@ Must be inside a git repo:
 git rev-parse --is-inside-work-tree || { echo "ERROR: not a git repo — run this from your project root"; exit 1; }
 ```
 
-## Step 1 — Check if already installed
+## Step 1 — Install CLI if not present (OS-aware, idempotent)
+
+Run this as a single bash block so variables persist:
 
 ```bash
 if command -v codegraph >/dev/null 2>&1; then
   echo "✅ codegraph already installed: $(codegraph --version 2>/dev/null || echo 'version unknown')"
   echo "Skipping install — proceeding to wire and init."
-  SKIP_INSTALL=1
 else
-  SKIP_INSTALL=0
-fi
-```
-
-## Step 2 — Install CLI (OS-aware, skipped if already present)
-
-```bash
-if [ "$SKIP_INSTALL" = "0" ]; then
   if command -v uname >/dev/null 2>&1; then
     _OS=$(uname -s)
   else
