@@ -1,228 +1,53 @@
 ---
 name: team-share
 description: Share Claude plugin settings with the team, build or refresh the Understand-Anything knowledge graph, initialize the docs wiki, and git-lfs track it before staging everything for review.
-argument-hint: "[--force] [--language <lang>] (passed through to /understand)"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Skill
+argument-hint: "[--force] [--language <lang>] (forwarded to understand-setup → /understand)"
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Skill, AskUserQuestion
 ---
 
 # /team-share
 
-Make this repo onboarding-ready for the team in one pass:
+Make this repo onboarding-ready for the team in one pass. Choose which setup actions to run.
 
-1. Generate a **shareable `.claude/settings.json`** (plugins + marketplaces) from the maintainer's live setup.
-2. Build/refresh the **Understand-Anything knowledge graph** with auto-update enabled.
-3. Initialize the **docs wiki** for Understand-Anything under `docs/wiki`.
-4. **git-lfs track** the graph and **stage** everything — leaving the commit to a human.
+## Step 0 — Interactive menu
 
-This command is **idempotent** — safe to re-run. It **never commits or pushes**; it only stages.
-`$ARGUMENTS` (e.g. `--force`, `--language zh`) is forwarded to `/understand`.
+Before any work begins, use AskUserQuestion with `multiSelect: true` and these four options:
 
-Plugin source: Understand-Anything (Egonex fork) — <https://github.com/Egonex-AI/Understand-Anything>
+| Label | Description |
+|-------|-------------|
+| Default (CodeGraph + Claude config) *(Recommended)* | Install CodeGraph CLI + init project, then share .claude/settings.json and scaffold CLAUDE.md. Best starting point for most repos. |
+| Setup CodeGraph | Install the CodeGraph CLI, wire it to Claude Code MCP, and run codegraph init in this project. |
+| Setup Understand-Anything | Install the Understand-Anything plugin, build the knowledge graph with auto-update, and generate docs/wiki. |
+| Setup team Claude config | Merge enabledPlugins + marketplaces into .claude/settings.json, scaffold CLAUDE.md, and stage. |
 
----
+If the user selects nothing, print `"Nothing selected — exiting."` and stop immediately.
 
-## Step 0 — Preconditions (stop on any failure, fail loud)
+## Step 1 — Build run-list
 
-```bash
-git rev-parse --is-inside-work-tree                 # must be a git repo
-git rev-parse --abbrev-ref HEAD                      # report branch; warn if it is the default/protected branch
-command -v git-lfs || echo "MISSING: git-lfs — install it (brew install git-lfs) before continuing"
-command -v jq      || echo "MISSING: jq — install it (brew install jq) before continuing"
-```
+From the selected options, assemble a deduplicated run-list. Mapping:
 
-- If not a git repo, or `git-lfs`/`jq` are missing → **report and STOP**. Do not partially apply.
-- If on a protected branch (e.g. `develop`/`main`), warn and ask the user to switch to a feature branch first.
+- "Default (CodeGraph + Claude config)" → `codegraph-setup`, `claude-config`
+- "Setup CodeGraph" → `codegraph-setup`
+- "Setup Understand-Anything" → `understand-setup`
+- "Setup team Claude config" → `claude-config`
 
----
+Deduplication: if a skill appears more than once (e.g. "Default" + "Setup CodeGraph" both selected), keep it once. Final order is always: `codegraph-setup` → `understand-setup` → `claude-config`.
 
-## Step 1 — Generate the shareable `.claude/settings.json` **and ensure `CLAUDE.md` exists**
+## Step 2 — Dispatch
 
-Goal: teammates who clone the repo get the **same plugins + marketplaces** the maintainer uses, with **no machine-specific data leaked** — *and* a project-level `CLAUDE.md` is scaffolded if it is missing.
+Invoke each skill in the run-list in order using the Skill tool:
 
-### 1a — Merge plugin + marketplace settings
+- `codegraph-setup`  → `team-share:codegraph-setup` (no arguments)
+- `understand-setup` → `team-share:understand-setup` with `$ARGUMENTS` forwarded
+- `claude-config`    → `team-share:claude-config` (no arguments)
 
-Copy **only** `enabledPlugins` and `extraKnownMarketplaces` from the maintainer's user settings into the repo settings. Do **NOT** copy `hooks`, `permissions`, `env`, or any key holding absolute paths or machine-local secrets.
+The agent does no implementation work itself — all logic lives in the skills.
 
-```bash
-USER_SETTINGS="$HOME/.claude/settings.json"
-REPO_SETTINGS=".claude/settings.json"
+## Done — summary
 
-mkdir -p .claude
-[ -f "$REPO_SETTINGS" ] || echo '{}' > "$REPO_SETTINGS"
+After all selected skills complete, print a summary:
 
-# Merge: repo settings win on scalar keys; the two plugin maps are unioned
-# (user entries layered on top of any existing repo entries). Only these two
-# keys are taken from user settings — nothing else crosses over.
-jq -s '
-  .[0] as $repo | .[1] as $user
-  | $repo
-  + { enabledPlugins:        (($repo.enabledPlugins        // {}) + ($user.enabledPlugins        // {})) }
-  + { extraKnownMarketplaces: (($repo.extraKnownMarketplaces // {}) + ($user.extraKnownMarketplaces // {})) }
-' "$REPO_SETTINGS" "$USER_SETTINGS" > "$REPO_SETTINGS.tmp" && mv "$REPO_SETTINGS.tmp" "$REPO_SETTINGS"
-
-jq '{enabledPlugins, extraKnownMarketplaces}' "$REPO_SETTINGS"   # show the result for review
-```
-
-Notes:
-- This shares **currently-enabled** plugins (the in-use set). It does not pull disabled-but-installed plugins.
-- Some marketplaces may be **private** (require repo/org access). Flag any private marketplace so the user can confirm teammates can reach it.
-- Confirm `understand-anything@understand-anything` is present in `enabledPlugins` (needed for Step 2's auto-update hook to work on teammates' machines). If absent, tell the user to install it:
-  `/plugin marketplace add Egonex-AI/Understand-Anything` then `/plugin install understand-anything`.
-
-### 1b — Scaffold `CLAUDE.md` if missing
-
-The `claude-code-setup` plugin (from the `claude-plugins-official` marketplace) generates a project-savvy `CLAUDE.md` when one does not yet exist. Running the install command is **idempotent** — if the file already exists, this step is skipped.
-
-```bash
-# Only create CLAUDE.md when it does not already exist.
-if [ -f CLAUDE.md ]; then
-  echo "✅ CLAUDE.md already exists — skipping plugin install."
-else
-  echo "📝 CLAUDE.md not found — installing claude-code-setup plugin to scaffold it…"
-  claude plugin install claude-code-setup@claude-plugins-official
-  if [ -f CLAUDE.md ]; then
-    echo "✅ CLAUDE.md created by claude-code-setup."
-  else
-    echo "⚠️  claude-code-setup did not produce CLAUDE.md — you may need to run it manually or create the file yourself."
-  fi
-fi
-```
-
-Notes:
-- The plugin must already be available in the `claude-plugins-official` marketplace (it is already listed in `enabledPlugins` in the repo settings).
-- If the team prefers a custom `CLAUDE.md` template, commit one *before* running this command so the guard `[ -f CLAUDE.md ]` skips the plugin step.
-
-### 1c — Inject the Understand-Anything code-research section into `CLAUDE.md`
-
-Goal: every teammate's AI assistant knows to use the Understand-Anything commands when doing code research, without duplicating the section on re-runs.
-
-```bash
-# Only append when the section marker is not already present (idempotent).
-if grep -qF '## Code research with Understand-Anything' CLAUDE.md 2>/dev/null; then
-  echo "✅ Understand-Anything section already in CLAUDE.md — skipping."
-else
-  cat >> CLAUDE.md << 'EOF'
-
-## Code research with Understand-Anything
-
-This project uses the [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) plugin to maintain an interactive knowledge graph of the codebase. **Always prefer these commands over raw file-by-file exploration when doing code research:**
-
-| Goal | Command |
-|------|---------|
-| Explore the full codebase graph | `/understand` |
-| Ask a free-form question about the code | `/understand-chat <question>` |
-| Deep-dive into a specific file or function | `/understand-explain <path/symbol>` |
-| See impact of your current changes before committing | `/understand-diff` |
-| Open the interactive visual dashboard | `/understand-dashboard` |
-| Extract business-domain knowledge (domains, flows, steps) | `/understand-domain` |
-| Generate an onboarding guide for new teammates | `/understand-onboard` |
-| Generate or refresh wiki knowledge under `docs/wiki` | `/understand-knowledge docs/wiki` |
-
-The knowledge graph lives in `.understand-anything/knowledge-graph.json` and is kept up-to-date automatically on every commit (auto-update is enabled). Re-run `/understand` after large refactors to force the graph to catch up, and re-run `/understand-knowledge docs/wiki` when you want to refresh the generated wiki content.
-EOF
-  echo "✅ Understand-Anything code-research section appended to CLAUDE.md."
-fi
-```
-
-Notes:
-- The section is appended at the end of `CLAUDE.md` so it does not disturb existing content.
-- The marker string `## Code research with Understand-Anything` is used as the idempotency guard — do not rename the heading without updating the guard.
-- If `MIRRORS.md` / `AGENTS.md` or other agent-config files exist alongside `CLAUDE.md` (e.g. for non-Claude runtimes), apply the same append to them so all agent runtimes get the guidance. The loop below appends the same section only when missing.
-
-```bash
-# Mirror to AGENTS.md / MIRRORS.md if they exist (non-Claude runtimes).
-for f in AGENTS.md MIRRORS.md; do
-  if [ -f "$f" ] && ! grep -qF '## Code research with Understand-Anything' "$f" 2>/dev/null; then
-    cat >> "$f" << 'EOF'
-
-## Code research with Understand-Anything
-
-This project uses the [Understand-Anything](https://github.com/Egonex-AI/Understand-Anything) plugin to maintain an interactive knowledge graph of the codebase. **Always prefer these commands over raw file-by-file exploration when doing code research:**
-
-| Goal | Command |
-|------|---------|
-| Explore the full codebase graph | `/understand` |
-| Ask a free-form question about the code | `/understand-chat <question>` |
-| Deep-dive into a specific file or function | `/understand-explain <path/symbol>` |
-| See impact of your current changes before committing | `/understand-diff` |
-| Open the interactive visual dashboard | `/understand-dashboard` |
-| Extract business-domain knowledge (domains, flows, steps) | `/understand-domain` |
-| Generate an onboarding guide for new teammates | `/understand-onboard` |
-| Generate or refresh wiki knowledge under `docs/wiki` | `/understand-knowledge docs/wiki` |
-
-The knowledge graph lives in `.understand-anything/knowledge-graph.json` and is kept up-to-date automatically on every commit (auto-update is enabled). Re-run `/understand` after large refactors to force the graph to catch up, and re-run `/understand-knowledge docs/wiki` when you want to refresh the generated wiki content.
-EOF
-    echo "✅ Understand-Anything section also appended to $f."
-  fi
-done
-```
-
----
-
-## Step 2 — Build / refresh the knowledge graph (auto-update on)
-
-Run the skill **in the main thread** (it dispatches its own analyzer subagents — do not wrap it in a subagent):
-
-```
-/understand --auto-update $ARGUMENTS
-```
-
-- `--auto-update` writes `{"autoUpdate": true}` to `.understand-anything/config.json`. The plugin's bundled hook then incrementally patches the graph whenever a `git commit` is made (and on stale Session resume, depending on the plugin version).
-- If a graph already exists, `/understand` runs incrementally. Pass `--force` (via `$ARGUMENTS`) to rebuild from scratch.
-- After it finishes, confirm these exist: `.understand-anything/knowledge-graph.json`, `.understand-anything/meta.json`, `.understand-anything/config.json` (with `autoUpdate: true`).
-
----
-
-## Step 3 — Initialize the docs wiki from Understand-Anything
-
-Create the wiki folder if needed, then generate or refresh the wiki content in the main thread:
-
-```bash
-mkdir -p docs/wiki
-```
-
-```
-/understand-knowledge docs/wiki
-```
-
-- `mkdir -p docs/wiki` is idempotent and ensures the target directory exists before wiki generation.
-- Re-running `/understand-knowledge docs/wiki` should refresh the generated wiki content in place.
-- After it finishes, confirm `docs/wiki/` exists and contains generated wiki files before staging.
-
----
-
-## Step 4 — Ignore scratch, git-lfs track the graph, and stage
-
-Scratch outputs must stay local (never committed):
-
-```bash
-# .gitignore — append only if missing (idempotent)
-for p in ".understand-anything/intermediate/" ".understand-anything/tmp/" ".understand-anything/diff-overlay.json"; do
-  grep -qxF "$p" .gitignore 2>/dev/null || echo "$p" >> .gitignore
-done
-
-# Large graphs (10 MB+) belong in LFS; tracking is harmless for small ones too.
-git lfs install
-git lfs track ".understand-anything/*.json"
-
-# Stage — but DO NOT commit. A human reviews and commits.
-git add .gitattributes .gitignore .claude/settings.json .understand-anything/ docs/wiki/ CLAUDE.md
-# Also stage AGENTS.md / MIRRORS.md if they were modified.
-for f in AGENTS.md MIRRORS.md; do [ -f "$f" ] && git add "$f"; done
-
-git status
-git lfs ls-files          # confirm the graph json is LFS-tracked
-```
-
----
-
-## Done — report, do not commit
-
-Summarize for the user:
-- Which plugins/marketplaces were written into `.claude/settings.json` (call out any private ones).
-- `CLAUDE.md` status: already existed vs created by `claude-code-setup`; Understand-Anything section added vs already present.
-- `AGENTS.md` status (if applicable): Understand-Anything section added vs already present / not found.
-- Graph status: created vs incrementally updated; `autoUpdate` on/off.
-- Wiki status: `docs/wiki` created vs already existed; `/understand-knowledge docs/wiki` run successfully vs failed.
-- What is staged and confirmed LFS-tracked.
-- Remind them: **review, then commit yourself** (e.g. `git commit -m "chore: share team onboarding (claude settings + CLAUDE.md + understand graph + wiki)"`). The auto-update hook keeps the graph fresh on every future commit, and the wiki can be refreshed by re-running `/understand-knowledge docs/wiki` whenever needed.
+- Which actions ran (in order).
+- Any failures or warnings reported by individual skills.
+- Reminder: **review staged changes, then commit yourself** — for example:
+  `git commit -m "chore: team onboarding setup (codegraph + claude config)"`
