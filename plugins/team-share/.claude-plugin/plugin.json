@@ -14,10 +14,5 @@
     "codegraph",
     "understand-anything",
     "git-lfs"
-  ],
-  "skills": [
-    "skills/codegraph-setup",
-    "skills/understand-setup",
-    "skills/claude-config"
   ]
 }
