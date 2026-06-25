@@ -1,6 +1,6 @@
 ---
 name: codegraph-setup
-description: Install the CodeGraph CLI, wire it to Claude Code via MCP (codegraph install), and initialise the current project (codegraph init). Works on macOS, Linux, and Windows (Git Bash / PowerShell). Idempotent — skips install if codegraph is already in PATH.
+description: Install the CodeGraph CLI, wire it to the local project via MCP (codegraph install --target=auto --location=local), and initialise the current project (codegraph init). Works on macOS, Linux, and Windows (Git Bash / PowerShell). Idempotent — skips install if codegraph is already in PATH.
 allowed-tools: Bash
 ---
 
@@ -56,10 +56,10 @@ Note: on Windows with Git Bash, `uname -s` returns `MINGW64_NT-*` or similar, wh
 
 ## Step 3 — Wire to Claude Code
 
-Register the CodeGraph MCP server with Claude Code:
+Register the CodeGraph MCP server for this project (auto-detects AI tool; config written to project-local settings):
 
 ```bash
-codegraph install
+codegraph install --target=auto --location=local
 ```
 
 This makes CodeGraph's context tools available inside Claude Code sessions.
