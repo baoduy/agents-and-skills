@@ -93,3 +93,10 @@ test("importSquad creates with mapped leader and adds non-leader members by mapp
   assert.equal(adds.length, 1, "leader is not double-added as member");
   assert.equal(adds[0][adds[0].indexOf("--member-id") + 1], "ag_NEW2");
 });
+
+import { collectSourceRuntimes } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+
+test("collectSourceRuntimes returns distinct ids", () => {
+  const m = { agents: [{ sourceRuntimeId: "rt_a" }, { sourceRuntimeId: "rt_a" }, { sourceRuntimeId: "rt_b" }] };
+  assert.deepEqual(collectSourceRuntimes(m).sort(), ["rt_a", "rt_b"]);
+});

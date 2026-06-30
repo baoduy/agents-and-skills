@@ -83,3 +83,27 @@ export function importSquad({ cli, squad, agentIdMap }) {
   }
   return { newId: id, created, updated };
 }
+
+export function collectSourceRuntimes(manifest) {
+  return [...new Set((manifest.agents ?? []).map((a) => a.sourceRuntimeId).filter(Boolean))];
+}
+
+export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
+  const manifest = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
+  const missing = collectSourceRuntimes(manifest).filter((r) => !runtimeMap.has(r));
+  if (missing.length) throw new Error(`Unmapped runtimes: ${missing.join(", ")} — aborting before any write`);
+
+  const skillRes = importSkills({ cli, manifest, dir, fs });
+  const agentRes = importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap, fs });
+  let squadRes = { newId: null, created: 0, updated: 0 };
+  if (manifest.squads?.length) squadRes = importSquad({ cli, squad: manifest.squads[0], agentIdMap: agentRes.idMap });
+
+  return {
+    created: { skills: skillRes.created, agents: agentRes.created, squads: squadRes.created },
+    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadRes.updated },
+    skillIdMap: Object.fromEntries(skillRes.idMap),
+    agentIdMap: Object.fromEntries(agentRes.idMap),
+    squadId: squadRes.newId,
+    secretsReminder: (manifest.agents ?? []).filter((a) => a.hadSecrets).map((a) => a.name),
+  };
+}
