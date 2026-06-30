@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { slugify, makeCli, requireAuth, resolveWorkspaceId, listRuntimes, findByName, getSkill } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { SKILL_GET } from "./fixtures.mjs";
+import { slugify, makeCli, requireAuth, resolveWorkspaceId, listRuntimes, findByName, getSkill, getAgent, getSquad, getSquadMembers } from "../../plugins/multica-tool/scripts/lib.mjs";
+import { SKILL_GET, AGENT_GET, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST } from "./fixtures.mjs";
 
 test("slugify makes filesystem-safe slugs", () => {
   assert.equal(slugify("My Cool Skill!"), "my-cool-skill");
@@ -30,7 +30,7 @@ test("requireAuth throws when auth status fails", () => {
 });
 
 function cliReturning(map) {
-  // map: JSON.stringify(args-without-output/ws) -> object
+  // map: args.join(" ") -> object
   return {
     json: (args) => map[args.join(" ")],
     run: () => "",
@@ -53,7 +53,32 @@ test("findByName throws on duplicate, null on miss", () => {
   assert.throws(() => findByName([{ name: "a" }, { name: "a" }], "a"), /Duplicate name/);
 });
 
-test("getSkill returns parsed skill object", () => {
+test("listRuntimes returns parsed list", () => {
+  const cli = cliReturning({ "runtime list": RUNTIME_LIST });
+  assert.equal(listRuntimes(cli)[0].name, "My Runtime");
+});
+
+test("getSkill trims files to {path,content}", () => {
   const cli = cliReturning({ "skill get sk_SRC1": SKILL_GET });
-  assert.equal(getSkill(cli, "sk_SRC1").content, "# Greet\nbody");
+  const s = getSkill(cli, "sk_SRC1");
+  assert.equal(s.content, "# Greet\nbody");
+  assert.deepEqual(s.files, [{ path: "ref.md", content: "extra" }]);
+});
+
+test("getAgent normalizes snake_case to camelCase and embeds skills", () => {
+  const cli = cliReturning({ "agent get ag_SRC1": AGENT_GET });
+  const a = getAgent(cli, "ag_SRC1");
+  assert.equal(a.maxConcurrentTasks, 6);
+  assert.equal(a.runtimeId, "rt_SRC1");
+  assert.equal(a.hasCustomEnv, true);
+  assert.deepEqual(a.mcpConfig, { mcpServers: { x: { token: "t" } } });
+  assert.deepEqual(a.skills, [{ id: "sk_SRC1", name: "Greet" }]);
+});
+
+test("getSquad exposes leaderId; getSquadMembers normalizes member_id and empty role", () => {
+  const cli = cliReturning({ "squad get sq_SRC1": SQUAD_GET, "squad member list sq_SRC1": SQUAD_MEMBERS });
+  assert.equal(getSquad(cli, "sq_SRC1").leaderId, "ag_SRC1");
+  const mem = getSquadMembers(cli, "sq_SRC1");
+  assert.deepEqual(mem[0], { memberId: "ag_SRC1", memberType: "agent", role: "leader" });
+  assert.equal(mem[1].role, "member", "empty role normalized to member");
 });

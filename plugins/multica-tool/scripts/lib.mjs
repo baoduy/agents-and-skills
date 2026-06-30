@@ -55,8 +55,39 @@ export const listSkills = (cli) => cli.json(["skill", "list"]);
 export const listAgents = (cli) => cli.json(["agent", "list"]);
 export const listSquads = (cli) => cli.json(["squad", "list"]);
 
-export const getSkill = (cli, id) => cli.json(["skill", "get", id]);
-export const getAgent = (cli, id) => cli.json(["agent", "get", id]);
-export const getAgentSkills = (cli, id) => cli.json(["agent", "skills", "list", id]);
-export const getSquad = (cli, id) => cli.json(["squad", "get", id]);
-export const getSquadMembers = (cli, id) => cli.json(["squad", "member", "list", id]);
+// Get-wrappers: the ONLY place that knows the raw CLI field names. They
+// return a stable camelCase shape so downstream code never sees snake_case.
+export function getSkill(cli, id) {
+  const s = cli.json(["skill", "get", id]);
+  return {
+    id: s.id, name: s.name, description: s.description,
+    content: s.content ?? "", config: s.config ?? {},
+    files: (s.files ?? []).map((f) => ({ path: f.path, content: f.content })),
+  };
+}
+
+export function getAgent(cli, id) {
+  const a = cli.json(["agent", "get", id]);
+  return {
+    id: a.id, name: a.name, description: a.description, instructions: a.instructions,
+    model: a.model, visibility: a.visibility,
+    maxConcurrentTasks: a.max_concurrent_tasks,
+    runtimeConfig: a.runtime_config,
+    customArgs: a.custom_args,
+    thinkingLevel: a.thinking_level,
+    runtimeId: a.runtime_id,
+    hasCustomEnv: a.has_custom_env,
+    mcpConfig: a.mcp_config,
+    skills: (a.skills ?? []).map((sk) => ({ id: sk.id, name: sk.name })),
+  };
+}
+
+export function getSquad(cli, id) {
+  const s = cli.json(["squad", "get", id]);
+  return { id: s.id, name: s.name, description: s.description, leaderId: s.leader_id };
+}
+
+export const getSquadMembers = (cli, id) =>
+  (cli.json(["squad", "member", "list", id]) ?? []).map((m) => ({
+    memberId: m.member_id, memberType: m.member_type, role: m.role || "member",
+  }));
