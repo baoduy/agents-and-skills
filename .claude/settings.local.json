@@ -19,7 +19,11 @@
       "Bash(rtk read *)",
       "Bash(export CLAUDE_PROJECT_DIR=\"$\\(pwd\\)/.tmp-hook-test\")",
       "Bash(bash /Users/steven/_CODE/GIT/agents-and-skills/plugins/team-superpower/tests/task-completed-iterations.test.sh)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(node plugins/multica-tool/scripts/multica-export.mjs --scope squad --id b33d204c-e8a4-4c4e-80f9-fcb1e7a846c4 --out ~/Downloads/Multica)",
+      "Bash(echo \"=== EXIT $? ===\")",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/tmp/claude-1000/-home-steven-orca-workspaces-agents-and-skills-dev/4886e78a-2a89-487a-bef3-00bb5630f72f/scratchpad/squad-report.json'\\)\\); m=d['manifest']; print\\('skills:', [s['name'] for s in m['skills']]\\); print\\('agents:', [a['name'] for a in m['agents']]\\); print\\('squads:', [s['name'] for s in m['squads']]\\); print\\('warnings:', d['warnings']\\)\")",
+      "Read(//home/steven/Downloads/Multica/**)"
     ]
   }
 }

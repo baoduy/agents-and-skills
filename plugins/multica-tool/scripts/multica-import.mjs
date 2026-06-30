@@ -1,5 +1,25 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { listSkills, listAgents, listSquads, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+
+// Relative paths of every file under root (recursing into subdirs like scripts/).
+function walkSkillFiles(fs, root, rel = "") {
+  const out = [];
+  for (const ent of fs.readdirSync(rel ? `${root}/${rel}` : root, { withFileTypes: true })) {
+    const r = rel ? `${rel}/${ent.name}` : ent.name;
+    if (ent.isDirectory()) out.push(...walkSkillFiles(fs, root, r));
+    else out.push(r);
+  }
+  return out;
+}
+
+// Pull `description:` out of a SKILL.md YAML frontmatter block.
+// ponytail: single-line values only (the skill frontmatter convention); folded/multi-line YAML not handled.
+function frontmatterDescription(text) {
+  const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  if (!block) return "";
+  const line = block[1].split(/\r?\n/).find((l) => /^description\s*:/.test(l));
+  return line ? line.replace(/^description\s*:/, "").trim().replace(/^["']|["']$/g, "") : "";
+}
 
 export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
   const idMap = new Map();
@@ -12,19 +32,24 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
     const configPath = `${sdir}/config.json`;
     const config = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
     const match = findByName(existing, s.name);
+    // Fall back to the SKILL.md frontmatter description when the manifest carries none.
+    const fmDesc = frontmatterDescription(fs.readFileSync(contentPath, "utf8"));
     let id;
     if (match) {
-      cli.run(["skill", "update", match.id, "--content-file", contentPath, "--config", config]);
+      // Only fill description when the existing skill has none — don't clobber a set one.
+      const desc = !match.description && fmDesc ? ["--description", fmDesc] : [];
+      cli.run(["skill", "update", match.id, "--content-file", contentPath, "--config", config, ...desc]);
       id = match.id; updated++;
     } else {
-      const out = cli.run(["skill", "create", "--name", s.name, "--content-file", contentPath, "--config", config]);
+      const desc = fmDesc ? ["--description", fmDesc] : [];
+      const out = cli.run(["skill", "create", "--name", s.name, "--content-file", contentPath, "--config", config, ...desc]);
       id = JSON.parse(out).id; created++;
     }
     idMap.set(s.name, id);
-    // upsert extra files (everything except SKILL.md and config.json)
-    for (const f of fs.readdirSync(sdir)) {
-      if (f === "SKILL.md" || f === "config.json") continue;
-      cli.run(["skill", "files", "upsert", id, "--path", f, "--content-file", `${sdir}/${f}`]);
+    // upsert extra files (everything except SKILL.md and config.json), by relative path
+    for (const rel of walkSkillFiles(fs, sdir)) {
+      if (rel === "SKILL.md" || rel === "config.json") continue;
+      cli.run(["skill", "files", "upsert", id, "--path", rel, "--content-file", `${sdir}/${rel}`]);
     }
   }
   return { idMap, created, updated };
@@ -70,16 +95,21 @@ export function importSquad({ cli, squad, agentIdMap }) {
   const leaderId = agentIdMap.get(squad.leaderName);
   const match = findByName(existing, squad.name);
   let id, created = 0, updated = 0;
+  const instr = squad.instructions ? ["--instructions", squad.instructions] : [];
   if (match) {
-    cli.run(["squad", "update", match.id, "--leader", leaderId, "--description", squad.description ?? ""]);
+    cli.run(["squad", "update", match.id, "--leader", leaderId, "--description", squad.description ?? "", ...instr]);
     id = match.id; updated++;
   } else {
-    const out = cli.run(["squad", "create", "--name", squad.name, "--leader", leaderId, "--description", squad.description ?? ""]);
+    const out = cli.run(["squad", "create", "--name", squad.name, "--leader", leaderId, "--description", squad.description ?? "", ...instr]);
     id = JSON.parse(out).id; created++;
   }
+  // Add non-leader members, skipping any already present so re-runs are idempotent.
+  const present = new Set(getSquadMembers(cli, id).map((m) => m.memberId));
   for (const m of squad.members) {
     if (m.agentName === squad.leaderName) continue;
-    cli.run(["squad", "member", "add", id, "--member-id", agentIdMap.get(m.agentName), "--role", m.role, "--type", "agent"]);
+    const memberId = agentIdMap.get(m.agentName);
+    if (present.has(memberId)) continue;
+    cli.run(["squad", "member", "add", id, "--member-id", memberId, "--role", m.role, "--type", "agent"]);
   }
   return { newId: id, created, updated };
 }

@@ -84,7 +84,7 @@ export function getAgent(cli, id) {
 
 export function getSquad(cli, id) {
   const s = cli.json(["squad", "get", id]);
-  return { id: s.id, name: s.name, description: s.description, leaderId: s.leader_id };
+  return { id: s.id, name: s.name, description: s.description, instructions: s.instructions, leaderId: s.leader_id };
 }
 
 export const getSquadMembers = (cli, id) =>

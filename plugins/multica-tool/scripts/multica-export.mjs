@@ -1,4 +1,5 @@
 import * as nodeFs from "node:fs";
+import { dirname } from "node:path";
 import { slugify, getSkill, getAgent, getSquad, getSquadMembers, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
@@ -24,7 +25,7 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad 
     sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, sourceId: s.sourceId })),
     agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceRuntimeId: a.sourceRuntimeId, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
-    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", leaderName: squad.leaderName, members: squad.members }] : [],
+    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", leaderName: squad.leaderName, members: squad.members }] : [],
   };
 }
 
@@ -62,6 +63,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     squad = {
       name: sq.name,
       description: sq.description,
+      instructions: sq.instructions,
       leaderName: nameOf(sq.leaderId),
       members: members.map((m) => ({ agentName: nameOf(m.memberId), role: m.role })),
     };
@@ -83,7 +85,11 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(`${dir}/SKILL.md`, s.content ?? "");
     fs.writeFileSync(`${dir}/config.json`, JSON.stringify(s.config ?? {}, null, 2));
-    for (const f of s.files ?? []) fs.writeFileSync(`${dir}/${f.path}`, f.content ?? "");
+    for (const f of s.files ?? []) {
+      const target = `${dir}/${f.path}`;
+      fs.mkdirSync(dirname(target), { recursive: true }); // f.path may be nested, e.g. scripts/foo.sh
+      fs.writeFileSync(target, f.content ?? "");
+    }
   }
   // Index agent entries by name for the manifest writing loop.
   const agentByName = new Map([...agentsById.values()].map((a) => [a.raw.name, a]));

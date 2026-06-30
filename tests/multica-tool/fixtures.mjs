@@ -22,7 +22,7 @@ export const AGENT_GET_2 = {
   has_custom_env: false, custom_env_key_count: 0, mcp_config: {}, mcp_config_redacted: {},
   skills: [],
 };
-export const SQUAD_GET = { id: "sq_SRC1", name: "Team", description: "the team", leader_id: "ag_SRC1" };
+export const SQUAD_GET = { id: "sq_SRC1", name: "Team", description: "the team", instructions: "# Team charter\nShip it.", leader_id: "ag_SRC1" };
 export const SQUAD_MEMBERS = [
   { id: "m1", member_id: "ag_SRC1", member_type: "agent", role: "leader", squad_id: "sq_SRC1" },
   { id: "m2", member_id: "ag_SRC2", member_type: "agent", role: "", squad_id: "sq_SRC1" },
