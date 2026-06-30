@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, findByName } from "./lib.mjs";
+import { listSkills, listAgents, listSquads, findByName } from "./lib.mjs";
 
 export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
   const idMap = new Map();
@@ -63,4 +63,23 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     cli.run(["agent", "skills", "set", id, "--skill-ids", skillIds.join(",")]);
   }
   return { idMap, created, updated };
+}
+
+export function importSquad({ cli, squad, agentIdMap }) {
+  const existing = listSquads(cli);
+  const leaderId = agentIdMap.get(squad.leaderName);
+  const match = findByName(existing, squad.name);
+  let id, created = 0, updated = 0;
+  if (match) {
+    cli.run(["squad", "update", match.id, "--leader", leaderId, "--description", squad.description ?? ""]);
+    id = match.id; updated++;
+  } else {
+    const out = cli.run(["squad", "create", "--name", squad.name, "--leader", leaderId, "--description", squad.description ?? ""]);
+    id = JSON.parse(out).id; created++;
+  }
+  for (const m of squad.members) {
+    if (m.agentName === squad.leaderName) continue;
+    cli.run(["squad", "member", "add", id, "--member-id", agentIdMap.get(m.agentName), "--role", m.role, "--type", "agent"]);
+  }
+  return { newId: id, created, updated };
 }

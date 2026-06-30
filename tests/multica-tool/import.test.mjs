@@ -73,3 +73,23 @@ test("importAgents throws when runtime is unmapped", () => {
     /unmapped runtime/i
   );
 });
+
+import { importSquad } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+
+const SQUAD_ENTRY = {
+  name: "Team", file: "squads/team.json", leaderName: "Helper",
+  members: [{ agentName: "Helper", role: "leader" }, { agentName: "Helper2", role: "member" }],
+};
+
+test("importSquad creates with mapped leader and adds non-leader members by mapped id", () => {
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"sq_NEW1"}' : "{}"; } };
+  const agentIdMap = new Map([["Helper", "ag_NEW1"], ["Helper2", "ag_NEW2"]]);
+  const { newId } = importSquad({ cli, squad: SQUAD_ENTRY, agentIdMap });
+  assert.equal(newId, "sq_NEW1");
+  const create = calls.find((a) => a[1] === "create");
+  assert.equal(create[create.indexOf("--leader") + 1], "ag_NEW1");
+  const adds = calls.filter((a) => a[1] === "member" && a[2] === "add");
+  assert.equal(adds.length, 1, "leader is not double-added as member");
+  assert.equal(adds[0][adds[0].indexOf("--member-id") + 1], "ag_NEW2");
+});
