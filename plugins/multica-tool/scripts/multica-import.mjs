@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, findByName } from "./lib.mjs";
+import { listSkills, listAgents, findByName } from "./lib.mjs";
 
 export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
   const idMap = new Map();
@@ -26,6 +26,41 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
       if (f === "SKILL.md" || f === "config.json") continue;
       cli.run(["skill", "files", "upsert", id, "--path", f, "--content-file", `${sdir}/${f}`]);
     }
+  }
+  return { idMap, created, updated };
+}
+
+export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = nodeFs }) {
+  const idMap = new Map();
+  let created = 0, updated = 0;
+  const existing = listAgents(cli);
+
+  for (const a of manifest.agents) {
+    const rec = JSON.parse(fs.readFileSync(`${dir}/${a.file}`, "utf8"));
+    const targetRuntime = runtimeMap.get(rec.sourceRuntimeId);
+    if (!targetRuntime) throw new Error(`Unmapped runtime "${rec.sourceRuntimeId}" for agent "${rec.name}"`);
+    // Only pass optional flags when present — `--model ""` would CLEAR the model.
+    const common = [
+      "--visibility", rec.visibility ?? "private",
+      "--max-concurrent-tasks", String(rec.maxConcurrentTasks ?? 6),
+    ];
+    if (rec.instructions) common.push("--instructions", rec.instructions);
+    if (rec.model) common.push("--model", rec.model);
+    if (rec.thinkingLevel) common.push("--thinking-level", rec.thinkingLevel);
+    if (rec.runtimeConfig && Object.keys(rec.runtimeConfig).length) common.push("--runtime-config", JSON.stringify(rec.runtimeConfig));
+    if (Array.isArray(rec.customArgs) && rec.customArgs.length) common.push("--custom-args", JSON.stringify(rec.customArgs));
+    const match = findByName(existing, rec.name);
+    let id;
+    if (match) {
+      cli.run(["agent", "update", match.id, "--runtime-id", targetRuntime, ...common]);
+      id = match.id; updated++;
+    } else {
+      const out = cli.run(["agent", "create", "--name", rec.name, "--runtime-id", targetRuntime, ...common]);
+      id = JSON.parse(out).id; created++;
+    }
+    idMap.set(rec.name, id);
+    const skillIds = (rec.skillNames ?? []).map((n) => skillIdMap.get(n)).filter(Boolean);
+    cli.run(["agent", "skills", "set", id, "--skill-ids", skillIds.join(",")]);
   }
   return { idMap, created, updated };
 }

@@ -43,3 +43,33 @@ test("importSkills updates (not re-creates) when name exists — idempotent", ()
   assert.ok(cli.calls.some((a) => a[0] === "skill" && a[1] === "update" && a[2] === "sk_TGT9"));
   assert.ok(!cli.calls.some((a) => a[1] === "create"));
 });
+
+import { importAgents } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+
+const AGENT_MANIFEST = {
+  version: "1", scope: "agent", sourceWorkspaceId: "ws_SRC", skills: [],
+  agents: [{ name: "Helper", file: "agents/helper.json", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"] }],
+  squads: [],
+};
+const AGENT_FILE = JSON.stringify({ name: "Helper", instructions: "be nice", model: "claude-sonnet-4-6", visibility: "workspace", maxConcurrentTasks: 6, sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"] });
+
+test("importAgents remaps runtime id and sets mapped skill ids", () => {
+  const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  const { idMap } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  assert.equal(idMap.get("Helper"), "ag_NEW1");
+  const create = calls.find((a) => a[1] === "create");
+  assert.ok(create.includes("--runtime-id") && create[create.indexOf("--runtime-id") + 1] === "rt_TGT1", "mapped runtime applied");
+  const set = calls.find((a) => a[1] === "skills" && a[2] === "set");
+  assert.equal(set[set.indexOf("--skill-ids") + 1], "sk_NEW1", "mapped skill id applied");
+});
+
+test("importAgents throws when runtime is unmapped", () => {
+  const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] };
+  const cli = { json: () => [], run: () => "{}" };
+  assert.throws(
+    () => importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map(), runtimeMap: new Map(), fs }),
+    /unmapped runtime/i
+  );
+});
