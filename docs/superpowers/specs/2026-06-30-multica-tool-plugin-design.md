@@ -5,10 +5,13 @@
 
 ## Purpose
 
-A new marketplace plugin `multica-tool` that exports Multica skills, agents, and squads
-to a local folder and imports them back — primarily to **migrate resources between
-Multica workspaces**. Export is selective (skill / agent+skills / squad+all); import
-replays the whole exported folder into a target workspace.
+A new marketplace plugin `multica-tool` for moving Multica skills, agents, and squads
+between workspaces. Three operations:
+
+- **export** — selective (skill / agent+skills / squad+all) → local folder.
+- **import** — replay a whole exported folder into a target workspace.
+- **sync** — copy one resource (skill / agent+skills / squad+all) **directly** from a
+  source workspace to a destination workspace, no folder to manage.
 
 Backed by the `multica` CLI (https://multica.ai/docs/cli), already installed at
 `/opt/homebrew/bin/multica`.
@@ -48,7 +51,12 @@ Two consequences shape the design:
   source runtime to a target runtime. Never invented.
 - **Conflicts:** overwrite/update existing (by name).
 - **Selection:** export takes args if given, else interactive list-and-pick; import targets
-  a whole folder.
+  a whole folder; sync takes `<type> <name> from <src-ws> to <dest-ws>`.
+- **Surface:** 3 commands + 3 skills + 3 agents (per user). The command is the slash
+  entrypoint; the skill holds the logic + scripts; the agent is a delegatable executor that
+  runs its skill in its own context (useful for long or background migrations). The agents
+  are independent executors, **not** a coordinated team — the repo's "agent team best
+  practices" checklist does not apply here.
 - **Logic split (approach A):** script-backed skills. Deterministic work (graph walk,
   manifest build, ID remapping, conflict resolution) lives in Node helpers; the model drives
   interaction (scope pick, runtime remap, workspace confirm). Node chosen — native JSON, no
@@ -59,15 +67,24 @@ Two consequences shape the design:
 ```
 plugins/multica-tool/
   .claude-plugin/plugin.json
+  commands/export.md          # /multica-tool:export  → run export skill
+  commands/import.md          # /multica-tool:import  → run import skill
+  commands/sync.md            # /multica-tool:sync    → run sync skill
+  agents/export.md            # delegatable executor → runs export skill
+  agents/import.md            # delegatable executor → runs import skill
+  agents/sync.md              # delegatable executor → runs sync skill
   skills/export/SKILL.md      # drive scope pick → call exporter → report
   skills/import/SKILL.md      # point at folder → confirm workspace → remap runtimes → call importer → report
-  scripts/multica-export.mjs  # graph walk + write dir tree + manifest
+  skills/sync/SKILL.md        # resolve workspaces → export(src)→temp→import(dest) → report
+  scripts/multica-export.mjs  # graph walk + write dir tree + manifest (exported as a lib fn too)
   scripts/multica-import.mjs  # read manifest + remap IDs + replay (idempotent upsert by name)
-  scripts/lib.mjs             # shared: CLI runner (injectable), JSON helpers, slugify
+  scripts/multica-sync.mjs    # thin: export into temp dir (src ws) → import (dest ws)
+  scripts/lib.mjs             # shared: CLI runner (injectable), JSON helpers, slugify, workspace resolve
 ```
 
-Invokable as `/multica-tool:export` and `/multica-tool:import`. No separate command files —
-skills are directly invokable.
+`sync` adds no new migration logic — it calls the exporter then the importer over a temp
+working directory, so the link-rewiring and idempotent upsert are exercised once, in shared
+code.
 
 ## Export folder layout
 
@@ -148,6 +165,30 @@ Captures: `name`, `description`, `instructions`, `leaderName`, `members[] {agent
 6. Report: created vs updated counts per type, the `name → newId` maps, unmapped runtimes
    (if aborted), and any secrets the user must re-set.
 
+## Sync data flow (workspace → workspace, direct)
+
+`sync <type> <name> from <src-ws-name> to <dest-ws-name>` where `type` is `skill`,
+`agent`, or `squad`.
+
+1. Verify auth. Resolve `src-ws-name` and `dest-ws-name` to IDs via `multica workspace
+   list`. Abort if either name is missing or ambiguous.
+2. **Export** the requested scope from the source workspace (`--workspace-id <src>`) into a
+   temp directory — reuses the exporter graph walk, so an `agent`/`squad` sync pulls its
+   linked skills/agents automatically.
+3. **Import** that temp directory into the destination workspace (`--workspace-id <dest>`) —
+   reuses the importer's idempotent upsert-by-name and runtime remap.
+4. Clean up the temp directory. Report the same created/updated summary as import.
+
+Runtime remap (for `agent`/`squad` syncs) and the secrets reminder apply exactly as in
+import, since sync runs the import path.
+
+## Workspace resolution
+
+`import` and `sync` target a workspace other than the current one. Names are resolved to
+IDs via `multica workspace list`; the resolved ID is passed through the global
+`--workspace-id` flag on every CLI call. An unknown or duplicate workspace name aborts with
+a clear message — never guessed.
+
 ## Error handling (fail loud)
 
 - Not authenticated → stop; instruct `multica login`. No partial work.
@@ -172,6 +213,8 @@ fixtures. Coverage (each test encodes *why* it matters):
 - Overwrite path calls `update` (not a second `create`) when a name already exists.
 - Runtime remap is applied to `agent create --runtime-id`.
 - Secrets (`customEnv`) never appear in written export files.
+- **Sync** resolves workspace names to IDs and threads `--workspace-id` correctly (source on
+  the export calls, destination on the import calls); ambiguous/unknown name aborts.
 
 Run: `node --test tests/multica-tool/*.test.mjs`.
 
@@ -181,11 +224,12 @@ Per repo CLAUDE.md, adding the plugin updates together:
 1. `plugins/multica-tool/.claude-plugin/plugin.json`
 2. `.claude-plugin/marketplace.json` → `plugins[]` entry
 3. `README.md` → Plugins table row
-4. Run `/validate-skills` and the `plugin-validator` agent; fix all `[FAIL]` items.
+4. Run `/validate-skills`, `/validate-agents`, `/validate-commands`, then the
+   `plugin-validator` agent; fix all `[FAIL]` items.
 
 ## Out of scope (YAGNI)
 
-- No sync/diff/merge — import is replay-with-update, not three-way merge.
+- No diff/three-way merge — import/sync are replay-with-update, not merge.
 - No secret migration — secrets are re-set manually on the target.
 - No selective import (pick subset of a folder) — import replays the whole bundle.
 - No support for projects/issues/labels/autopilots — only skills, agents, squads.
