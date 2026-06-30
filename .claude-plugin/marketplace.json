@@ -68,6 +68,23 @@
         "understand-anything",
         "git-lfs"
       ]
+    },
+    {
+      "name": "multica-tool",
+      "source": "./plugins/multica-tool",
+      "description": "Export, import, and sync Multica skills, agents, and squads between workspaces.",
+      "version": "0.1.0",
+      "category": "workflow",
+      "keywords": [
+        "multica",
+        "migration",
+        "export",
+        "import",
+        "sync",
+        "skills",
+        "agents",
+        "squads"
+      ]
     }
   ]
 }

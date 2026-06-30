@@ -14,6 +14,7 @@ Published on npm as [`@drunkcoding/agents-and-skills`](https://www.npmjs.com/pac
 | [`plugin-validator`](plugins/plugin-validator) | Orchestrated validator that checks every plugin's skills, agents, commands, and hooks for spec compliance — runs in parallel and proposes batched fixes. |
 | [`team-share`](plugins/team-share) | Onboarding helper that shares Claude plugin settings, scaffolds `CLAUDE.md` when missing, refreshes the Understand-Anything graph, and stages the resulting repo artifacts for review. |
 | [`auto-power`](plugins/auto-power) | Single-command hands-off pipeline that wraps `obra/superpowers`. Auto-answers safe clarifying questions during spec, then runs plan → arch+sec → impl → verify → review → ff-merge with no further touchpoints. Checkpointed and resumable. Escalates on substantive failures. |
+| [`multica-tool`](plugins/multica-tool) | Export, import, and sync Multica skills, agents, and squads between workspaces. |
 
 ## team-superpower v3
 
