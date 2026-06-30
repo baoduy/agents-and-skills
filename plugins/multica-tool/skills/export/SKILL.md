@@ -13,7 +13,7 @@ Export a Multica resource (skill, agent, or squad) to a local bundle directory.
 Run the export script; it calls `multica auth status` internally and exits with an error message if unauthenticated:
 
 ```bash
-node plugins/multica-tool/scripts/multica-export.mjs --help 2>&1 || true
+node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" --help 2>&1 || true
 ```
 
 If `multica login` is required, surface that message verbatim and stop.
@@ -43,7 +43,7 @@ where `<slug>` is a lowercased, hyphenated form of the resource name.
 ## Step 4 — Run the export
 
 ```bash
-node plugins/multica-tool/scripts/multica-export.mjs \
+node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" \
   --scope <type> \
   --id <id> \
   --out <dir> \

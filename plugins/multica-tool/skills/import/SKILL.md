@@ -33,7 +33,7 @@ For each distinct `sourceRuntimeId`, ask the user to pick a matching target runt
 ## Step 3 — Run the import
 
 ```bash
-node plugins/multica-tool/scripts/multica-import.mjs \
+node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
   --dir <folder> \
   --workspace <workspace-name> \
   --runtime-map <srcId1=dstId1,srcId2=dstId2,...>
