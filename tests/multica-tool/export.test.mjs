@@ -22,6 +22,20 @@ function memFs() {
   const files = {};
   return { files, mkdirSync: () => {}, writeFileSync: (p, c) => { files[p] = c; } };
 }
+// Like memFs but enforces that a file's parent dir was mkdir'd first — mirrors
+// the real fs ENOENT, so a missing mkdir for nested skill files is caught.
+function strictFs() {
+  const files = {}, dirs = new Set();
+  return {
+    files,
+    mkdirSync: (p) => { const parts = p.split("/"); for (let i = 1; i <= parts.length; i++) dirs.add(parts.slice(0, i).join("/")); },
+    writeFileSync: (p, c) => {
+      const parent = p.slice(0, p.lastIndexOf("/"));
+      if (!dirs.has(parent)) throw Object.assign(new Error(`ENOENT: ${p}`), { code: "ENOENT" });
+      files[p] = c;
+    },
+  };
+}
 
 test("redactAgent strips secrets/id/skills and records runtime + hadSecrets", () => {
   const normalized = getAgent({ json: () => AGENT_GET }, "ag_SRC1");
@@ -65,6 +79,20 @@ test("export skill writes SKILL.md, config, extra files, manifest", () => {
   assert.equal(manifest.skills[0].name, "Greet");
 });
 
+test("export creates nested parent dirs for skill files (regression: scripts/ subdir)", () => {
+  const fs = strictFs();
+  const cli = {
+    json: (args) => {
+      if (args.slice(0, 3).join(" ") === "skill get sk_N")
+        return { id: "sk_N", name: "Nested", content: "x", config: {}, files: [{ path: "scripts/run.sh", content: "echo hi" }] };
+      throw new Error("unexpected " + args.join(" "));
+    },
+    run: () => "",
+  };
+  exportResource({ cli, scope: "skill", ids: { skillId: "sk_N" }, outDir: "/out", sourceWorkspaceId: "", fs });
+  assert.equal(fs.files["/out/skills/nested/scripts/run.sh"], "echo hi");
+});
+
 test("export agent never writes mcp_config (secret) to disk; warns when secrets present", () => {
   const fs = memFs();
   const { warnings } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o", sourceWorkspaceId: "ws", fs });
@@ -78,6 +106,7 @@ test("export squad resolves leader and member names by id and writes squad file"
   const { manifest, warnings } = exportResource({ cli: fakeCli(), scope: "squad", ids: { squadId: "sq_SRC1" }, outDir: "/s", sourceWorkspaceId: "ws", fs });
   const squad = JSON.parse(fs.files["/s/squads/team.json"]);
   assert.equal(squad.leaderName, "Helper", "leaderId ag_SRC1 resolved to name");
+  assert.equal(squad.instructions, "# Team charter\nShip it.", "squad instructions captured in export");
   assert.deepEqual(squad.members.map((m) => m.agentName).sort(), ["Helper", "Helper2"]);
   assert.equal(manifest.agents.length, 2, "both member agents captured");
   assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");

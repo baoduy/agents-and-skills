@@ -7,11 +7,25 @@ const MANIFEST = {
   skills: [{ name: "Greet", dir: "skills/greet", sourceId: "sk_SRC1" }],
   agents: [], squads: [],
 };
+// Mirrors real fs: readdirSync is SHALLOW and (with withFileTypes) reports dirs.
 function memFs(files) {
   return {
     existsSync: (p) => p in files,
     readFileSync: (p) => files[p],
-    readdirSync: (p) => Object.keys(files).filter((f) => f.startsWith(p + "/")).map((f) => f.slice(p.length + 1)),
+    readdirSync: (p, opts) => {
+      const seen = new Map(); // immediate child name -> isDir
+      for (const f of Object.keys(files)) {
+        if (!f.startsWith(p + "/")) continue;
+        const rest = f.slice(p.length + 1);
+        const slash = rest.indexOf("/");
+        const name = slash === -1 ? rest : rest.slice(0, slash);
+        if (!seen.has(name)) seen.set(name, slash !== -1);
+      }
+      const entries = [...seen.entries()];
+      return opts?.withFileTypes
+        ? entries.map(([name, isDir]) => ({ name, isDirectory: () => isDir }))
+        : entries.map(([name]) => name);
+    },
   };
 }
 // Records every cli.run argv; json() drives existence + created-id.
@@ -34,6 +48,16 @@ test("importSkills creates a missing skill and upserts its files", () => {
   assert.ok(cli.calls.some((a) => a.join(" ").startsWith("skill files upsert sk_NEW1 --path ref.md")));
 });
 
+test("importSkills upserts nested files by relative path, never the dir (regression: scripts/ subdir)", () => {
+  const fs = memFs({ "skills/greet/SKILL.md": "# Greet", "skills/greet/config.json": "{}", "skills/greet/scripts/run.sh": "echo hi" });
+  const cli = recordingCli();
+  importSkills({ cli, manifest: MANIFEST, dir: ".", fs });
+  const upserts = cli.calls.filter((a) => a[0] === "skill" && a[1] === "files" && a[2] === "upsert");
+  const paths = upserts.map((a) => a[a.indexOf("--path") + 1]);
+  assert.ok(paths.includes("scripts/run.sh"), "nested file upserted by its relative path");
+  assert.ok(!paths.includes("scripts"), "the scripts dir itself is never upserted");
+});
+
 test("importSkills updates (not re-creates) when name exists — idempotent", () => {
   const fs = memFs({ "skills/greet/SKILL.md": "# Greet", "skills/greet/config.json": "{}" });
   const cli = recordingCli({ existing: [{ id: "sk_TGT9", name: "Greet" }] });
@@ -42,6 +66,30 @@ test("importSkills updates (not re-creates) when name exists — idempotent", ()
   assert.equal(idMap.get("Greet"), "sk_TGT9", "reused target id, not source id");
   assert.ok(cli.calls.some((a) => a[0] === "skill" && a[1] === "update" && a[2] === "sk_TGT9"));
   assert.ok(!cli.calls.some((a) => a[1] === "create"));
+});
+
+const FM_SKILL = "---\nname: Greet\ndescription: Greets the user warmly.\n---\n# Greet\nbody";
+
+test("importSkills derives --description from SKILL.md frontmatter on create", () => {
+  const fs = memFs({ "skills/greet/SKILL.md": FM_SKILL, "skills/greet/config.json": "{}" });
+  const cli = recordingCli();
+  importSkills({ cli, manifest: MANIFEST, dir: ".", fs });
+  const create = cli.calls.find((a) => a[1] === "create");
+  assert.equal(create[create.indexOf("--description") + 1], "Greets the user warmly.");
+});
+
+test("importSkills fills description on update only when the existing skill has none", () => {
+  const fs = memFs({ "skills/greet/SKILL.md": FM_SKILL, "skills/greet/config.json": "{}" });
+  // existing skill already has a description -> must NOT be clobbered
+  const cliSet = recordingCli({ existing: [{ id: "sk_T1", name: "Greet", description: "keep me" }] });
+  importSkills({ cli: cliSet, manifest: MANIFEST, dir: ".", fs });
+  assert.ok(!cliSet.calls.find((a) => a[1] === "update").includes("--description"), "set description not overwritten");
+
+  // existing skill has empty description -> fill from frontmatter
+  const cliEmpty = recordingCli({ existing: [{ id: "sk_T2", name: "Greet", description: "" }] });
+  importSkills({ cli: cliEmpty, manifest: MANIFEST, dir: ".", fs });
+  const upd = cliEmpty.calls.find((a) => a[1] === "update");
+  assert.equal(upd[upd.indexOf("--description") + 1], "Greets the user warmly.");
 });
 
 import { importAgents } from "../../plugins/multica-tool/scripts/multica-import.mjs";
@@ -77,21 +125,39 @@ test("importAgents throws when runtime is unmapped", () => {
 import { importSquad } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 
 const SQUAD_ENTRY = {
-  name: "Team", file: "squads/team.json", leaderName: "Helper",
+  name: "Team", file: "squads/team.json", leaderName: "Helper", instructions: "# Team charter\nDeliver features.",
   members: [{ agentName: "Helper", role: "leader" }, { agentName: "Helper2", role: "member" }],
 };
 
 test("importSquad creates with mapped leader and adds non-leader members by mapped id", () => {
   const calls = [];
-  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"sq_NEW1"}' : "{}"; } };
+  const cli = { calls, json: (a) => (a.includes("list") ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"sq_NEW1"}' : "{}"; } };
   const agentIdMap = new Map([["Helper", "ag_NEW1"], ["Helper2", "ag_NEW2"]]);
   const { newId } = importSquad({ cli, squad: SQUAD_ENTRY, agentIdMap });
   assert.equal(newId, "sq_NEW1");
   const create = calls.find((a) => a[1] === "create");
   assert.equal(create[create.indexOf("--leader") + 1], "ag_NEW1");
+  assert.equal(create[create.indexOf("--instructions") + 1], "# Team charter\nDeliver features.", "squad instructions threaded on create");
   const adds = calls.filter((a) => a[1] === "member" && a[2] === "add");
   assert.equal(adds.length, 1, "leader is not double-added as member");
   assert.equal(adds[0][adds[0].indexOf("--member-id") + 1], "ag_NEW2");
+});
+
+test("importSquad skips members already present (regression: idempotent re-run)", () => {
+  const calls = [];
+  const cli = {
+    calls,
+    json: (a) => {
+      if (a[1] === "member" && a[2] === "list") return [{ member_id: "ag_NEW2", member_type: "agent", role: "member" }];
+      if (a.includes("list")) return [{ id: "sq_OLD", name: "Team" }];
+      return {};
+    },
+    run: (a) => { calls.push(a); return "{}"; },
+  };
+  const agentIdMap = new Map([["Helper", "ag_NEW1"], ["Helper2", "ag_NEW2"]]);
+  importSquad({ cli, squad: SQUAD_ENTRY, agentIdMap });
+  const adds = calls.filter((a) => a[1] === "member" && a[2] === "add");
+  assert.equal(adds.length, 0, "Helper2 already a member → not re-added");
 });
 
 import { collectSourceRuntimes } from "../../plugins/multica-tool/scripts/multica-import.mjs";
