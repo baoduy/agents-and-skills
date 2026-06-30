@@ -33,7 +33,7 @@ For skills (which have no runtime dependency), an empty runtime map is acceptabl
 ## Step 3 — Run the sync
 
 ```bash
-node plugins/multica-tool/scripts/multica-sync.mjs \
+node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-sync.mjs" \
   <type> <name> from <src-ws> <dest-ws> \
   [--runtime-map <srcId1=dstId1,srcId2=dstId2,...>]
 ```
