@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { slugify, getSkill, getAgent, getSquad, getSquadMembers } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getSquad, getSquadMembers, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
@@ -101,3 +101,36 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
   return { manifest, warnings };
 }
+
+function main() {
+  const args = process.argv.slice(2);
+  const get = (flag) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : null; };
+
+  const scope     = get("--scope");
+  const id        = get("--id");
+  const out       = get("--out");
+  const workspace = get("--workspace"); // optional: source workspace name
+
+  if (!scope || !id || !out) {
+    console.error("Usage: multica-export.mjs --scope <skill|agent|squad> --id <id> --out <dir> [--workspace <name>]");
+    process.exit(1);
+  }
+
+  requireAuth(realExec);
+
+  let sourceWorkspaceId = "";
+  const resolver = makeCli(realExec);
+  if (workspace) sourceWorkspaceId = resolveWorkspaceId(resolver, workspace);
+  const cli = workspace ? makeCli(realExec, { workspaceId: sourceWorkspaceId }) : resolver;
+
+  const ids = {};
+  if (scope === "skill")       ids.skillId  = id;
+  else if (scope === "agent")  ids.agentId  = id;
+  else if (scope === "squad")  ids.squadId  = id;
+  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad`); process.exit(1); }
+
+  const result = exportResource({ cli, scope, ids, outDir: out, sourceWorkspaceId, fs: nodeFs });
+  console.log(JSON.stringify(result, null, 2));
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) main();

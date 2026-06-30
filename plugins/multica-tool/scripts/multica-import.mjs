@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, findByName } from "./lib.mjs";
+import { listSkills, listAgents, listSquads, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
   const idMap = new Map();
@@ -107,3 +107,40 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
     secretsReminder: (manifest.agents ?? []).filter((a) => a.hadSecrets).map((a) => a.name),
   };
 }
+
+function parseRuntimeMap(raw) {
+  // Parse "srcId1=dstId1,srcId2=dstId2" into a Map.
+  const map = new Map();
+  if (!raw) return map;
+  for (const pair of raw.split(",")) {
+    const eq = pair.indexOf("=");
+    if (eq === -1) continue;
+    map.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+  }
+  return map;
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  const get = (flag) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : null; };
+
+  const dir       = get("--dir");
+  const workspace = get("--workspace");
+  const rawMap    = get("--runtime-map");
+
+  if (!dir || !workspace) {
+    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>]");
+    process.exit(1);
+  }
+
+  requireAuth(realExec);
+  const resolver  = makeCli(realExec);
+  const wsId      = resolveWorkspaceId(resolver, workspace);
+  const cli       = makeCli(realExec, { workspaceId: wsId });
+  const runtimeMap = parseRuntimeMap(rawMap);
+
+  const result = importBundle({ cli, dir, runtimeMap, fs: nodeFs });
+  console.log(JSON.stringify(result, null, 2));
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) main();
