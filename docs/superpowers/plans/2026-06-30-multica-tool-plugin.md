@@ -20,7 +20,7 @@
 - **Tests live at repo-root `tests/multica-tool/`** (not packaged for npm). Run with `node --test tests/multica-tool/*.test.mjs`.
 - **Versions stay `0.1.0`** in source; CI rewrites on release. Never bump by hand.
 - **Implementation edits stay inside `plugins/multica-tool/`** except the one registration commit (Task 1) which touches `marketplace.json` + `README.md` per repo CLAUDE.md.
-- **CLI field-name caveat:** exact JSON field names returned by `get`/`list` are assumed in this plan (documented per get-wrapper). Task 3 Step 6 verifies them against a real authed resource and adjusts the wrappers in one place if reality differs. All downstream tasks consume the wrappers, never raw JSON.
+- **CLI field shapes are verified** against multica 0.3.29 and documented in Task 3's get-wrappers. The wrappers normalize the raw snake_case CLI output to a stable camelCase shape; ALL downstream tasks consume the wrappers, never raw JSON. Key facts that shaped the design: agent `get` exposes `has_custom_env` (bool) but NEVER raw `custom_env` values; `mcp_config` may carry tokens (treated as secret); squads expose `leader_id` not a leader name, and members expose `member_id` not an agent name — so squad leader/member NAMES are resolved by the export orchestrator from the fetched agents.
 
 ---
 
@@ -235,41 +235,56 @@ Centralizes name→ID resolution and every field-name assumption.
 - Consumes: `makeCli` from Task 2.
 - Produces (all take a `cli` from `makeCli`):
   - `resolveWorkspaceId(cli, name) -> string` — `cli.json(["workspace","list"])` → match `.name === name`; throw if 0 (`Unknown workspace "<name>"`) or >1 (`Ambiguous workspace "<name>"`).
-  - `listRuntimes(cli) -> Array<{id,name}>` — `cli.json(["runtime","list"])`.
+  - `listRuntimes(cli) -> Array<{id,name,...}>` — `cli.json(["runtime","list"])`.
   - `findByName(list, name) -> object|null` — returns the single match or `null`; throws on >1 (`Duplicate name "<name>"`).
-  - `getSkill(cli, id) -> {id,name,description,content,config,files}` where `files: Array<{path,content}>` (extra files only; main body is `content`).
-  - `getAgent(cli, id) -> {id,name,description,instructions,model,visibility,maxConcurrentTasks,runtimeConfig,customArgs,runtimeId,customEnv,mcpConfig}`.
-  - `getAgentSkills(cli, id) -> Array<{id,name}>`.
-  - `getSquad(cli, id) -> {id,name,description,leaderName}`.
-  - `getSquadMembers(cli, id) -> Array<{agentName,role}>`.
-  - `listSkills(cli)/listAgents(cli)/listSquads(cli) -> Array<{id,name}>`.
+  - `getSkill(cli, id) -> {id,name,description,content,config,files}` where `files: Array<{path,content}>` (trimmed from the raw file objects; extra files only — `files[]` excludes SKILL.md, whose body is `content`).
+  - `getAgent(cli, id)` — NORMALIZES the raw snake_case CLI object to camelCase: `{id,name,description,instructions,model,visibility,maxConcurrentTasks,runtimeConfig,customArgs,thinkingLevel,runtimeId,hasCustomEnv,mcpConfig,skills}` where `skills: Array<{id,name}>` (the agent's embedded assigned skills).
+  - `getSquad(cli, id) -> {id,name,description,leaderId}` (raw CLI has `leader_id`, no name).
+  - `getSquadMembers(cli, id) -> Array<{memberId,memberType,role}>` (raw `member_id`/`member_type`; `role` empty-string normalized to `"member"`).
+  - `listSkills(cli)/listAgents(cli)/listSquads(cli) -> Array<{id,name,...}>`.
 
-> Field-name assumptions live ONLY in this file. If Step 6 finds the real CLI uses different keys, fix them here; downstream code is unaffected.
+> **Verified against the live CLI (multica 0.3.29).** Field-name assumptions live ONLY in this file. Real shapes:
+> - **skill get:** `{id,name,description,content,config,files:[{path,content,id,skill_id,...}]}` — `files[]` are extra files (references/, templates/, scripts/), NOT SKILL.md; body is `content`. ✓ matches plan.
+> - **agent get (snake_case):** `id,name,description,instructions,model,visibility,max_concurrent_tasks,runtime_config,custom_args,runtime_id,thinking_level,mcp_config,mcp_config_redacted,has_custom_env,custom_env_key_count,skills:[{id,name,description}],status,...`. **Critical:** agent get exposes `has_custom_env` (bool) + `custom_env_key_count` only — it NEVER returns raw `custom_env` values. `mcp_config` MAY carry API tokens. Assigned skills are embedded under `skills`.
+> - **squad get (snake_case):** `id,name,description,instructions,leader_id,member_count,member_preview,...` — no leader NAME, only `leader_id`.
+> - **squad member list:** `[{id,member_id,member_type,role,squad_id,created_at}]` — no agent name; leader's `role` is `"leader"`, others `""`.
+> - **runtime list / workspace list:** items carry `id` + `name` (workspace also `slug`). Both default to `table` — `cli.json` forces `--output json`.
 
 - [ ] **Step 1: Write fixtures**
 
-Create `tests/multica-tool/fixtures.mjs`:
+Create `tests/multica-tool/fixtures.mjs`. These are RAW CLI shapes (snake_case where the real CLI is) so wrapper tests verify normalization. Source IDs deliberately differ from any target IDs.
 
 ```js
-// Source-workspace canned `get` output. Source IDs deliberately DIFFER from
-// any target IDs so tests catch link-by-id regressions.
+// RAW canned CLI `get`/`list` output (matches multica 0.3.29 field names).
+// Source IDs deliberately DIFFER from any target IDs so tests catch
+// link-by-id regressions in later tasks.
 export const SKILL_GET = {
   id: "sk_SRC1", name: "Greet", description: "says hi",
   content: "# Greet\nbody", config: { tone: "warm" },
-  files: [{ path: "ref.md", content: "extra" }],
+  files: [{ path: "ref.md", content: "extra", id: "f1", skill_id: "sk_SRC1" }],
 };
 export const AGENT_GET = {
   id: "ag_SRC1", name: "Helper", description: "helps", instructions: "be nice",
-  model: "claude-sonnet-4-6", visibility: "workspace", maxConcurrentTasks: 6,
-  runtimeConfig: {}, customArgs: [], runtimeId: "rt_SRC1",
-  customEnv: { SECRET: "shh" }, mcpConfig: { mcpServers: { x: { token: "t" } } },
+  model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6,
+  runtime_config: {}, custom_args: [], runtime_id: "rt_SRC1", thinking_level: "",
+  has_custom_env: true, custom_env_key_count: 1,
+  mcp_config: { mcpServers: { x: { token: "t" } } }, mcp_config_redacted: {},
+  skills: [{ id: "sk_SRC1", name: "Greet", description: "says hi" }],
 };
-export const AGENT_SKILLS = [{ id: "sk_SRC1", name: "Greet" }];
-export const SQUAD_GET = { id: "sq_SRC1", name: "Team", description: "the team", leaderName: "Helper" };
+// A second agent: no skills, no secrets (used by the squad export test).
+export const AGENT_GET_2 = {
+  id: "ag_SRC2", name: "Helper2", description: "", instructions: "",
+  model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6,
+  runtime_config: {}, custom_args: [], runtime_id: "rt_SRC1", thinking_level: "",
+  has_custom_env: false, custom_env_key_count: 0, mcp_config: {}, mcp_config_redacted: {},
+  skills: [],
+};
+export const SQUAD_GET = { id: "sq_SRC1", name: "Team", description: "the team", leader_id: "ag_SRC1" };
 export const SQUAD_MEMBERS = [
-  { agentName: "Helper", role: "leader" },
-  { agentName: "Helper2", role: "member" },
+  { id: "m1", member_id: "ag_SRC1", member_type: "agent", role: "leader", squad_id: "sq_SRC1" },
+  { id: "m2", member_id: "ag_SRC2", member_type: "agent", role: "", squad_id: "sq_SRC1" },
 ];
+export const RUNTIME_LIST = [{ id: "rt_TGT1", name: "My Runtime", provider: "claude" }];
 ```
 
 - [ ] **Step 2: Write the failing tests**
@@ -277,11 +292,14 @@ export const SQUAD_MEMBERS = [
 Append to `tests/multica-tool/lib.test.mjs`:
 
 ```js
-import { resolveWorkspaceId, listRuntimes, findByName, getSkill } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { SKILL_GET } from "./fixtures.mjs";
+import {
+  resolveWorkspaceId, listRuntimes, findByName,
+  getSkill, getAgent, getSquad, getSquadMembers,
+} from "../../plugins/multica-tool/scripts/lib.mjs";
+import { SKILL_GET, AGENT_GET, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST } from "./fixtures.mjs";
 
 function cliReturning(map) {
-  // map: JSON.stringify(args-without-output/ws) -> object
+  // map: args.join(" ") -> object
   return {
     json: (args) => map[args.join(" ")],
     run: () => "",
@@ -304,16 +322,42 @@ test("findByName throws on duplicate, null on miss", () => {
   assert.throws(() => findByName([{ name: "a" }, { name: "a" }], "a"), /Duplicate name/);
 });
 
-test("getSkill returns parsed skill object", () => {
+test("listRuntimes returns the parsed list", () => {
+  const cli = cliReturning({ "runtime list": RUNTIME_LIST });
+  assert.equal(listRuntimes(cli)[0].name, "My Runtime");
+});
+
+test("getSkill trims files to {path,content}", () => {
   const cli = cliReturning({ "skill get sk_SRC1": SKILL_GET });
-  assert.equal(getSkill(cli, "sk_SRC1").content, "# Greet\nbody");
+  const s = getSkill(cli, "sk_SRC1");
+  assert.equal(s.content, "# Greet\nbody");
+  assert.deepEqual(s.files, [{ path: "ref.md", content: "extra" }]);
+});
+
+test("getAgent normalizes snake_case to camelCase and embeds skills", () => {
+  const cli = cliReturning({ "agent get ag_SRC1": AGENT_GET });
+  const a = getAgent(cli, "ag_SRC1");
+  assert.equal(a.maxConcurrentTasks, 6);
+  assert.equal(a.runtimeId, "rt_SRC1");
+  assert.equal(a.hasCustomEnv, true);
+  assert.deepEqual(a.mcpConfig, { mcpServers: { x: { token: "t" } } });
+  assert.deepEqual(a.skills, [{ id: "sk_SRC1", name: "Greet" }]);
+  assert.ok(!("max_concurrent_tasks" in a), "raw snake_case key must not leak");
+});
+
+test("getSquad exposes leaderId; getSquadMembers normalizes member_id and empty role", () => {
+  const cli = cliReturning({ "squad get sq_SRC1": SQUAD_GET, "squad member list sq_SRC1": SQUAD_MEMBERS });
+  assert.equal(getSquad(cli, "sq_SRC1").leaderId, "ag_SRC1");
+  const mem = getSquadMembers(cli, "sq_SRC1");
+  assert.deepEqual(mem[0], { memberId: "ag_SRC1", memberType: "agent", role: "leader" });
+  assert.equal(mem[1].role, "member", "empty role normalized to member");
 });
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `node --test tests/multica-tool/lib.test.mjs`
-Expected: FAIL — `resolveWorkspaceId is not a function`.
+Expected: FAIL — `getAgent is not a function` (and others not exported).
 
 - [ ] **Step 4: Write minimal implementation**
 
@@ -339,11 +383,39 @@ export const listSkills = (cli) => cli.json(["skill", "list"]);
 export const listAgents = (cli) => cli.json(["agent", "list"]);
 export const listSquads = (cli) => cli.json(["squad", "list"]);
 
-export const getSkill = (cli, id) => cli.json(["skill", "get", id]);
-export const getAgent = (cli, id) => cli.json(["agent", "get", id]);
-export const getAgentSkills = (cli, id) => cli.json(["agent", "skills", "list", id]);
-export const getSquad = (cli, id) => cli.json(["squad", "get", id]);
-export const getSquadMembers = (cli, id) => cli.json(["squad", "member", "list", id]);
+// Get-wrappers: the ONLY place that knows the raw CLI field names. They
+// return a stable camelCase shape so downstream code never sees snake_case.
+export function getSkill(cli, id) {
+  const s = cli.json(["skill", "get", id]);
+  return {
+    id: s.id, name: s.name, description: s.description,
+    content: s.content ?? "", config: s.config ?? {},
+    files: (s.files ?? []).map((f) => ({ path: f.path, content: f.content })),
+  };
+}
+
+export function getAgent(cli, id) {
+  const a = cli.json(["agent", "get", id]);
+  return {
+    id: a.id, name: a.name, description: a.description, instructions: a.instructions,
+    model: a.model, visibility: a.visibility,
+    maxConcurrentTasks: a.max_concurrent_tasks,
+    runtimeConfig: a.runtime_config, customArgs: a.custom_args,
+    thinkingLevel: a.thinking_level, runtimeId: a.runtime_id,
+    hasCustomEnv: !!a.has_custom_env, mcpConfig: a.mcp_config ?? null,
+    skills: (a.skills ?? []).map((s) => ({ id: s.id, name: s.name })),
+  };
+}
+
+export function getSquad(cli, id) {
+  const s = cli.json(["squad", "get", id]);
+  return { id: s.id, name: s.name, description: s.description, leaderId: s.leader_id };
+}
+
+export const getSquadMembers = (cli, id) =>
+  (cli.json(["squad", "member", "list", id]) ?? []).map((m) => ({
+    memberId: m.member_id, memberType: m.member_type, role: m.role || "member",
+  }));
 ```
 
 - [ ] **Step 5: Run test to verify it passes**
@@ -351,20 +423,11 @@ export const getSquadMembers = (cli, id) => cli.json(["squad", "member", "list",
 Run: `node --test tests/multica-tool/lib.test.mjs`
 Expected: PASS (all lib tests).
 
-- [ ] **Step 6: Verify field names against the real CLI (one-time)**
-
-If an authed Multica workspace with at least one skill/agent/squad is reachable, run and compare top-level keys to the wrapper assumptions above:
-```bash
-multica skill list --output json | head -c 400; echo
-multica skill get "$(multica skill list --output json | node -e 'process.stdin.once("data",d=>console.log(JSON.parse(d)[0].id))')" --output json | node -e 'process.stdin.once("data",d=>console.log(Object.keys(JSON.parse(d))))'
-```
-Expected: keys include `id`, `name`, `content`, `config`, `files`. If a key differs (e.g. `body` vs `content`, or `files[].path` vs `files[].filename`), update ONLY the wrappers in `lib.mjs` and the matching fixture keys, then re-run `node --test tests/multica-tool/lib.test.mjs`. If no authed workspace is available, note this step as deferred and proceed — the wrappers are the single change point later.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add plugins/multica-tool/scripts/lib.mjs tests/multica-tool/lib.test.mjs tests/multica-tool/fixtures.mjs
-git commit -m "feat(multica-tool): add lib resolvers and get-wrappers"
+git commit -m "feat(multica-tool): add lib resolvers and get-wrappers (CLI-shape normalized)"
 ```
 
 ---
@@ -380,8 +443,8 @@ The pure core of export: turn fetched data into a manifest + file plan, strippin
 **Interfaces:**
 - Consumes: `slugify` from lib.
 - Produces:
-  - `redactAgent(agentRaw) -> { record, hadSecrets }` — `record` is the agent minus `id`,`customEnv`,`mcpConfig`, plus `sourceRuntimeId: agentRaw.runtimeId` and `skillNames: []` (filled by caller). `hadSecrets` true if `customEnv` or `mcpConfig` was non-empty.
-  - `buildManifest({ scope, sourceWorkspaceId, skills, agents, squad }) -> manifest` where `skills: Array<{name,sourceId}>`, `agents: Array<{name,sourceRuntimeId,skillNames}>`, `squad: {name,leaderName,members:[{agentName,role}]}|null`. Produces the manifest schema from the spec; slugs via `slugify`; dedups skills by name.
+  - `redactAgent(agent) -> { record, hadSecrets }` where `agent` is a NORMALIZED (camelCase) agent from `getAgent`. `record` is the agent minus `id`,`hasCustomEnv`,`mcpConfig`,`skills`,`runtimeId`, plus `sourceRuntimeId: agent.runtimeId`, `skillNames: []` (filled by caller), and `hadSecrets`. `hadSecrets` is true if `hasCustomEnv` OR `mcpConfig` is a non-empty object. `mcpConfig` is NEVER written (secret material). (`getAgent` never exposes raw `custom_env` values — `hasCustomEnv` is the flag.)
+  - `buildManifest({ scope, sourceWorkspaceId, skills, agents, squad }) -> manifest` where `skills: Array<{name,sourceId}>`, `agents: Array<{name,sourceRuntimeId,skillNames,hadSecrets}>`, `squad: {name,description,leaderName,members:[{agentName,role}]}|null`. Produces the manifest schema; slugs via `slugify`; dedups skills AND agents by name. Manifest agent entries carry `hadSecrets` (a bool flag, not secret data) so import reminds only for affected agents.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -391,32 +454,39 @@ Create `tests/multica-tool/export.test.mjs`:
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest } from "../../plugins/multica-tool/scripts/multica-export.mjs";
+import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
 import { AGENT_GET } from "./fixtures.mjs";
 
-test("redactAgent strips secrets and id, records runtime", () => {
-  const { record, hadSecrets } = redactAgent(AGENT_GET);
-  assert.equal(hadSecrets, true);
-  assert.ok(!("customEnv" in record));
-  assert.ok(!("mcpConfig" in record));
+test("redactAgent strips secrets/id/skills and records runtime + hadSecrets", () => {
+  const normalized = getAgent({ json: () => AGENT_GET }, "ag_SRC1");
+  const { record, hadSecrets } = redactAgent(normalized);
+  assert.equal(hadSecrets, true, "has_custom_env true OR mcp_config non-empty");
+  assert.ok(!("mcpConfig" in record), "mcp_config (secret) must not be written");
+  assert.ok(!("hasCustomEnv" in record));
+  assert.ok(!("skills" in record));
   assert.ok(!("id" in record));
   assert.equal(record.sourceRuntimeId, "rt_SRC1");
+  assert.equal(record.maxConcurrentTasks, 6, "normalized field survives");
+  assert.equal(record.hadSecrets, true);
   assert.equal(record.name, "Helper");
 });
 
-test("buildManifest dedups skills by name and wires by name", () => {
+test("buildManifest dedups skills/agents by name and wires by name", () => {
   const m = buildManifest({
     scope: "squad",
     sourceWorkspaceId: "ws_SRC",
     skills: [{ name: "Greet", sourceId: "sk_SRC1" }, { name: "Greet", sourceId: "sk_SRC1" }],
-    agents: [{ name: "Helper", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"] }],
-    squad: { name: "Team", leaderName: "Helper", members: [{ agentName: "Helper", role: "leader" }] },
+    agents: [{ name: "Helper", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"], hadSecrets: true }],
+    squad: { name: "Team", description: "the team", leaderName: "Helper", members: [{ agentName: "Helper2", role: "member" }] },
   });
   assert.equal(m.version, "1");
   assert.equal(m.skills.length, 1, "skills deduped by name");
   assert.equal(m.skills[0].dir, "skills/greet");
   assert.equal(m.agents[0].file, "agents/helper.json");
   assert.deepEqual(m.agents[0].skillNames, ["Greet"]);
+  assert.equal(m.agents[0].hadSecrets, true);
   assert.equal(m.squads[0].leaderName, "Helper");
+  assert.equal(m.squads[0].description, "the team");
 });
 ```
 
@@ -435,23 +505,27 @@ import { slugify } from "./lib.mjs";
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
 export function redactAgent(a) {
-  const { id, customEnv, mcpConfig, runtimeId, ...rest } = a;
+  // a is a normalized (camelCase) agent from getAgent.
+  const { id, hasCustomEnv, mcpConfig, skills, runtimeId, ...rest } = a;
+  const hadSecrets = !!hasCustomEnv || nonEmpty(mcpConfig);
   return {
-    record: { ...rest, sourceRuntimeId: runtimeId, skillNames: [] },
-    hadSecrets: nonEmpty(customEnv) || nonEmpty(mcpConfig),
+    record: { ...rest, sourceRuntimeId: runtimeId, skillNames: [], hadSecrets },
+    hadSecrets,
   };
 }
 
 export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad }) {
-  const seen = new Map();
-  for (const s of skills) if (!seen.has(s.name)) seen.set(s.name, s);
+  const seenSkills = new Map();
+  for (const s of skills) if (!seenSkills.has(s.name)) seenSkills.set(s.name, s);
+  const seenAgents = new Map();
+  for (const a of agents) if (!seenAgents.has(a.name)) seenAgents.set(a.name, a);
   return {
     version: "1",
     scope,
     sourceWorkspaceId,
-    skills: [...seen.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, sourceId: s.sourceId })),
-    agents: agents.map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceRuntimeId: a.sourceRuntimeId, skillNames: a.skillNames })),
-    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, leaderName: squad.leaderName, members: squad.members }] : [],
+    skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, sourceId: s.sourceId })),
+    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceRuntimeId: a.sourceRuntimeId, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
+    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", leaderName: squad.leaderName, members: squad.members }] : [],
   };
 }
 ```
@@ -479,10 +553,10 @@ Walks the resource graph via lib wrappers and writes the export folder. Proves s
 - Modify: `tests/multica-tool/export.test.mjs`
 
 **Interfaces:**
-- Consumes: `getSkill,getAgent,getAgentSkills,getSquad,getSquadMembers` (lib), `buildManifest`,`redactAgent`.
+- Consumes: `getSkill,getAgent,getSquad,getSquadMembers` (lib — all return normalized camelCase), `buildManifest`,`redactAgent`.
 - Produces:
   - `exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs }) -> { manifest, warnings }` where `scope` ∈ `"skill"|"agent"|"squad"`, `ids` is `{skillId?,agentId?,squadId?}`, `fs` is an injected `{mkdirSync, writeFileSync}` (default `node:fs`). Writes `manifest.json`, `skills/<slug>/SKILL.md`+`config.json`+extra files, `agents/<slug>.json`, `squads/<slug>.json`. `warnings` lists agents whose secrets were skipped.
-  - Graph walk: squad → members (agents) → each agent's skills; agent → its skills; skill → itself. Dedup agents and skills by name.
+  - Graph walk: squad → `getSquadMembers` (agent member_ids) + `leader_id` → each agent via `getAgent` → that agent's embedded `skills` (collect each via `getSkill`); agent → its embedded skills; skill → itself. Agents are keyed BY ID during the walk (needed to resolve squad `leaderId`/`memberId` → name), then deduped by name in the manifest.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -490,17 +564,16 @@ Append to `tests/multica-tool/export.test.mjs`:
 
 ```js
 import { exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
-import { SKILL_GET, AGENT_GET, AGENT_SKILLS, SQUAD_GET, SQUAD_MEMBERS } from "./fixtures.mjs";
+import { SKILL_GET, AGENT_GET, AGENT_GET_2, SQUAD_GET, SQUAD_MEMBERS } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
     json: (args) => {
-      const key = args.slice(0, 3).join(" ");
+      const key = args.slice(0, 3).join(" ");           // first 3 tokens identify the call
       if (key === "squad get sq_SRC1") return SQUAD_GET;
       if (key === "squad member list") return SQUAD_MEMBERS;
       if (key === "agent get ag_SRC1") return AGENT_GET;
-      if (key === "agent get ag_SRC2") return { ...AGENT_GET, id: "ag_SRC2", name: "Helper2", customEnv: {}, mcpConfig: {} };
-      if (key === "agent skills list") return AGENT_SKILLS;
+      if (key === "agent get ag_SRC2") return AGENT_GET_2;
       if (key === "skill get sk_SRC1") return SKILL_GET;
       throw new Error("unexpected " + args.join(" "));
     },
@@ -512,7 +585,7 @@ function memFs() {
   return { files, mkdirSync: () => {}, writeFileSync: (p, c) => { files[p] = c; } };
 }
 
-test("export skill writes SKILL.md, config, extra files, manifest — no secrets", () => {
+test("export skill writes SKILL.md, config, extra files, manifest", () => {
   const fs = memFs();
   const { manifest } = exportResource({ cli: fakeCli(), scope: "skill", ids: { skillId: "sk_SRC1" }, outDir: "/out", sourceWorkspaceId: "ws_SRC", fs });
   assert.equal(fs.files["/out/skills/greet/SKILL.md"], "# Greet\nbody");
@@ -522,13 +595,22 @@ test("export skill writes SKILL.md, config, extra files, manifest — no secrets
   assert.equal(manifest.skills[0].name, "Greet");
 });
 
-test("export agent never writes customEnv or mcpConfig to disk", () => {
+test("export agent never writes mcp_config (secret) to disk; warns when secrets present", () => {
   const fs = memFs();
   const { warnings } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o", sourceWorkspaceId: "ws", fs });
   const blob = Object.values(fs.files).join("\n");
-  assert.ok(!blob.includes("shh"), "customEnv value leaked");
-  assert.ok(!blob.includes("\"token\""), "mcpConfig leaked");
-  assert.deepEqual(warnings, ["Helper"]);
+  assert.ok(!blob.includes("token"), "mcp_config leaked to disk");
+  assert.deepEqual(warnings, ["Helper"]);          // has_custom_env true → warned
+});
+
+test("export squad resolves leader and member names by id and writes squad file", () => {
+  const fs = memFs();
+  const { manifest, warnings } = exportResource({ cli: fakeCli(), scope: "squad", ids: { squadId: "sq_SRC1" }, outDir: "/s", sourceWorkspaceId: "ws", fs });
+  const squad = JSON.parse(fs.files["/s/squads/team.json"]);
+  assert.equal(squad.leaderName, "Helper", "leaderId ag_SRC1 resolved to name");
+  assert.deepEqual(squad.members.map((m) => m.agentName).sort(), ["Helper", "Helper2"]);
+  assert.equal(manifest.agents.length, 2, "both member agents captured");
+  assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");
 });
 ```
 
@@ -542,7 +624,7 @@ Expected: FAIL — `exportResource is not a function`.
 Add to the top imports of `multica-export.mjs`:
 ```js
 import * as nodeFs from "node:fs";
-import { getSkill, getAgent, getAgentSkills, getSquad, getSquadMembers } from "./lib.mjs";
+import { getSkill, getAgent, getSquad, getSquadMembers } from "./lib.mjs";
 ```
 Append:
 ```js
@@ -552,37 +634,43 @@ function collectSkill(cli, id, skills) {
   return s.name;
 }
 
-function collectAgent(cli, id, agents, skills) {
+// Keyed by agent id (so squad leaderId/memberId resolve to names). Stores the
+// normalized agent, its redaction result, and its skill names.
+function collectAgent(cli, id, agentsById, skills) {
+  if (agentsById.has(id)) return agentsById.get(id);
   const a = getAgent(cli, id);
-  if (agents.has(a.name)) return a.name;
-  const assigned = getAgentSkills(cli, id);
-  const skillNames = assigned.map((sk) => collectSkill(cli, sk.id, skills));
-  agents.set(a.name, { raw: a, skillNames });
-  return a.name;
+  const skillNames = a.skills.map((sk) => collectSkill(cli, sk.id, skills));
+  const red = redactAgent(a);
+  const entry = { raw: a, red, skillNames };
+  agentsById.set(id, entry);
+  return entry;
 }
 
 export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs }) {
-  const skills = new Map();   // name -> skill get
-  const agents = new Map();   // name -> { raw, skillNames }
+  const skills = new Map();       // name -> normalized skill
+  const agentsById = new Map();   // id   -> { raw, red, skillNames }
   let squad = null;
 
   if (scope === "skill") collectSkill(cli, ids.skillId, skills);
-  if (scope === "agent") collectAgent(cli, ids.agentId, agents, skills);
+  if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills);
   if (scope === "squad") {
     const sq = getSquad(cli, ids.squadId);
-    const members = getSquadMembers(cli, ids.squadId);
-    for (const m of members) {
-      // member list gives agentName; we need its id — resolve by listing? The
-      // squad member objects carry agentId in real output; capture via raw.
-      collectAgent(cli, m.agentId, agents, skills);
-    }
-    squad = { name: sq.name, leaderName: sq.leaderName, members: members.map((m) => ({ agentName: m.agentName, role: m.role })) };
+    const members = getSquadMembers(cli, ids.squadId).filter((m) => m.memberType === "agent");
+    for (const m of members) collectAgent(cli, m.memberId, agentsById, skills);
+    if (!agentsById.has(sq.leaderId)) collectAgent(cli, sq.leaderId, agentsById, skills);
+    const nameOf = (id) => agentsById.get(id)?.raw.name;
+    squad = {
+      name: sq.name,
+      description: sq.description,
+      leaderName: nameOf(sq.leaderId),
+      members: members.map((m) => ({ agentName: nameOf(m.memberId), role: m.role })),
+    };
   }
 
   const manifest = buildManifest({
     scope, sourceWorkspaceId,
     skills: [...skills.values()].map((s) => ({ name: s.name, sourceId: s.id })),
-    agents: [...agents.values()].map((a) => ({ name: a.raw.name, sourceRuntimeId: a.raw.runtimeId, skillNames: a.skillNames })),
+    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, sourceRuntimeId: a.raw.runtimeId, skillNames: a.skillNames, hadSecrets: a.red.hadSecrets })),
     squad,
   });
 
@@ -597,11 +685,12 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     fs.writeFileSync(`${dir}/config.json`, JSON.stringify(s.config ?? {}, null, 2));
     for (const f of s.files ?? []) fs.writeFileSync(`${dir}/${f.path}`, f.content ?? "");
   }
+  // Index agent entries by name for the manifest writing loop.
+  const agentByName = new Map([...agentsById.values()].map((a) => [a.raw.name, a]));
   for (const entry of manifest.agents) {
-    const { raw, skillNames } = agents.get(entry.name);
-    const { record, hadSecrets } = redactAgent(raw);
-    record.skillNames = skillNames;
-    if (hadSecrets) warnings.push(raw.name);
+    const { raw, red, skillNames } = agentByName.get(entry.name);
+    const record = { ...red.record, skillNames };
+    if (red.hadSecrets) warnings.push(raw.name);
     fs.mkdirSync(`${outDir}/agents`, { recursive: true });
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
@@ -614,19 +703,10 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
 }
 ```
 
-> **Note for implementer:** `getSquadMembers` must surface `agentId` (used above). Confirm in Task 3 Step 6 that `squad member list --output json` includes an agent id field; if it is named differently (e.g. `memberId`), adjust the `getSquadMembers` wrapper to normalize it to `agentId` so this code is stable. Update the `SQUAD_MEMBERS` fixture to include `agentId: "ag_SRC1"` / `agentId: "ag_SRC2"`.
+- [ ] **Step 4: Run test to verify it passes**
 
-- [ ] **Step 4: Update the fixture and run**
-
-In `tests/multica-tool/fixtures.mjs`, add `agentId` to each `SQUAD_MEMBERS` entry:
-```js
-export const SQUAD_MEMBERS = [
-  { agentId: "ag_SRC1", agentName: "Helper", role: "leader" },
-  { agentId: "ag_SRC2", agentName: "Helper2", role: "member" },
-];
-```
 Run: `node --test tests/multica-tool/export.test.mjs`
-Expected: PASS (4 tests).
+Expected: PASS (5 tests: 2 from Task 4 + 3 here).
 
 - [ ] **Step 5: Commit**
 
@@ -826,12 +906,16 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     const rec = JSON.parse(fs.readFileSync(`${dir}/${a.file}`, "utf8"));
     const targetRuntime = runtimeMap.get(rec.sourceRuntimeId);
     if (!targetRuntime) throw new Error(`Unmapped runtime "${rec.sourceRuntimeId}" for agent "${rec.name}"`);
+    // Only pass optional flags when present — `--model ""` would CLEAR the model.
     const common = [
-      "--instructions", rec.instructions ?? "",
-      "--model", rec.model ?? "",
       "--visibility", rec.visibility ?? "private",
       "--max-concurrent-tasks", String(rec.maxConcurrentTasks ?? 6),
     ];
+    if (rec.instructions) common.push("--instructions", rec.instructions);
+    if (rec.model) common.push("--model", rec.model);
+    if (rec.thinkingLevel) common.push("--thinking-level", rec.thinkingLevel);
+    if (rec.runtimeConfig && Object.keys(rec.runtimeConfig).length) common.push("--runtime-config", JSON.stringify(rec.runtimeConfig));
+    if (Array.isArray(rec.customArgs) && rec.customArgs.length) common.push("--custom-args", JSON.stringify(rec.customArgs));
     const match = findByName(existing, rec.name);
     let id;
     if (match) {
@@ -874,7 +958,7 @@ git commit -m "feat(multica-tool): add agent import with runtime remap and skill
 - Produces:
   - `importSquad({ cli, squad, agentIdMap }) -> { newId, created, updated }` where `squad` is one manifest squad entry. `findByName(listSquads(cli), name)`. Missing → `cli.run(["squad","create","--name",name,"--leader",agentIdMap.get(leaderName),"--description",...])` → id. Exists → `cli.run(["squad","update",id,"--leader",mappedLeader,...])`. Then for each member where `agentName !== leaderName`: `cli.run(["squad","member","add",id,"--member-id",agentIdMap.get(agentName),"--role",role,"--type","agent"])`. Member-add is idempotent server-side (matched by agent), so re-runs don't duplicate.
 
-> Note: `squad update` may not accept `--leader` (check Task 3 Step 6 / `squad update --help`). If it doesn't, on the exists-path skip the leader flag and only reconcile members. The test below only asserts the create path's leader and the member mapping.
+> Verified (multica 0.3.29): `squad create` takes `--name --leader --description` (NOT `--instructions`); `squad update` takes `--leader --description --instructions`. So the create and update paths BOTH set `--leader` (mapped). Squad `instructions` is omitted (create can't set it; out of scope). `squad member add` is idempotent by agent, so re-runs don't duplicate.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -921,7 +1005,7 @@ export function importSquad({ cli, squad, agentIdMap }) {
   const match = findByName(existing, squad.name);
   let id, created = 0, updated = 0;
   if (match) {
-    cli.run(["squad", "update", match.id, "--description", squad.description ?? ""]);
+    cli.run(["squad", "update", match.id, "--leader", leaderId, "--description", squad.description ?? ""]);
     id = match.id; updated++;
   } else {
     const out = cli.run(["squad", "create", "--name", squad.name, "--leader", leaderId, "--description", squad.description ?? ""]);
@@ -961,7 +1045,7 @@ Wires the three importers, collects distinct source runtimes for the model to re
 - Consumes: `importSkills`,`importAgents`,`importSquad`.
 - Produces:
   - `collectSourceRuntimes(manifest) -> string[]` — distinct `sourceRuntimeId`s across agents.
-  - `importBundle({ cli, dir, runtimeMap, fs }) -> report` where `report = { created:{skills,agents,squads}, updated:{...}, skillIdMap, agentIdMap, squadId, secretsReminder: string[] }`. Reads `manifest.json` from `dir`, runs skills → agents → squad in order, threads id maps. `secretsReminder` lists agent names (re-set `customEnv`/`mcpConfig` on target). Throws (before any write) if any collected runtime is missing from `runtimeMap`.
+  - `importBundle({ cli, dir, runtimeMap, fs }) -> report` where `report = { created:{skills,agents,squads}, updated:{...}, skillIdMap, agentIdMap, squadId, secretsReminder: string[] }`. Reads `manifest.json` from `dir`, runs skills → agents → squad in order, threads id maps. `secretsReminder` lists ONLY the agent names whose manifest entry has `hadSecrets: true` (re-set `custom_env`/`mcp_config` on the target via `multica agent env set <id>` / `agent update --mcp-config`). Throws (before any write) if any collected runtime is missing from `runtimeMap`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1006,7 +1090,7 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
     squadId: squadRes.newId,
-    secretsReminder: (manifest.agents ?? []).map((a) => a.name),
+    secretsReminder: (manifest.agents ?? []).filter((a) => a.hadSecrets).map((a) => a.name),
   };
 }
 ```
