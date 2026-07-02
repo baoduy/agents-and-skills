@@ -1,6 +1,6 @@
 import * as nodeFs from "node:fs";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getSquad, getSquadMembers, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getSquad, getSquadMembers, listRuntimes, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
@@ -24,7 +24,7 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad 
     scope,
     sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, sourceId: s.sourceId })),
-    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceRuntimeId: a.sourceRuntimeId, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
+    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceRuntimeId: a.sourceRuntimeId, sourceRuntimeProvider: a.sourceRuntimeProvider ?? null, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
     squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", leaderName: squad.leaderName, members: squad.members }] : [],
   };
 }
@@ -37,9 +37,10 @@ function collectSkill(cli, id, skills) {
 
 // Keyed by agent id (so squad leaderId/memberId resolve to names). Stores the
 // normalized agent, its redaction result, and its skill names.
-function collectAgent(cli, id, agentsById, skills) {
+function collectAgent(cli, id, agentsById, skills, providerById) {
   if (agentsById.has(id)) return agentsById.get(id);
   const a = getAgent(cli, id);
+  a.sourceRuntimeProvider = providerById.get(a.runtimeId) ?? null;
   const skillNames = a.skills.map((sk) => collectSkill(cli, sk.id, skills));
   const red = redactAgent(a);
   const entry = { raw: a, red, skillNames };
@@ -51,14 +52,18 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   const skills = new Map();       // name -> normalized skill
   const agentsById = new Map();   // id   -> { raw, red, skillNames }
   let squad = null;
+  // Lazy + memoized: only fetched when an agent is actually collected (skips
+  // the extra CLI call on skill-only exports).
+  let providerById = null;
+  const getProviderById = () => providerById ??= new Map(listRuntimes(cli).map((r) => [r.id, r.provider]));
 
   if (scope === "skill") collectSkill(cli, ids.skillId, skills);
-  if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills);
+  if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
   if (scope === "squad") {
     const sq = getSquad(cli, ids.squadId);
     const members = getSquadMembers(cli, ids.squadId).filter((m) => m.memberType === "agent");
-    for (const m of members) collectAgent(cli, m.memberId, agentsById, skills);
-    if (!agentsById.has(sq.leaderId)) collectAgent(cli, sq.leaderId, agentsById, skills);
+    for (const m of members) collectAgent(cli, m.memberId, agentsById, skills, getProviderById());
+    if (!agentsById.has(sq.leaderId)) collectAgent(cli, sq.leaderId, agentsById, skills, getProviderById());
     const nameOf = (id) => agentsById.get(id)?.raw.name;
     squad = {
       name: sq.name,
@@ -72,7 +77,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   const manifest = buildManifest({
     scope, sourceWorkspaceId,
     skills: [...skills.values()].map((s) => ({ name: s.name, sourceId: s.id })),
-    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, sourceRuntimeId: a.raw.runtimeId, skillNames: a.skillNames, hadSecrets: a.red.hadSecrets })),
+    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, sourceRuntimeId: a.raw.runtimeId, sourceRuntimeProvider: a.raw.sourceRuntimeProvider, skillNames: a.skillNames, hadSecrets: a.red.hadSecrets })),
     squad,
   });
 

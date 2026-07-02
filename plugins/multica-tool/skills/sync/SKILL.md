@@ -18,29 +18,32 @@ sync <type> <name> from <src-ws> to <dest-ws>
 
 Where `<type>` is `skill`, `agent`, or `squad`; `<name>` is the resource name; `<src-ws>` and `<dest-ws>` are workspace names registered in Multica.
 
-## Step 2 — Build the runtime map
+## Step 2 — Run the sync (auto-mapping first)
 
-List runtimes available in the destination workspace:
+For agents and squads, each exported agent record carries its source runtime's `provider` (e.g. `claude`, `opencode`) alongside its ID. The sync script auto-maps a source runtime to the destination workspace's runtime when there is **exactly one** runtime of that provider there — no manual mapping needed in the common case. For skills (which have no runtime dependency), an empty runtime map is always acceptable. Try the sync without `--runtime-map` first:
 
 ```bash
-multica runtime list --output json
+node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-sync.mjs" \
+  <type> <name> from <src-ws> <dest-ws>
 ```
 
-Using the source workspace, fetch the resource to discover which `sourceRuntimeId` values are referenced (for agents and squads). For each distinct `sourceRuntimeId`, ask the user to select a matching target runtime by name or ID. Build a mapping in the form `srcId=dstId`. If any source runtime has no mapping, abort before running the sync.
+If it aborts with `Unmapped runtimes: ...` (0 or 2+ runtimes share that provider in the destination workspace), resolve manually:
 
-For skills (which have no runtime dependency), an empty runtime map is acceptable.
+```bash
+multica runtime list --workspace-id <dest-ws-id> --output json   # list destination workspace runtimes
+```
 
-## Step 3 — Run the sync
+Ask the user to select a matching target runtime by name or ID for each unmapped `sourceRuntimeId`, then re-run with an explicit map (explicit entries always take precedence over auto-mapping):
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-sync.mjs" \
   <type> <name> from <src-ws> <dest-ws> \
-  [--runtime-map <srcId1=dstId1,srcId2=dstId2,...>]
+  --runtime-map <srcId1=dstId1,srcId2=dstId2,...>
 ```
 
 The script exports to a temporary directory, imports into the destination workspace, then cleans up the temporary files automatically.
 
-## Step 4 — Report results
+## Step 3 — Report results
 
 Parse the JSON output and report:
 
