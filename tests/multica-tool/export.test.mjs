@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest, exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { AGENT_GET, SKILL_GET, AGENT_GET_2, SQUAD_GET, SQUAD_MEMBERS } from "./fixtures.mjs";
+import { AGENT_GET, SKILL_GET, AGENT_GET_2, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
@@ -13,6 +13,7 @@ function fakeCli() {
       if (key === "agent get ag_SRC1") return AGENT_GET;
       if (key === "agent get ag_SRC2") return AGENT_GET_2;
       if (key === "skill get sk_SRC1") return SKILL_GET;
+      if (key === "runtime list") return RUNTIME_LIST_SRC;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -95,10 +96,13 @@ test("export creates nested parent dirs for skill files (regression: scripts/ su
 
 test("export agent never writes mcp_config (secret) to disk; warns when secrets present", () => {
   const fs = memFs();
-  const { warnings } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o", sourceWorkspaceId: "ws", fs });
+  const { manifest, warnings } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o", sourceWorkspaceId: "ws", fs });
   const blob = Object.values(fs.files).join("\n");
   assert.ok(!blob.includes("token"), "mcp_config leaked to disk");
   assert.deepEqual(warnings, ["Helper"]);          // has_custom_env true → warned
+  assert.equal(manifest.agents[0].sourceRuntimeProvider, "claude", "runtime provider captured for later auto-mapping");
+  const record = JSON.parse(fs.files["/o/agents/helper.json"]);
+  assert.equal(record.sourceRuntimeProvider, "claude");
 });
 
 test("export squad resolves leader and member names by id and writes squad file", () => {

@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { listSkills, listAgents, listSquads, listRuntimes, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 // Relative paths of every file under root (recursing into subdirs like scripts/).
 function walkSkillFiles(fs, root, rel = "") {
@@ -118,13 +118,50 @@ export function collectSourceRuntimes(manifest) {
   return [...new Set((manifest.agents ?? []).map((a) => a.sourceRuntimeId).filter(Boolean))];
 }
 
+// sourceRuntimeId -> provider (e.g. "claude", "opencode"), from whichever agent recorded it.
+function collectRuntimeProviders(manifest) {
+  const map = new Map();
+  for (const a of manifest.agents ?? []) {
+    if (a.sourceRuntimeId && a.sourceRuntimeProvider && !map.has(a.sourceRuntimeId)) {
+      map.set(a.sourceRuntimeId, a.sourceRuntimeProvider);
+    }
+  }
+  return map;
+}
+
+// Starts from the explicit --runtime-map (always wins), then auto-resolves any
+// remaining source runtime by provider — only when exactly one destination
+// runtime shares that provider. Ambiguous (0 or 2+ matches) stays unresolved.
+export function resolveRuntimeMap({ cli, manifest, runtimeMap }) {
+  const effective = new Map(runtimeMap);
+  const missing = collectSourceRuntimes(manifest).filter((r) => !effective.has(r));
+  if (!missing.length) return { effective, unresolved: [] };
+
+  const providers = collectRuntimeProviders(manifest);
+  const resolvable = missing.filter((r) => providers.has(r));
+  const destRuntimes = resolvable.length ? listRuntimes(cli) : [];
+  const unresolved = [];
+  for (const srcId of missing) {
+    const provider = providers.get(srcId);
+    const matches = provider ? destRuntimes.filter((r) => r.provider === provider) : [];
+    if (matches.length === 1) effective.set(srcId, matches[0].id);
+    else unresolved.push({ srcId, provider, matchCount: matches.length });
+  }
+  return { effective, unresolved };
+}
+
 export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
   const manifest = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
-  const missing = collectSourceRuntimes(manifest).filter((r) => !runtimeMap.has(r));
-  if (missing.length) throw new Error(`Unmapped runtimes: ${missing.join(", ")} — aborting before any write`);
+  const { effective, unresolved } = resolveRuntimeMap({ cli, manifest, runtimeMap });
+  if (unresolved.length) {
+    const detail = unresolved.map(({ srcId, provider, matchCount }) => provider
+      ? `${srcId} (provider "${provider}": ${matchCount} matching runtimes in destination, expected exactly 1)`
+      : `${srcId} (no provider recorded)`).join(", ");
+    throw new Error(`Unmapped runtimes: ${detail} — pass --runtime-map, aborting before any write`);
+  }
 
   const skillRes = importSkills({ cli, manifest, dir, fs });
-  const agentRes = importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap, fs });
+  const agentRes = importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs });
   let squadRes = { newId: null, created: 0, updated: 0 };
   if (manifest.squads?.length) squadRes = importSquad({ cli, squad: manifest.squads[0], agentIdMap: agentRes.idMap });
 

@@ -28,3 +28,15 @@ export const SQUAD_MEMBERS = [
   { id: "m2", member_id: "ag_SRC2", member_type: "agent", role: "", squad_id: "sq_SRC1" },
 ];
 export const RUNTIME_LIST = [{ id: "rt_TGT1", name: "My Runtime", provider: "claude" }];
+// Source-side runtime list — rt_SRC1 (used by AGENT_GET/AGENT_GET_2) is "claude".
+export const RUNTIME_LIST_SRC = [{ id: "rt_SRC1", name: "Source Runtime", provider: "claude" }];
+// Destination workspace with exactly one "claude" runtime — auto-map succeeds.
+export const RUNTIME_LIST_DEST_UNIQUE = [
+  { id: "rt_TGT1", name: "Target Runtime", provider: "claude" },
+  { id: "rt_TGT2", name: "Other Runtime", provider: "opencode" },
+];
+// Destination workspace with two "claude" runtimes — auto-map is ambiguous.
+export const RUNTIME_LIST_DEST_AMBIGUOUS = [
+  { id: "rt_TGT1", name: "Target Runtime A", provider: "claude" },
+  { id: "rt_TGT2", name: "Target Runtime B", provider: "claude" },
+];

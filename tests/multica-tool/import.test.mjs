@@ -166,3 +166,36 @@ test("collectSourceRuntimes returns distinct ids", () => {
   const m = { agents: [{ sourceRuntimeId: "rt_a" }, { sourceRuntimeId: "rt_a" }, { sourceRuntimeId: "rt_b" }] };
   assert.deepEqual(collectSourceRuntimes(m).sort(), ["rt_a", "rt_b"]);
 });
+
+import { resolveRuntimeMap } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+import { RUNTIME_LIST_DEST_UNIQUE, RUNTIME_LIST_DEST_AMBIGUOUS } from "./fixtures.mjs";
+
+const MANIFEST_WITH_PROVIDER = { agents: [{ sourceRuntimeId: "rt_SRC1", sourceRuntimeProvider: "claude" }] };
+
+test("resolveRuntimeMap auto-maps by provider when exactly one destination runtime matches", () => {
+  const cli = { json: () => RUNTIME_LIST_DEST_UNIQUE };
+  const { effective, unresolved } = resolveRuntimeMap({ cli, manifest: MANIFEST_WITH_PROVIDER, runtimeMap: new Map() });
+  assert.deepEqual(unresolved, []);
+  assert.equal(effective.get("rt_SRC1"), "rt_TGT1", "the single claude-provider runtime in the destination");
+});
+
+test("resolveRuntimeMap leaves it unresolved when the provider is ambiguous in the destination", () => {
+  const cli = { json: () => RUNTIME_LIST_DEST_AMBIGUOUS };
+  const { effective, unresolved } = resolveRuntimeMap({ cli, manifest: MANIFEST_WITH_PROVIDER, runtimeMap: new Map() });
+  assert.ok(!effective.has("rt_SRC1"), "2 matching runtimes — cannot pick one automatically");
+  assert.deepEqual(unresolved, [{ srcId: "rt_SRC1", provider: "claude", matchCount: 2 }]);
+});
+
+test("resolveRuntimeMap: an explicit --runtime-map entry wins over auto-mapping and skips the runtime list call", () => {
+  const cli = { json: () => { throw new Error("must not list runtimes when explicitly mapped"); } };
+  const { effective, unresolved } = resolveRuntimeMap({ cli, manifest: MANIFEST_WITH_PROVIDER, runtimeMap: new Map([["rt_SRC1", "rt_EXPLICIT"]]) });
+  assert.deepEqual(unresolved, []);
+  assert.equal(effective.get("rt_SRC1"), "rt_EXPLICIT");
+});
+
+test("resolveRuntimeMap leaves it unresolved (without calling the CLI) when no provider was recorded", () => {
+  const cli = { json: () => { throw new Error("must not list runtimes with nothing resolvable"); } };
+  const manifest = { agents: [{ sourceRuntimeId: "rt_SRC1" }] }; // older bundle, no sourceRuntimeProvider
+  const { unresolved } = resolveRuntimeMap({ cli, manifest, runtimeMap: new Map() });
+  assert.deepEqual(unresolved, [{ srcId: "rt_SRC1", provider: undefined, matchCount: 0 }]);
+});
