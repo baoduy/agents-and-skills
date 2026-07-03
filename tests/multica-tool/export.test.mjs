@@ -46,6 +46,7 @@ test("redactAgent strips secrets/id/skills and records runtime + hadSecrets", ()
   assert.ok(!("hasCustomEnv" in record));
   assert.ok(!("skills" in record));
   assert.ok(!("id" in record));
+  assert.equal(record.sourceId, "ag_SRC1", "original agent id kept under sourceId, for mention rewriting on import");
   assert.equal(record.sourceRuntimeId, "rt_SRC1");
   assert.equal(record.maxConcurrentTasks, 6, "normalized field survives");
   assert.equal(record.hadSecrets, true);
@@ -57,13 +58,14 @@ test("buildManifest dedups skills/agents by name and wires by name", () => {
     scope: "squad",
     sourceWorkspaceId: "ws_SRC",
     skills: [{ name: "Greet", sourceId: "sk_SRC1" }, { name: "Greet", sourceId: "sk_SRC1" }],
-    agents: [{ name: "Helper", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"], hadSecrets: true }],
+    agents: [{ name: "Helper", sourceId: "ag_SRC1", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"], hadSecrets: true }],
     squad: { name: "Team", description: "the team", leaderName: "Helper", members: [{ agentName: "Helper2", role: "member" }] },
   });
   assert.equal(m.version, "1");
   assert.equal(m.skills.length, 1, "skills deduped by name");
   assert.equal(m.skills[0].dir, "skills/greet");
   assert.equal(m.agents[0].file, "agents/helper.json");
+  assert.equal(m.agents[0].sourceId, "ag_SRC1", "source agent id carried in manifest for mention rewriting");
   assert.deepEqual(m.agents[0].skillNames, ["Greet"]);
   assert.equal(m.agents[0].hadSecrets, true);
   assert.equal(m.squads[0].leaderName, "Helper");
@@ -114,4 +116,6 @@ test("export squad resolves leader and member names by id and writes squad file"
   assert.deepEqual(squad.members.map((m) => m.agentName).sort(), ["Helper", "Helper2"]);
   assert.equal(manifest.agents.length, 2, "both member agents captured");
   assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");
+  const helper = manifest.agents.find((a) => a.name === "Helper");
+  assert.equal(helper.sourceId, "ag_SRC1", "source agent id recorded in manifest for mention rewriting on import");
 });

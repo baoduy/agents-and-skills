@@ -99,14 +99,15 @@ const AGENT_MANIFEST = {
   agents: [{ name: "Helper", file: "agents/helper.json", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"] }],
   squads: [],
 };
-const AGENT_FILE = JSON.stringify({ name: "Helper", instructions: "be nice", model: "claude-sonnet-4-6", visibility: "workspace", maxConcurrentTasks: 6, sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"] });
+const AGENT_FILE = JSON.stringify({ name: "Helper", instructions: "be nice", model: "claude-sonnet-4-6", visibility: "workspace", maxConcurrentTasks: 6, sourceId: "ag_SRC1", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"] });
 
 test("importAgents remaps runtime id and sets mapped skill ids", () => {
   const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] };
   const calls = [];
   const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
-  const { idMap } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const { idMap, sourceIdMap } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
   assert.equal(idMap.get("Helper"), "ag_NEW1");
+  assert.equal(sourceIdMap.get("ag_SRC1"), "ag_NEW1", "source agent id mapped to new id, for mention rewriting");
   const create = calls.find((a) => a[1] === "create");
   assert.ok(create.includes("--runtime-id") && create[create.indexOf("--runtime-id") + 1] === "rt_TGT1", "mapped runtime applied");
   const set = calls.find((a) => a[1] === "skills" && a[2] === "set");
@@ -120,6 +121,48 @@ test("importAgents throws when runtime is unmapped", () => {
     () => importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map(), runtimeMap: new Map(), fs }),
     /unmapped runtime/i
   );
+});
+
+import { rewriteMentions, rewriteAgentMentions } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+
+test("rewriteMentions replaces known agent mention ids, leaves unknown ones untouched", () => {
+  const text = "- [@dev-backend](mention://agent/ag_SRC1)\n- [@dev-qc](mention://agent/ag_SRC2)\n- [@ghost](mention://agent/ag_UNKNOWN)";
+  const idMap = new Map([["ag_SRC1", "ag_NEW1"], ["ag_SRC2", "ag_NEW2"]]);
+  assert.equal(
+    rewriteMentions(text, idMap),
+    "- [@dev-backend](mention://agent/ag_NEW1)\n- [@dev-qc](mention://agent/ag_NEW2)\n- [@ghost](mention://agent/ag_UNKNOWN)"
+  );
+});
+
+test("rewriteMentions is a no-op on text with no mentions, or empty/missing text", () => {
+  assert.equal(rewriteMentions("plain instructions, no mentions here", new Map([["a", "b"]])), "plain instructions, no mentions here");
+  assert.equal(rewriteMentions("", new Map()), "");
+  assert.equal(rewriteMentions(undefined, new Map()), undefined);
+});
+
+const MENTION_MANIFEST = {
+  version: "1", scope: "squad", sourceWorkspaceId: "ws_SRC", skills: [],
+  agents: [
+    { name: "Helper", file: "agents/helper.json" },
+    { name: "Helper2", file: "agents/helper2.json" },
+  ],
+  squads: [],
+};
+const MENTION_FILES = {
+  "agents/helper.json": JSON.stringify({ name: "Helper", instructions: "Coordinate with [@helper2](mention://agent/ag_SRC2)." }),
+  "agents/helper2.json": JSON.stringify({ name: "Helper2", instructions: "no mentions here" }),
+};
+
+test("rewriteAgentMentions updates only agents whose instructions reference a known source id", () => {
+  const fs = { readFileSync: (p) => MENTION_FILES[p.replace(/^\.\//, "")] };
+  const calls = [];
+  const cli = { calls, run: (a) => { calls.push(a); return "{}"; } };
+  const agentIdMap = new Map([["Helper", "ag_NEW1"], ["Helper2", "ag_NEW2"]]);
+  const sourceIdMap = new Map([["ag_SRC1", "ag_NEW1"], ["ag_SRC2", "ag_NEW2"]]);
+  const { updated } = rewriteAgentMentions({ cli, manifest: MENTION_MANIFEST, dir: ".", agentIdMap, sourceIdMap, fs });
+  assert.equal(updated, 1, "only Helper's instructions contained a rewritable mention");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], ["agent", "update", "ag_NEW1", "--instructions", "Coordinate with [@helper2](mention://agent/ag_NEW2)."]);
 });
 
 import { importSquad } from "../../plugins/multica-tool/scripts/multica-import.mjs";
@@ -141,6 +184,20 @@ test("importSquad creates with mapped leader and adds non-leader members by mapp
   const adds = calls.filter((a) => a[1] === "member" && a[2] === "add");
   assert.equal(adds.length, 1, "leader is not double-added as member");
   assert.equal(adds[0][adds[0].indexOf("--member-id") + 1], "ag_NEW2");
+});
+
+test("importSquad rewrites agent mentions in instructions from source ids to new ids", () => {
+  const calls = [];
+  const cli = { calls, json: (a) => (a.includes("list") ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"sq_NEW1"}' : "{}"; } };
+  const squad = { ...SQUAD_ENTRY, instructions: "Teammates:\n- [@dev-backend](mention://agent/ag_SRC1)\n- [@dev-qc](mention://agent/ag_SRC2)" };
+  const agentIdMap = new Map([["Helper", "ag_NEW1"], ["Helper2", "ag_NEW2"]]);
+  const sourceIdMap = new Map([["ag_SRC1", "ag_NEW1"], ["ag_SRC2", "ag_NEW2"]]);
+  importSquad({ cli, squad, agentIdMap, sourceIdMap });
+  const create = calls.find((a) => a[1] === "create");
+  assert.equal(
+    create[create.indexOf("--instructions") + 1],
+    "Teammates:\n- [@dev-backend](mention://agent/ag_NEW1)\n- [@dev-qc](mention://agent/ag_NEW2)"
+  );
 });
 
 test("importSquad skips members already present (regression: idempotent re-run)", () => {

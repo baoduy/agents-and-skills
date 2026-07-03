@@ -57,6 +57,7 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
 
 export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = nodeFs }) {
   const idMap = new Map();
+  const sourceIdMap = new Map(); // source agent id -> new agent id, for mention rewriting
   let created = 0, updated = 0;
   const existing = listAgents(cli);
 
@@ -84,18 +85,52 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       id = JSON.parse(out).id; created++;
     }
     idMap.set(rec.name, id);
+    if (rec.sourceId) sourceIdMap.set(rec.sourceId, id);
     const skillIds = (rec.skillNames ?? []).map((n) => skillIdMap.get(n)).filter(Boolean);
     cli.run(["agent", "skills", "set", id, "--skill-ids", skillIds.join(",")]);
   }
-  return { idMap, created, updated };
+  return { idMap, sourceIdMap, created, updated };
 }
 
-export function importSquad({ cli, squad, agentIdMap }) {
+// Rewrites `mention://agent/<id>` links (e.g. `[@dev-backend](mention://agent/<id>)`)
+// from a source-workspace agent id to its id in the destination workspace.
+// Mentions with no entry in idMap (agent outside this bundle) are left as-is.
+const MENTION_RE = /mention:\/\/agent\/([^)\s]+)/g;
+
+export function rewriteMentions(text, idMap) {
+  if (!text) return text;
+  return text.replace(MENTION_RE, (full, oldId) => {
+    const newId = idMap.get(oldId);
+    return newId ? `mention://agent/${newId}` : full;
+  });
+}
+
+// Second pass over agent instructions: an agent's instructions may @mention a
+// sibling agent from the same bundle by its SOURCE id, which is only knowable
+// once every agent in the bundle has been created/updated (idMap complete) —
+// so this must run after the importAgents loop above, not inside it.
+export function rewriteAgentMentions({ cli, manifest, dir, agentIdMap, sourceIdMap, fs = nodeFs }) {
+  let updated = 0;
+  for (const a of manifest.agents) {
+    const rec = JSON.parse(fs.readFileSync(`${dir}/${a.file}`, "utf8"));
+    if (!rec.instructions) continue;
+    const rewritten = rewriteMentions(rec.instructions, sourceIdMap);
+    if (rewritten === rec.instructions) continue;
+    cli.run(["agent", "update", agentIdMap.get(rec.name), "--instructions", rewritten]);
+    updated++;
+  }
+  return { updated };
+}
+
+export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
   const existing = listSquads(cli);
   const leaderId = agentIdMap.get(squad.leaderName);
   const match = findByName(existing, squad.name);
   let id, created = 0, updated = 0;
-  const instr = squad.instructions ? ["--instructions", squad.instructions] : [];
+  // Squad instructions commonly list @mentions of teammate agents by their
+  // SOURCE id — rewrite to the destination ids before the squad is created.
+  const instructions = sourceIdMap ? rewriteMentions(squad.instructions, sourceIdMap) : squad.instructions;
+  const instr = instructions ? ["--instructions", instructions] : [];
   if (match) {
     cli.run(["squad", "update", match.id, "--leader", leaderId, "--description", squad.description ?? "", ...instr]);
     id = match.id; updated++;
@@ -162,12 +197,15 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
 
   const skillRes = importSkills({ cli, manifest, dir, fs });
   const agentRes = importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs });
+  // Runs after every agent exists so forward-referencing mentions resolve.
+  const mentionRes = rewriteAgentMentions({ cli, manifest, dir, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap, fs });
   let squadRes = { newId: null, created: 0, updated: 0 };
-  if (manifest.squads?.length) squadRes = importSquad({ cli, squad: manifest.squads[0], agentIdMap: agentRes.idMap });
+  if (manifest.squads?.length) squadRes = importSquad({ cli, squad: manifest.squads[0], agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
 
   return {
     created: { skills: skillRes.created, agents: agentRes.created, squads: squadRes.created },
     updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadRes.updated },
+    mentionsRewritten: mentionRes.updated,
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
     squadId: squadRes.newId,

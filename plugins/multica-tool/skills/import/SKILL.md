@@ -38,6 +38,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
   --runtime-map <srcId1=dstId1,srcId2=dstId2,...>
 ```
 
+The import also rewrites any `mention://agent/<id>` link inside squad and agent instructions (e.g. `[@dev-backend](mention://agent/<id>)`) from the source agent's id to its new id in the target workspace — the CLI does this automatically for every agent captured in the bundle; no extra flag needed. Mentions pointing to an agent outside the bundle are left untouched.
+
 ## Step 3 — Report results
 
 Parse the JSON output and report:
@@ -45,4 +47,5 @@ Parse the JSON output and report:
 - Created and updated counts for skills, agents, and squads.
 - Name-to-ID maps for skills and agents (`skillIdMap`, `agentIdMap`).
 - Squad ID if a squad was imported.
+- `mentionsRewritten`: how many agents had an agent-mention link rewritten to its new id.
 - If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents had custom environment variables or MCP config that were NOT exported — re-add secrets manually in the Multica UI: `<agent-name>`."

@@ -9,7 +9,9 @@ export function redactAgent(a) {
   const { id, hasCustomEnv, mcpConfig, skills, runtimeId, ...rest } = a;
   const hadSecrets = !!hasCustomEnv || nonEmpty(mcpConfig);
   return {
-    record: { ...rest, sourceRuntimeId: runtimeId, skillNames: [], hadSecrets },
+    // sourceId lets import-time mention rewriting map stale `mention://agent/<id>`
+    // links (in this or another agent's/squad's instructions) to the new id.
+    record: { ...rest, sourceId: id, sourceRuntimeId: runtimeId, skillNames: [], hadSecrets },
     hadSecrets,
   };
 }
@@ -24,7 +26,7 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad 
     scope,
     sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, sourceId: s.sourceId })),
-    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceRuntimeId: a.sourceRuntimeId, sourceRuntimeProvider: a.sourceRuntimeProvider ?? null, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
+    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceId: a.sourceId, sourceRuntimeId: a.sourceRuntimeId, sourceRuntimeProvider: a.sourceRuntimeProvider ?? null, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
     squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", leaderName: squad.leaderName, members: squad.members }] : [],
   };
 }
@@ -77,7 +79,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   const manifest = buildManifest({
     scope, sourceWorkspaceId,
     skills: [...skills.values()].map((s) => ({ name: s.name, sourceId: s.id })),
-    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, sourceRuntimeId: a.raw.runtimeId, sourceRuntimeProvider: a.raw.sourceRuntimeProvider, skillNames: a.skillNames, hadSecrets: a.red.hadSecrets })),
+    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, sourceId: a.raw.id, sourceRuntimeId: a.raw.runtimeId, sourceRuntimeProvider: a.raw.sourceRuntimeProvider, skillNames: a.skillNames, hadSecrets: a.red.hadSecrets })),
     squad,
   });
 
