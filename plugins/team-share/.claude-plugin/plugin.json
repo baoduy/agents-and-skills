@@ -1,7 +1,7 @@
 {
   "name": "team-share",
   "displayName": "Team Share",
-  "version": "0.0.28",
+  "version": "0.0.36",
   "description": "Onboard your team with an interactive setup menu: install CodeGraph, build the Understand-Anything knowledge graph, and share Claude Code settings — run any combination, all idempotent.",
   "author": {
     "name": "Steven Hoang"

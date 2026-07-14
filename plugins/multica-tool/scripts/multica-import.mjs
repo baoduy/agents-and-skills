@@ -70,6 +70,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       "--visibility", rec.visibility ?? "private",
       "--max-concurrent-tasks", String(rec.maxConcurrentTasks ?? 6),
     ];
+    if (rec.description) common.push("--description", rec.description);
     if (rec.instructions) common.push("--instructions", rec.instructions);
     if (rec.model) common.push("--model", rec.model);
     if (rec.thinkingLevel) common.push("--thinking-level", rec.thinkingLevel);
