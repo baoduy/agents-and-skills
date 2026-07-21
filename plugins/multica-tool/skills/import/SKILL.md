@@ -48,4 +48,5 @@ Parse the JSON output and report:
 - Name-to-ID maps for skills and agents (`skillIdMap`, `agentIdMap`).
 - Squad ID if a squad was imported.
 - `mentionsRewritten`: how many agents had an agent-mention link rewritten to its new id.
-- If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents had custom environment variables or MCP config that were NOT exported — re-add secrets manually in the Multica UI: `<agent-name>`."
+- If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents' bundle files contained custom environment variables or MCP config in PLAINTEXT — the source export directory should be treated as sensitive: `<agent-name>`."
+- If `secretsApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: mcp_config or custom_env failed to apply to the following agents during import (the agent itself was still created/updated) — set them manually in the Multica UI: `<agent-name>`."
