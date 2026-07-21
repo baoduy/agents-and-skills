@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest, exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { AGENT_GET, SKILL_GET, AGENT_GET_2, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC } from "./fixtures.mjs";
+import { AGENT_GET, SKILL_GET, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
@@ -12,6 +12,7 @@ function fakeCli() {
       if (key === "squad member list") return SQUAD_MEMBERS;
       if (key === "agent get ag_SRC1") return AGENT_GET;
       if (key === "agent get ag_SRC2") return AGENT_GET_2;
+      if (key === "agent env get") return AGENT_ENV_GET;
       if (key === "skill get sk_SRC1") return SKILL_GET;
       if (key === "runtime list") return RUNTIME_LIST_SRC;
       throw new Error("unexpected " + args.join(" "));
@@ -38,12 +39,17 @@ function strictFs() {
   };
 }
 
-test("redactAgent strips secrets/id/skills and records runtime + hadSecrets", () => {
+test("redactAgent embeds mcpConfig and customEnv when both are usable", () => {
   const normalized = getAgent({ json: () => AGENT_GET }, "ag_SRC1");
+  normalized.customEnv = { API_KEY: "secret-value" };
+  normalized.customEnvFetchFailed = false;
   const { record, hadSecrets } = redactAgent(normalized);
-  assert.equal(hadSecrets, true, "has_custom_env true OR mcp_config non-empty");
-  assert.ok(!("mcpConfig" in record), "mcp_config (secret) must not be written");
+  assert.equal(hadSecrets, true);
+  assert.deepEqual(record.mcpConfig, { mcpServers: { x: { token: "t" } } }, "mcp_config is now written, not stripped");
+  assert.deepEqual(record.customEnv, { API_KEY: "secret-value" });
   assert.ok(!("hasCustomEnv" in record));
+  assert.ok(!("mcpConfigRedacted" in record), "export-time signal, not agent config to restore");
+  assert.ok(!("customEnvFetchFailed" in record), "export-time signal, not agent config to restore");
   assert.ok(!("skills" in record));
   assert.ok(!("id" in record));
   assert.equal(record.sourceId, "ag_SRC1", "original agent id kept under sourceId, for mention rewriting on import");
@@ -51,6 +57,34 @@ test("redactAgent strips secrets/id/skills and records runtime + hadSecrets", ()
   assert.equal(record.maxConcurrentTasks, 6, "normalized field survives");
   assert.equal(record.hadSecrets, true);
   assert.equal(record.name, "Helper");
+});
+
+test("redactAgent leaves mcpConfig/customEnv null and hadSecrets false when neither is present", () => {
+  const normalized = getAgent({ json: () => AGENT_GET_2 }, "ag_SRC2");
+  normalized.customEnv = {};
+  normalized.customEnvFetchFailed = false;
+  const { record, hadSecrets } = redactAgent(normalized);
+  assert.equal(hadSecrets, false);
+  assert.equal(record.mcpConfig, null);
+  assert.equal(record.customEnv, null);
+});
+
+test("redactAgent never surfaces a redacted mcp_config, and still flags hadSecrets", () => {
+  const normalized = getAgent({ json: () => AGENT_GET_REDACTED }, "ag_SRC3");
+  normalized.customEnv = {};
+  normalized.customEnvFetchFailed = false;
+  const { record, hadSecrets } = redactAgent(normalized);
+  assert.equal(record.mcpConfig, null, "redacted value must never be written to disk");
+  assert.equal(hadSecrets, true, "still flagged so the user knows something was skipped");
+});
+
+test("redactAgent flags hadSecrets when the audited env fetch failed, writes no stale customEnv", () => {
+  const normalized = getAgent({ json: () => AGENT_GET_2 }, "ag_SRC2");
+  normalized.customEnv = {};
+  normalized.customEnvFetchFailed = true;
+  const { record, hadSecrets } = redactAgent(normalized);
+  assert.equal(record.customEnv, null);
+  assert.equal(hadSecrets, true);
 });
 
 test("buildManifest dedups skills/agents by name and wires by name", () => {
@@ -96,15 +130,38 @@ test("export creates nested parent dirs for skill files (regression: scripts/ su
   assert.equal(fs.files["/out/skills/nested/scripts/run.sh"], "echo hi");
 });
 
-test("export agent never writes mcp_config (secret) to disk; warns when secrets present", () => {
+test("export agent writes mcp_config/customEnv to disk and warns when either is present", () => {
   const fs = memFs();
   const { manifest, warnings } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o", sourceWorkspaceId: "ws", fs });
-  const blob = Object.values(fs.files).join("\n");
-  assert.ok(!blob.includes("token"), "mcp_config leaked to disk");
-  assert.deepEqual(warnings, ["Helper"]);          // has_custom_env true → warned
-  assert.equal(manifest.agents[0].sourceRuntimeProvider, "claude", "runtime provider captured for later auto-mapping");
   const record = JSON.parse(fs.files["/o/agents/helper.json"]);
+  assert.deepEqual(record.mcpConfig, { mcpServers: { x: { token: "t" } } }, "mcp_config now round-trips");
+  assert.deepEqual(record.customEnv, { API_KEY: "secret-value" }, "custom_env now round-trips");
+  assert.deepEqual(warnings, ["Helper"]);          // has_custom_env true / mcp_config present → warned
+  assert.equal(manifest.agents[0].sourceRuntimeProvider, "claude", "runtime provider captured for later auto-mapping");
   assert.equal(record.sourceRuntimeProvider, "claude");
+});
+
+test("export skips the audited agent env get call when hasCustomEnv is false", () => {
+  const fs = memFs();
+  const calls = [];
+  const cli = fakeCli();
+  const wrapped = { ...cli, json: (args) => { calls.push(args.join(" ")); return cli.json(args); } };
+  exportResource({ cli: wrapped, scope: "agent", ids: { agentId: "ag_SRC2" }, outDir: "/o2", sourceWorkspaceId: "ws", fs });
+  assert.ok(!calls.some((c) => c.startsWith("agent env get")), "ag_SRC2 has has_custom_env:false — must not trigger the audited call");
+});
+
+test("export continues when the audited agent env get call fails (e.g. insufficient permission)", () => {
+  const fs = memFs();
+  const cli = fakeCli();
+  const failing = { ...cli, json: (args) => {
+    if (args.join(" ") === "agent env get ag_SRC1") throw new Error("permission denied");
+    return cli.json(args);
+  } };
+  const { manifest, warnings } = exportResource({ cli: failing, scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o3", sourceWorkspaceId: "ws", fs });
+  const record = JSON.parse(fs.files["/o3/agents/helper.json"]);
+  assert.equal(record.customEnv, null, "failed fetch never writes a partial/stale value");
+  assert.deepEqual(warnings, ["Helper"], "still warned even though the customEnv fetch itself failed");
+  assert.ok(manifest.agents[0].hadSecrets);
 });
 
 test("export squad resolves leader and member names by id and writes squad file", () => {
