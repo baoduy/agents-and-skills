@@ -1,15 +1,32 @@
 import * as nodeFs from "node:fs";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getSquad, getSquadMembers, listRuntimes, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
 export function redactAgent(a) {
-  // a is a normalized (camelCase) agent from getAgent.
-  const { id, hasCustomEnv, mcpConfig, skills, runtimeId, ...rest } = a;
-  const hadSecrets = !!hasCustomEnv || nonEmpty(mcpConfig);
+  // a is a normalized (camelCase) agent from getAgent, with `customEnv`/
+  // `customEnvFetchFailed` attached by the caller (collectAgent) — getAgent
+  // itself never fetches custom_env, since it requires a separate audited call.
+  const { id, hasCustomEnv, mcpConfigRedacted, customEnvFetchFailed, mcpConfig, customEnv, skills, runtimeId, ...rest } = a;
+  const mcpUsable = !mcpConfigRedacted && nonEmpty(mcpConfig);
+  const envUsable = !customEnvFetchFailed && nonEmpty(customEnv);
+  // mcpConfigRedacted / customEnvFetchFailed alone still flag hadSecrets even
+  // when unusable — the user should know something was present at the source
+  // but couldn't be captured, not just silently see an empty bundle.
+  const hadSecrets = mcpUsable || envUsable || !!mcpConfigRedacted || !!customEnvFetchFailed;
   return {
-    record: { ...rest, sourceRuntimeId: runtimeId, skillNames: [], hadSecrets },
+    // sourceId lets import-time mention rewriting map stale `mention://agent/<id>`
+    // links (in this or another agent's/squad's instructions) to the new id.
+    record: {
+      ...rest,
+      sourceId: id,
+      sourceRuntimeId: runtimeId,
+      skillNames: [],
+      mcpConfig: mcpUsable ? mcpConfig : null,
+      customEnv: envUsable ? customEnv : null,
+      hadSecrets,
+    },
     hadSecrets,
   };
 }
@@ -24,7 +41,7 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad 
     scope,
     sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, sourceId: s.sourceId })),
-    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceRuntimeId: a.sourceRuntimeId, sourceRuntimeProvider: a.sourceRuntimeProvider ?? null, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
+    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceId: a.sourceId, sourceRuntimeId: a.sourceRuntimeId, sourceRuntimeProvider: a.sourceRuntimeProvider ?? null, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
     squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", leaderName: squad.leaderName, members: squad.members }] : [],
   };
 }
@@ -41,6 +58,15 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
   if (agentsById.has(id)) return agentsById.get(id);
   const a = getAgent(cli, id);
   a.sourceRuntimeProvider = providerById.get(a.runtimeId) ?? null;
+  a.customEnv = {};
+  a.customEnvFetchFailed = false;
+  if (a.hasCustomEnv) {
+    try {
+      a.customEnv = getAgentCustomEnv(cli, id);
+    } catch {
+      a.customEnvFetchFailed = true; // e.g. insufficient permission — non-fatal, warned via hadSecrets
+    }
+  }
   const skillNames = a.skills.map((sk) => collectSkill(cli, sk.id, skills));
   const red = redactAgent(a);
   const entry = { raw: a, red, skillNames };
@@ -77,7 +103,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   const manifest = buildManifest({
     scope, sourceWorkspaceId,
     skills: [...skills.values()].map((s) => ({ name: s.name, sourceId: s.id })),
-    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, sourceRuntimeId: a.raw.runtimeId, sourceRuntimeProvider: a.raw.sourceRuntimeProvider, skillNames: a.skillNames, hadSecrets: a.red.hadSecrets })),
+    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, sourceId: a.raw.id, sourceRuntimeId: a.raw.runtimeId, sourceRuntimeProvider: a.raw.sourceRuntimeProvider, skillNames: a.skillNames, hadSecrets: a.red.hadSecrets })),
     squad,
   });
 

@@ -11,7 +11,7 @@ export const AGENT_GET = {
   model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6,
   runtime_config: {}, custom_args: [], runtime_id: "rt_SRC1", thinking_level: "",
   has_custom_env: true, custom_env_key_count: 1,
-  mcp_config: { mcpServers: { x: { token: "t" } } }, mcp_config_redacted: {},
+  mcp_config: { mcpServers: { x: { token: "t" } } }, mcp_config_redacted: false,
   skills: [{ id: "sk_SRC1", name: "Greet", description: "says hi" }],
 };
 // A second agent: no skills, no secrets (used by the squad export test).
@@ -19,7 +19,17 @@ export const AGENT_GET_2 = {
   id: "ag_SRC2", name: "Helper2", description: "", instructions: "",
   model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6,
   runtime_config: {}, custom_args: [], runtime_id: "rt_SRC1", thinking_level: "",
-  has_custom_env: false, custom_env_key_count: 0, mcp_config: {}, mcp_config_redacted: {},
+  has_custom_env: false, custom_env_key_count: 0, mcp_config: {}, mcp_config_redacted: false,
+  skills: [],
+};
+// A third agent: mcp_config is present at the source but redacted for this caller —
+// must never be written to the bundle (see redactAgent's guard in multica-export.mjs).
+export const AGENT_GET_REDACTED = {
+  id: "ag_SRC3", name: "HelperRedacted", description: "", instructions: "",
+  model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6,
+  runtime_config: {}, custom_args: [], runtime_id: "rt_SRC1", thinking_level: "",
+  has_custom_env: false, custom_env_key_count: 0,
+  mcp_config: { mcpServers: { masked: {} } }, mcp_config_redacted: true,
   skills: [],
 };
 export const SQUAD_GET = { id: "sq_SRC1", name: "Team", description: "the team", instructions: "# Team charter\nShip it.", leader_id: "ag_SRC1" };
@@ -40,3 +50,5 @@ export const RUNTIME_LIST_DEST_AMBIGUOUS = [
   { id: "rt_TGT1", name: "Target Runtime A", provider: "claude" },
   { id: "rt_TGT2", name: "Target Runtime B", provider: "claude" },
 ];
+// Raw `agent env get` response — the audited, owner/admin-only command.
+export const AGENT_ENV_GET = { agent_id: "ag_SRC1", custom_env: { API_KEY: "secret-value" } };

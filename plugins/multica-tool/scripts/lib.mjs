@@ -8,17 +8,17 @@ export function slugify(name) {
   return s || "unnamed";
 }
 
-export function realExec(args) {
-  return spawnSync("multica", args, { encoding: "utf8" });
+export function realExec(args, opts = {}) {
+  return spawnSync("multica", args, { encoding: "utf8", ...opts });
 }
 
 export function makeCli(exec, { workspaceId } = {}) {
-  function run(args) {
+  function run(args, opts) {
     let full = args;
     if (workspaceId) {
       full = [...args, "--workspace-id", workspaceId];
     }
-    const res = exec(full);
+    const res = exec(full, opts);
     if (res.status !== 0) throw new Error(res.stderr?.trim() || `multica exited ${res.status}`);
     return res.stdout;
   }
@@ -78,8 +78,16 @@ export function getAgent(cli, id) {
     runtimeId: a.runtime_id,
     hasCustomEnv: a.has_custom_env,
     mcpConfig: a.mcp_config,
+    mcpConfigRedacted: !!a.mcp_config_redacted,
     skills: (a.skills ?? []).map((sk) => ({ id: sk.id, name: sk.name })),
   };
+}
+
+// Custom env is never included in `agent get` — only `has_custom_env`/`custom_env_key_count`.
+// Reading actual values requires this dedicated, audited, owner/admin-only command.
+export function getAgentCustomEnv(cli, id) {
+  const r = cli.json(["agent", "env", "get", id]);
+  return r.custom_env ?? {};
 }
 
 export function getSquad(cli, id) {

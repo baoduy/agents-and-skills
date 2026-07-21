@@ -58,4 +58,4 @@ Parse the JSON output from the script and report:
 
 - Directory written to.
 - Count of skills, agents, and squads exported.
-- If `warnings` is non-empty, surface every agent name verbatim with this message: "WARNING: the following agents had custom environment variables or MCP config that were NOT exported — re-add secrets manually after import: `<agent-name>`."
+- If `warnings` is non-empty, surface every agent name verbatim with this message: "WARNING: the following agents' exported files contain custom environment variables or MCP config in PLAINTEXT — treat the export directory as sensitive (avoid committing it to a public repo, restrict file permissions, delete it once the import is done): `<agent-name>`."
