@@ -58,6 +58,7 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
 export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = nodeFs }) {
   const idMap = new Map();
   const sourceIdMap = new Map(); // source agent id -> new agent id, for mention rewriting
+  const secretsApplyFailures = [];
   let created = 0, updated = 0;
   const existing = listAgents(cli);
 
@@ -88,8 +89,33 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     if (rec.sourceId) sourceIdMap.set(rec.sourceId, id);
     const skillIds = (rec.skillNames ?? []).map((n) => skillIdMap.get(n)).filter(Boolean);
     cli.run(["agent", "skills", "set", id, "--skill-ids", skillIds.join(",")]);
+
+    // mcp_config/custom_env carry real secrets. Each is applied via its OWN
+    // follow-up call, never bundled into the create/update call above — that
+    // keeps a rejected secret from failing the whole agent create/update, and
+    // sidesteps the fact that only one stdin payload can be read per process
+    // anyway. `agent update --mcp-config-stdin` works on a freshly-created id
+    // too, so no create/update branching is needed here.
+    const hasMcpConfig = rec.mcpConfig && Object.keys(rec.mcpConfig).length > 0;
+    if (hasMcpConfig) {
+      try {
+        cli.run(["agent", "update", id, "--mcp-config-stdin"], { input: JSON.stringify(rec.mcpConfig) });
+      } catch {
+        secretsApplyFailures.push(rec.name);
+      }
+    }
+    // custom_env has no flag on `agent update` at all — `agent env set` is the
+    // only way to set it on an existing agent, so it's always a follow-up call.
+    const hasCustomEnv = rec.customEnv && Object.keys(rec.customEnv).length > 0;
+    if (hasCustomEnv) {
+      try {
+        cli.run(["agent", "env", "set", id, "--custom-env-stdin"], { input: JSON.stringify(rec.customEnv) });
+      } catch {
+        secretsApplyFailures.push(rec.name);
+      }
+    }
   }
-  return { idMap, sourceIdMap, created, updated };
+  return { idMap, sourceIdMap, created, updated, secretsApplyFailures };
 }
 
 // Rewrites `mention://agent/<id>` links (e.g. `[@dev-backend](mention://agent/<id>)`)
@@ -210,6 +236,7 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
     agentIdMap: Object.fromEntries(agentRes.idMap),
     squadId: squadRes.newId,
     secretsReminder: (manifest.agents ?? []).filter((a) => a.hadSecrets).map((a) => a.name),
+    secretsApplyFailures: agentRes.secretsApplyFailures,
   };
 }
 
