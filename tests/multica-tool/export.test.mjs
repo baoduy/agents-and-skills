@@ -141,6 +141,15 @@ test("export agent writes mcp_config/customEnv to disk and warns when either is 
   assert.equal(record.sourceRuntimeProvider, "claude");
 });
 
+test("manifest.json never carries mcpConfig/customEnv, even when the agent record does (regression: secrets must stay out of the manifest/stdout projection)", () => {
+  const fs = memFs();
+  const { manifest } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o4", sourceWorkspaceId: "ws", fs });
+  assert.ok(!("mcpConfig" in manifest.agents[0]), "manifest agent entry must not carry mcp_config");
+  assert.ok(!("customEnv" in manifest.agents[0]), "manifest agent entry must not carry custom_env");
+  const manifestBlob = fs.files["/o4/manifest.json"];
+  assert.ok(!manifestBlob.includes("token"), "the secret value itself must never appear in manifest.json");
+});
+
 test("export skips the audited agent env get call when hasCustomEnv is false", () => {
   const fs = memFs();
   const calls = [];
