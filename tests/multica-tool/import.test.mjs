@@ -187,6 +187,15 @@ test("importAgents records a secretsApplyFailure and keeps the agent created whe
   assert.deepEqual(secretsApplyFailures, ["Helper"]);
 });
 
+test("importAgents threads description through to create (regression: was silently dropped)", () => {
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify({ ...JSON.parse(AGENT_FILE), description: "helps with stuff" }), readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const create = calls.find((a) => a[1] === "create");
+  assert.equal(create[create.indexOf("--description") + 1], "helps with stuff");
+});
+
 test("importAgents throws when runtime is unmapped", () => {
   const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] };
   const cli = { json: () => [], run: () => "{}" };
