@@ -1,5 +1,5 @@
 {
   "name": "multica-tool",
-  "version": "0.0.36",
+  "version": "0.0.37",
   "description": "Export, import, and sync Multica skills, agents, and squads between workspaces via the multica CLI."
 }
