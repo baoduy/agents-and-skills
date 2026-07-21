@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { slugify, makeCli, requireAuth, resolveWorkspaceId, listRuntimes, findByName, getSkill, getAgent, getSquad, getSquadMembers } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { SKILL_GET, AGENT_GET, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST } from "./fixtures.mjs";
+import { slugify, makeCli, requireAuth, resolveWorkspaceId, listRuntimes, findByName, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers } from "../../plugins/multica-tool/scripts/lib.mjs";
+import { SKILL_GET, AGENT_GET, AGENT_ENV_GET, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST } from "./fixtures.mjs";
 
 test("slugify makes filesystem-safe slugs", () => {
   assert.equal(slugify("My Cool Skill!"), "my-cool-skill");
@@ -16,6 +16,21 @@ test("cli.json appends --output json and threads workspace id, parses stdout", (
   const out = cli.json(["skill", "get", "sk_1"]);
   assert.deepEqual(out, { ok: true });
   assert.deepEqual(calls[0], ["skill", "get", "sk_1", "--workspace-id", "ws_9", "--output", "json"]);
+});
+
+test("cli.run forwards an opts bag (e.g. stdin input) through to exec", () => {
+  const calls = [];
+  const exec = (args, opts) => { calls.push({ args, opts }); return { stdout: "ok", stderr: "", status: 0 }; };
+  const cli = makeCli(exec, { workspaceId: "ws_9" });
+  cli.run(["agent", "update", "ag_1", "--mcp-config-stdin"], { input: '{"mcpServers":{}}' });
+  assert.deepEqual(calls[0].args, ["agent", "update", "ag_1", "--mcp-config-stdin", "--workspace-id", "ws_9"]);
+  assert.deepEqual(calls[0].opts, { input: '{"mcpServers":{}}' });
+});
+
+test("cli.run works with no opts arg (backward compatible)", () => {
+  const exec = (args, opts) => { assert.equal(opts, undefined); return { stdout: "ok", stderr: "", status: 0 }; };
+  const cli = makeCli(exec);
+  assert.equal(cli.run(["skill", "list"]), "ok");
 });
 
 test("cli.run throws stderr on non-zero exit", () => {
@@ -73,6 +88,21 @@ test("getAgent normalizes snake_case to camelCase and embeds skills", () => {
   assert.equal(a.hasCustomEnv, true);
   assert.deepEqual(a.mcpConfig, { mcpServers: { x: { token: "t" } } });
   assert.deepEqual(a.skills, [{ id: "sk_SRC1", name: "Greet" }]);
+});
+
+test("getAgent captures mcpConfigRedacted as a boolean", () => {
+  const cli = cliReturning({ "agent get ag_SRC1": AGENT_GET });
+  assert.equal(getAgent(cli, "ag_SRC1").mcpConfigRedacted, false, "AGENT_GET fixture is not redacted");
+});
+
+test("getAgentCustomEnv reads custom_env via the audited agent env get command", () => {
+  const cli = cliReturning({ "agent env get ag_SRC1": AGENT_ENV_GET });
+  assert.deepEqual(getAgentCustomEnv(cli, "ag_SRC1"), { API_KEY: "secret-value" });
+});
+
+test("getAgentCustomEnv defaults to {} when custom_env is absent", () => {
+  const cli = cliReturning({ "agent env get ag_SRC2": { agent_id: "ag_SRC2" } });
+  assert.deepEqual(getAgentCustomEnv(cli, "ag_SRC2"), {});
 });
 
 test("getSquad exposes leaderId; getSquadMembers normalizes member_id and empty role", () => {
