@@ -5,27 +5,27 @@ import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembe
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
 export function redactAgent(a) {
-  // a is a normalized (camelCase) agent from getAgent, with `customEnv`/
-  // `customEnvFetchFailed` attached by the caller (collectAgent) — getAgent
+  // a is a normalized agent from getAgent, with `custom_env`/
+  // `custom_env_fetch_failed` attached by the caller (collectAgent) — getAgent
   // itself never fetches custom_env, since it requires a separate audited call.
-  const { id, hasCustomEnv, mcpConfigRedacted, customEnvFetchFailed, mcpConfig, customEnv, skills, runtimeId, ...rest } = a;
-  const mcpUsable = !mcpConfigRedacted && nonEmpty(mcpConfig);
-  const envUsable = !customEnvFetchFailed && nonEmpty(customEnv);
-  // mcpConfigRedacted / customEnvFetchFailed alone still flag hadSecrets even
+  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, ...rest } = a;
+  const mcpUsable = !mcp_config_redacted && nonEmpty(mcp_config);
+  const envUsable = !custom_env_fetch_failed && nonEmpty(custom_env);
+  // mcp_config_redacted / custom_env_fetch_failed alone still flag hadSecrets even
   // when unusable — the user should know something was present at the source
   // but couldn't be captured, not just silently see an empty bundle.
-  const hadSecrets = mcpUsable || envUsable || !!mcpConfigRedacted || !!customEnvFetchFailed;
+  const hadSecrets = mcpUsable || envUsable || !!mcp_config_redacted || !!custom_env_fetch_failed;
   return {
-    // sourceId lets import-time mention rewriting map stale `mention://agent/<id>`
+    // source_id lets import-time mention rewriting map stale `mention://agent/<id>`
     // links (in this or another agent's/squad's instructions) to the new id.
     record: {
       ...rest,
-      sourceId: id,
-      sourceRuntimeId: runtimeId,
-      skillNames: [],
-      mcpConfig: mcpUsable ? mcpConfig : null,
-      customEnv: envUsable ? customEnv : null,
-      hadSecrets,
+      source_id: id,
+      source_runtime_id: runtime_id,
+      skill_names: [],
+      mcp_config: mcpUsable ? mcp_config : null,
+      custom_env: envUsable ? custom_env : null,
+      had_secrets: hadSecrets,
     },
     hadSecrets,
   };
@@ -39,10 +39,10 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad 
   return {
     version: "1",
     scope,
-    sourceWorkspaceId,
-    skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, sourceId: s.sourceId })),
-    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, sourceId: a.sourceId, sourceRuntimeId: a.sourceRuntimeId, sourceRuntimeProvider: a.sourceRuntimeProvider ?? null, skillNames: a.skillNames, hadSecrets: !!a.hadSecrets })),
-    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", leaderName: squad.leaderName, members: squad.members }] : [],
+    source_workspace_id: sourceWorkspaceId,
+    skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, source_id: s.source_id })),
+    agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, source_id: a.source_id, source_runtime_id: a.source_runtime_id, source_runtime_provider: a.source_runtime_provider ?? null, skill_names: a.skill_names, had_secrets: !!a.had_secrets })),
+    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", leader_name: squad.leader_name, members: squad.members }] : [],
   };
 }
 
@@ -52,31 +52,31 @@ function collectSkill(cli, id, skills) {
   return s.name;
 }
 
-// Keyed by agent id (so squad leaderId/memberId resolve to names). Stores the
+// Keyed by agent id (so squad leader_id/member_id resolve to names). Stores the
 // normalized agent, its redaction result, and its skill names.
 function collectAgent(cli, id, agentsById, skills, providerById) {
   if (agentsById.has(id)) return agentsById.get(id);
   const a = getAgent(cli, id);
-  a.sourceRuntimeProvider = providerById.get(a.runtimeId) ?? null;
-  a.customEnv = {};
-  a.customEnvFetchFailed = false;
-  if (a.hasCustomEnv) {
+  a.source_runtime_provider = providerById.get(a.runtime_id) ?? null;
+  a.custom_env = {};
+  a.custom_env_fetch_failed = false;
+  if (a.has_custom_env) {
     try {
-      a.customEnv = getAgentCustomEnv(cli, id);
+      a.custom_env = getAgentCustomEnv(cli, id);
     } catch {
-      a.customEnvFetchFailed = true; // e.g. insufficient permission — non-fatal, warned via hadSecrets
+      a.custom_env_fetch_failed = true; // e.g. insufficient permission — non-fatal, warned via hadSecrets
     }
   }
-  const skillNames = a.skills.map((sk) => collectSkill(cli, sk.id, skills));
+  const skill_names = a.skills.map((sk) => collectSkill(cli, sk.id, skills));
   const red = redactAgent(a);
-  const entry = { raw: a, red, skillNames };
+  const entry = { raw: a, red, skill_names };
   agentsById.set(id, entry);
   return entry;
 }
 
 export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs }) {
   const skills = new Map();       // name -> normalized skill
-  const agentsById = new Map();   // id   -> { raw, red, skillNames }
+  const agentsById = new Map();   // id   -> { raw, red, skill_names }
   let squad = null;
   // Lazy + memoized: only fetched when an agent is actually collected (skips
   // the extra CLI call on skill-only exports).
@@ -87,23 +87,23 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
   if (scope === "squad") {
     const sq = getSquad(cli, ids.squadId);
-    const members = getSquadMembers(cli, ids.squadId).filter((m) => m.memberType === "agent");
-    for (const m of members) collectAgent(cli, m.memberId, agentsById, skills, getProviderById());
-    if (!agentsById.has(sq.leaderId)) collectAgent(cli, sq.leaderId, agentsById, skills, getProviderById());
+    const members = getSquadMembers(cli, ids.squadId).filter((m) => m.member_type === "agent");
+    for (const m of members) collectAgent(cli, m.member_id, agentsById, skills, getProviderById());
+    if (!agentsById.has(sq.leader_id)) collectAgent(cli, sq.leader_id, agentsById, skills, getProviderById());
     const nameOf = (id) => agentsById.get(id)?.raw.name;
     squad = {
       name: sq.name,
       description: sq.description,
       instructions: sq.instructions,
-      leaderName: nameOf(sq.leaderId),
-      members: members.map((m) => ({ agentName: nameOf(m.memberId), role: m.role })),
+      leader_name: nameOf(sq.leader_id),
+      members: members.map((m) => ({ agent_name: nameOf(m.member_id), role: m.role })),
     };
   }
 
   const manifest = buildManifest({
     scope, sourceWorkspaceId,
-    skills: [...skills.values()].map((s) => ({ name: s.name, sourceId: s.id })),
-    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, sourceId: a.raw.id, sourceRuntimeId: a.raw.runtimeId, sourceRuntimeProvider: a.raw.sourceRuntimeProvider, skillNames: a.skillNames, hadSecrets: a.red.hadSecrets })),
+    skills: [...skills.values()].map((s) => ({ name: s.name, source_id: s.id })),
+    agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, source_id: a.raw.id, source_runtime_id: a.raw.runtime_id, source_runtime_provider: a.raw.source_runtime_provider, skill_names: a.skill_names, had_secrets: a.red.hadSecrets })),
     squad,
   });
 
@@ -125,8 +125,8 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   // Index agent entries by name for the manifest writing loop.
   const agentByName = new Map([...agentsById.values()].map((a) => [a.raw.name, a]));
   for (const entry of manifest.agents) {
-    const { raw, red, skillNames } = agentByName.get(entry.name);
-    const record = { ...red.record, skillNames };
+    const { raw, red, skill_names } = agentByName.get(entry.name);
+    const record = { ...red.record, skill_names };
     if (red.hadSecrets) warnings.push(raw.name);
     fs.mkdirSync(`${outDir}/agents`, { recursive: true });
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));

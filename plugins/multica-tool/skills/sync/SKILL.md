@@ -33,7 +33,7 @@ If it aborts with `Unmapped runtimes: ...` (0 or 2+ runtimes share that provider
 multica runtime list --workspace-id <dest-ws-id> --output json   # list destination workspace runtimes
 ```
 
-Ask the user to select a matching target runtime by name or ID for each unmapped `sourceRuntimeId`, then re-run with an explicit map (explicit entries always take precedence over auto-mapping):
+Ask the user to select a matching target runtime by name or ID for each unmapped `source_runtime_id`, then re-run with an explicit map (explicit entries always take precedence over auto-mapping):
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-sync.mjs" \

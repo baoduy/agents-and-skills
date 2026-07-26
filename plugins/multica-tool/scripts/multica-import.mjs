@@ -64,19 +64,19 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
 
   for (const a of manifest.agents) {
     const rec = JSON.parse(fs.readFileSync(`${dir}/${a.file}`, "utf8"));
-    const targetRuntime = runtimeMap.get(rec.sourceRuntimeId);
-    if (!targetRuntime) throw new Error(`Unmapped runtime "${rec.sourceRuntimeId}" for agent "${rec.name}"`);
+    const targetRuntime = runtimeMap.get(rec.source_runtime_id);
+    if (!targetRuntime) throw new Error(`Unmapped runtime "${rec.source_runtime_id}" for agent "${rec.name}"`);
     // Only pass optional flags when present — `--model ""` would CLEAR the model.
     const common = [
       "--visibility", rec.visibility ?? "private",
-      "--max-concurrent-tasks", String(rec.maxConcurrentTasks ?? 6),
+      "--max-concurrent-tasks", String(rec.max_concurrent_tasks ?? 6),
     ];
     if (rec.description) common.push("--description", rec.description);
     if (rec.instructions) common.push("--instructions", rec.instructions);
     if (rec.model) common.push("--model", rec.model);
-    if (rec.thinkingLevel) common.push("--thinking-level", rec.thinkingLevel);
-    if (rec.runtimeConfig && Object.keys(rec.runtimeConfig).length) common.push("--runtime-config", JSON.stringify(rec.runtimeConfig));
-    if (Array.isArray(rec.customArgs) && rec.customArgs.length) common.push("--custom-args", JSON.stringify(rec.customArgs));
+    if (rec.thinking_level) common.push("--thinking-level", rec.thinking_level);
+    if (rec.runtime_config && Object.keys(rec.runtime_config).length) common.push("--runtime-config", JSON.stringify(rec.runtime_config));
+    if (Array.isArray(rec.custom_args) && rec.custom_args.length) common.push("--custom-args", JSON.stringify(rec.custom_args));
     const match = findByName(existing, rec.name);
     let id;
     if (match) {
@@ -87,8 +87,8 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       id = JSON.parse(out).id; created++;
     }
     idMap.set(rec.name, id);
-    if (rec.sourceId) sourceIdMap.set(rec.sourceId, id);
-    const skillIds = (rec.skillNames ?? []).map((n) => skillIdMap.get(n)).filter(Boolean);
+    if (rec.source_id) sourceIdMap.set(rec.source_id, id);
+    const skillIds = (rec.skill_names ?? []).map((n) => skillIdMap.get(n)).filter(Boolean);
     cli.run(["agent", "skills", "set", id, "--skill-ids", skillIds.join(",")]);
 
     // mcp_config/custom_env carry real secrets. Each is applied via its OWN
@@ -97,20 +97,20 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     // sidesteps the fact that only one stdin payload can be read per process
     // anyway. `agent update --mcp-config-stdin` works on a freshly-created id
     // too, so no create/update branching is needed here.
-    const hasMcpConfig = rec.mcpConfig && Object.keys(rec.mcpConfig).length > 0;
+    const hasMcpConfig = rec.mcp_config && Object.keys(rec.mcp_config).length > 0;
     if (hasMcpConfig) {
       try {
-        cli.run(["agent", "update", id, "--mcp-config-stdin"], { input: JSON.stringify(rec.mcpConfig) });
+        cli.run(["agent", "update", id, "--mcp-config-stdin"], { input: JSON.stringify(rec.mcp_config) });
       } catch {
         secretsApplyFailures.push(rec.name);
       }
     }
     // custom_env has no flag on `agent update` at all — `agent env set` is the
     // only way to set it on an existing agent, so it's always a follow-up call.
-    const hasCustomEnv = rec.customEnv && Object.keys(rec.customEnv).length > 0;
+    const hasCustomEnv = rec.custom_env && Object.keys(rec.custom_env).length > 0;
     if (hasCustomEnv) {
       try {
-        cli.run(["agent", "env", "set", id, "--custom-env-stdin"], { input: JSON.stringify(rec.customEnv) });
+        cli.run(["agent", "env", "set", id, "--custom-env-stdin"], { input: JSON.stringify(rec.custom_env) });
       } catch {
         secretsApplyFailures.push(rec.name);
       }
@@ -151,7 +151,7 @@ export function rewriteAgentMentions({ cli, manifest, dir, agentIdMap, sourceIdM
 
 export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
   const existing = listSquads(cli);
-  const leaderId = agentIdMap.get(squad.leaderName);
+  const leaderId = agentIdMap.get(squad.leader_name);
   const match = findByName(existing, squad.name);
   let id, created = 0, updated = 0;
   // Squad instructions commonly list @mentions of teammate agents by their
@@ -166,10 +166,10 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
     id = JSON.parse(out).id; created++;
   }
   // Add non-leader members, skipping any already present so re-runs are idempotent.
-  const present = new Set(getSquadMembers(cli, id).map((m) => m.memberId));
+  const present = new Set(getSquadMembers(cli, id).map((m) => m.member_id));
   for (const m of squad.members) {
-    if (m.agentName === squad.leaderName) continue;
-    const memberId = agentIdMap.get(m.agentName);
+    if (m.agent_name === squad.leader_name) continue;
+    const memberId = agentIdMap.get(m.agent_name);
     if (present.has(memberId)) continue;
     cli.run(["squad", "member", "add", id, "--member-id", memberId, "--role", m.role, "--type", "agent"]);
   }
@@ -177,15 +177,15 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
 }
 
 export function collectSourceRuntimes(manifest) {
-  return [...new Set((manifest.agents ?? []).map((a) => a.sourceRuntimeId).filter(Boolean))];
+  return [...new Set((manifest.agents ?? []).map((a) => a.source_runtime_id).filter(Boolean))];
 }
 
-// sourceRuntimeId -> provider (e.g. "claude", "opencode"), from whichever agent recorded it.
+// source_runtime_id -> provider (e.g. "claude", "opencode"), from whichever agent recorded it.
 function collectRuntimeProviders(manifest) {
   const map = new Map();
   for (const a of manifest.agents ?? []) {
-    if (a.sourceRuntimeId && a.sourceRuntimeProvider && !map.has(a.sourceRuntimeId)) {
-      map.set(a.sourceRuntimeId, a.sourceRuntimeProvider);
+    if (a.source_runtime_id && a.source_runtime_provider && !map.has(a.source_runtime_id)) {
+      map.set(a.source_runtime_id, a.source_runtime_provider);
     }
   }
   return map;
@@ -236,7 +236,7 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
     squadId: squadRes.newId,
-    secretsReminder: (manifest.agents ?? []).filter((a) => a.hadSecrets).map((a) => a.name),
+    secretsReminder: (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name),
     secretsApplyFailures: agentRes.secretsApplyFailures,
   };
 }

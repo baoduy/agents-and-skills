@@ -55,8 +55,9 @@ export const listSkills = (cli) => cli.json(["skill", "list"]);
 export const listAgents = (cli) => cli.json(["agent", "list"]);
 export const listSquads = (cli) => cli.json(["squad", "list"]);
 
-// Get-wrappers: the ONLY place that knows the raw CLI field names. They
-// return a stable camelCase shape so downstream code never sees snake_case.
+// Get-wrappers: the ONLY place that knows the raw CLI field names — an
+// explicit allow-list, so unexpected/internal CLI fields never leak into a
+// bundle. Field names mirror the CLI's own snake_case; nothing is renamed.
 export function getSkill(cli, id) {
   const s = cli.json(["skill", "get", id]);
   return {
@@ -71,14 +72,14 @@ export function getAgent(cli, id) {
   return {
     id: a.id, name: a.name, description: a.description, instructions: a.instructions,
     model: a.model, visibility: a.visibility,
-    maxConcurrentTasks: a.max_concurrent_tasks,
-    runtimeConfig: a.runtime_config,
-    customArgs: a.custom_args,
-    thinkingLevel: a.thinking_level,
-    runtimeId: a.runtime_id,
-    hasCustomEnv: a.has_custom_env,
-    mcpConfig: a.mcp_config,
-    mcpConfigRedacted: !!a.mcp_config_redacted,
+    max_concurrent_tasks: a.max_concurrent_tasks,
+    runtime_config: a.runtime_config,
+    custom_args: a.custom_args,
+    thinking_level: a.thinking_level,
+    runtime_id: a.runtime_id,
+    has_custom_env: a.has_custom_env,
+    mcp_config: a.mcp_config,
+    mcp_config_redacted: !!a.mcp_config_redacted,
     skills: (a.skills ?? []).map((sk) => ({ id: sk.id, name: sk.name })),
   };
 }
@@ -92,10 +93,10 @@ export function getAgentCustomEnv(cli, id) {
 
 export function getSquad(cli, id) {
   const s = cli.json(["squad", "get", id]);
-  return { id: s.id, name: s.name, description: s.description, instructions: s.instructions, leaderId: s.leader_id };
+  return { id: s.id, name: s.name, description: s.description, instructions: s.instructions, leader_id: s.leader_id };
 }
 
 export const getSquadMembers = (cli, id) =>
   (cli.json(["squad", "member", "list", id]) ?? []).map((m) => ({
-    memberId: m.member_id, memberType: m.member_type, role: m.role || "member",
+    member_id: m.member_id, member_type: m.member_type, role: m.role || "member",
   }));

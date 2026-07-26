@@ -39,51 +39,51 @@ function strictFs() {
   };
 }
 
-test("redactAgent embeds mcpConfig and customEnv when both are usable", () => {
+test("redactAgent embeds mcp_config and custom_env when both are usable", () => {
   const normalized = getAgent({ json: () => AGENT_GET }, "ag_SRC1");
-  normalized.customEnv = { API_KEY: "secret-value" };
-  normalized.customEnvFetchFailed = false;
+  normalized.custom_env = { API_KEY: "secret-value" };
+  normalized.custom_env_fetch_failed = false;
   const { record, hadSecrets } = redactAgent(normalized);
   assert.equal(hadSecrets, true);
-  assert.deepEqual(record.mcpConfig, { mcpServers: { x: { token: "t" } } }, "mcp_config is now written, not stripped");
-  assert.deepEqual(record.customEnv, { API_KEY: "secret-value" });
-  assert.ok(!("hasCustomEnv" in record));
-  assert.ok(!("mcpConfigRedacted" in record), "export-time signal, not agent config to restore");
-  assert.ok(!("customEnvFetchFailed" in record), "export-time signal, not agent config to restore");
+  assert.deepEqual(record.mcp_config, { mcpServers: { x: { token: "t" } } }, "mcp_config is now written, not stripped");
+  assert.deepEqual(record.custom_env, { API_KEY: "secret-value" });
+  assert.ok(!("has_custom_env" in record));
+  assert.ok(!("mcp_config_redacted" in record), "export-time signal, not agent config to restore");
+  assert.ok(!("custom_env_fetch_failed" in record), "export-time signal, not agent config to restore");
   assert.ok(!("skills" in record));
   assert.ok(!("id" in record));
-  assert.equal(record.sourceId, "ag_SRC1", "original agent id kept under sourceId, for mention rewriting on import");
-  assert.equal(record.sourceRuntimeId, "rt_SRC1");
-  assert.equal(record.maxConcurrentTasks, 6, "normalized field survives");
-  assert.equal(record.hadSecrets, true);
+  assert.equal(record.source_id, "ag_SRC1", "original agent id kept under source_id, for mention rewriting on import");
+  assert.equal(record.source_runtime_id, "rt_SRC1");
+  assert.equal(record.max_concurrent_tasks, 6, "normalized field survives");
+  assert.equal(record.had_secrets, true);
   assert.equal(record.name, "Helper");
 });
 
-test("redactAgent leaves mcpConfig/customEnv null and hadSecrets false when neither is present", () => {
+test("redactAgent leaves mcp_config/custom_env null and hadSecrets false when neither is present", () => {
   const normalized = getAgent({ json: () => AGENT_GET_2 }, "ag_SRC2");
-  normalized.customEnv = {};
-  normalized.customEnvFetchFailed = false;
+  normalized.custom_env = {};
+  normalized.custom_env_fetch_failed = false;
   const { record, hadSecrets } = redactAgent(normalized);
   assert.equal(hadSecrets, false);
-  assert.equal(record.mcpConfig, null);
-  assert.equal(record.customEnv, null);
+  assert.equal(record.mcp_config, null);
+  assert.equal(record.custom_env, null);
 });
 
 test("redactAgent never surfaces a redacted mcp_config, and still flags hadSecrets", () => {
   const normalized = getAgent({ json: () => AGENT_GET_REDACTED }, "ag_SRC3");
-  normalized.customEnv = {};
-  normalized.customEnvFetchFailed = false;
+  normalized.custom_env = {};
+  normalized.custom_env_fetch_failed = false;
   const { record, hadSecrets } = redactAgent(normalized);
-  assert.equal(record.mcpConfig, null, "redacted value must never be written to disk");
+  assert.equal(record.mcp_config, null, "redacted value must never be written to disk");
   assert.equal(hadSecrets, true, "still flagged so the user knows something was skipped");
 });
 
-test("redactAgent flags hadSecrets when the audited env fetch failed, writes no stale customEnv", () => {
+test("redactAgent flags hadSecrets when the audited env fetch failed, writes no stale custom_env", () => {
   const normalized = getAgent({ json: () => AGENT_GET_2 }, "ag_SRC2");
-  normalized.customEnv = {};
-  normalized.customEnvFetchFailed = true;
+  normalized.custom_env = {};
+  normalized.custom_env_fetch_failed = true;
   const { record, hadSecrets } = redactAgent(normalized);
-  assert.equal(record.customEnv, null);
+  assert.equal(record.custom_env, null);
   assert.equal(hadSecrets, true);
 });
 
@@ -91,18 +91,18 @@ test("buildManifest dedups skills/agents by name and wires by name", () => {
   const m = buildManifest({
     scope: "squad",
     sourceWorkspaceId: "ws_SRC",
-    skills: [{ name: "Greet", sourceId: "sk_SRC1" }, { name: "Greet", sourceId: "sk_SRC1" }],
-    agents: [{ name: "Helper", sourceId: "ag_SRC1", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"], hadSecrets: true }],
-    squad: { name: "Team", description: "the team", leaderName: "Helper", members: [{ agentName: "Helper2", role: "member" }] },
+    skills: [{ name: "Greet", source_id: "sk_SRC1" }, { name: "Greet", source_id: "sk_SRC1" }],
+    agents: [{ name: "Helper", source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: ["Greet"], had_secrets: true }],
+    squad: { name: "Team", description: "the team", leader_name: "Helper", members: [{ agent_name: "Helper2", role: "member" }] },
   });
   assert.equal(m.version, "1");
   assert.equal(m.skills.length, 1, "skills deduped by name");
   assert.equal(m.skills[0].dir, "skills/greet");
   assert.equal(m.agents[0].file, "agents/helper.json");
-  assert.equal(m.agents[0].sourceId, "ag_SRC1", "source agent id carried in manifest for mention rewriting");
-  assert.deepEqual(m.agents[0].skillNames, ["Greet"]);
-  assert.equal(m.agents[0].hadSecrets, true);
-  assert.equal(m.squads[0].leaderName, "Helper");
+  assert.equal(m.agents[0].source_id, "ag_SRC1", "source agent id carried in manifest for mention rewriting");
+  assert.deepEqual(m.agents[0].skill_names, ["Greet"]);
+  assert.equal(m.agents[0].had_secrets, true);
+  assert.equal(m.squads[0].leader_name, "Helper");
   assert.equal(m.squads[0].description, "the team");
 });
 
@@ -130,22 +130,22 @@ test("export creates nested parent dirs for skill files (regression: scripts/ su
   assert.equal(fs.files["/out/skills/nested/scripts/run.sh"], "echo hi");
 });
 
-test("export agent writes mcp_config/customEnv to disk and warns when either is present", () => {
+test("export agent writes mcp_config/custom_env to disk and warns when either is present", () => {
   const fs = memFs();
   const { manifest, warnings } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o", sourceWorkspaceId: "ws", fs });
   const record = JSON.parse(fs.files["/o/agents/helper.json"]);
-  assert.deepEqual(record.mcpConfig, { mcpServers: { x: { token: "t" } } }, "mcp_config now round-trips");
-  assert.deepEqual(record.customEnv, { API_KEY: "secret-value" }, "custom_env now round-trips");
+  assert.deepEqual(record.mcp_config, { mcpServers: { x: { token: "t" } } }, "mcp_config now round-trips");
+  assert.deepEqual(record.custom_env, { API_KEY: "secret-value" }, "custom_env now round-trips");
   assert.deepEqual(warnings, ["Helper"]);          // has_custom_env true / mcp_config present → warned
-  assert.equal(manifest.agents[0].sourceRuntimeProvider, "claude", "runtime provider captured for later auto-mapping");
-  assert.equal(record.sourceRuntimeProvider, "claude");
+  assert.equal(manifest.agents[0].source_runtime_provider, "claude", "runtime provider captured for later auto-mapping");
+  assert.equal(record.source_runtime_provider, "claude");
 });
 
-test("manifest.json never carries mcpConfig/customEnv, even when the agent record does (regression: secrets must stay out of the manifest/stdout projection)", () => {
+test("manifest.json never carries mcp_config/custom_env, even when the agent record does (regression: secrets must stay out of the manifest/stdout projection)", () => {
   const fs = memFs();
   const { manifest } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o4", sourceWorkspaceId: "ws", fs });
-  assert.ok(!("mcpConfig" in manifest.agents[0]), "manifest agent entry must not carry mcp_config");
-  assert.ok(!("customEnv" in manifest.agents[0]), "manifest agent entry must not carry custom_env");
+  assert.ok(!("mcp_config" in manifest.agents[0]), "manifest agent entry must not carry mcp_config");
+  assert.ok(!("custom_env" in manifest.agents[0]), "manifest agent entry must not carry custom_env");
   const manifestBlob = fs.files["/o4/manifest.json"];
   assert.ok(!manifestBlob.includes("token"), "the secret value itself must never appear in manifest.json");
 });
@@ -168,20 +168,20 @@ test("export continues when the audited agent env get call fails (e.g. insuffici
   } };
   const { manifest, warnings } = exportResource({ cli: failing, scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o3", sourceWorkspaceId: "ws", fs });
   const record = JSON.parse(fs.files["/o3/agents/helper.json"]);
-  assert.equal(record.customEnv, null, "failed fetch never writes a partial/stale value");
-  assert.deepEqual(warnings, ["Helper"], "still warned even though the customEnv fetch itself failed");
-  assert.ok(manifest.agents[0].hadSecrets);
+  assert.equal(record.custom_env, null, "failed fetch never writes a partial/stale value");
+  assert.deepEqual(warnings, ["Helper"], "still warned even though the custom_env fetch itself failed");
+  assert.ok(manifest.agents[0].had_secrets);
 });
 
 test("export squad resolves leader and member names by id and writes squad file", () => {
   const fs = memFs();
   const { manifest, warnings } = exportResource({ cli: fakeCli(), scope: "squad", ids: { squadId: "sq_SRC1" }, outDir: "/s", sourceWorkspaceId: "ws", fs });
   const squad = JSON.parse(fs.files["/s/squads/team.json"]);
-  assert.equal(squad.leaderName, "Helper", "leaderId ag_SRC1 resolved to name");
+  assert.equal(squad.leader_name, "Helper", "leader_id ag_SRC1 resolved to name");
   assert.equal(squad.instructions, "# Team charter\nShip it.", "squad instructions captured in export");
-  assert.deepEqual(squad.members.map((m) => m.agentName).sort(), ["Helper", "Helper2"]);
+  assert.deepEqual(squad.members.map((m) => m.agent_name).sort(), ["Helper", "Helper2"]);
   assert.equal(manifest.agents.length, 2, "both member agents captured");
   assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");
   const helper = manifest.agents.find((a) => a.name === "Helper");
-  assert.equal(helper.sourceId, "ag_SRC1", "source agent id recorded in manifest for mention rewriting on import");
+  assert.equal(helper.source_id, "ag_SRC1", "source agent id recorded in manifest for mention rewriting on import");
 });
