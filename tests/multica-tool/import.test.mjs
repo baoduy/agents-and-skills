@@ -400,3 +400,39 @@ test("resolveRuntimeMap leaves it unresolved (without calling the CLI) when no p
   const { unresolved } = resolveRuntimeMap({ cli, manifest, runtimeMap: new Map() });
   assert.deepEqual(unresolved, [{ srcId: "rt_SRC1", provider: undefined, matchCount: 0 }]);
 });
+
+import { importBundle } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+
+test("importBundle imports every squad and returns a squadIdMap", () => {
+  const files = {
+    "b/manifest.json": JSON.stringify({
+      version: "1", scope: "all", source_workspace_id: "ws_SRC",
+      skills: [],
+      agents: [{ name: "Helper", file: "agents/helper.json", source_runtime_id: "rt_SRC1", source_runtime_provider: "claude", skill_names: [] }],
+      squads: [
+        { name: "A", file: "squads/a.json", leader_name: "Helper", instructions: "", members: [{ agent_name: "Helper", role: "leader" }] },
+        { name: "B", file: "squads/b.json", leader_name: "Helper", instructions: "", members: [{ agent_name: "Helper", role: "leader" }] },
+      ],
+    }),
+    "b/agents/helper.json": JSON.stringify({ name: "Helper", instructions: "be nice", model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6, source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: [] }),
+  };
+  const fs = { existsSync: (p) => p in files, readFileSync: (p) => files[p], readdirSync: () => [] };
+  let sqN = 0;
+  const cli = {
+    json: (a) => {
+      if (a[0] === "runtime" && a[1] === "list") return [{ id: "rt_TGT1", provider: "claude" }];
+      if (a[0] === "squad" && a[1] === "member" && a[2] === "list") return [];
+      if (a[1] === "list") return [];
+      return {};
+    },
+    run: (a) => {
+      if (a[0] === "squad" && a[1] === "create") return `{"id":"sq_NEW${++sqN}"}`;
+      if (a.includes("create")) return '{"id":"ag_NEW1"}';
+      return "{}";
+    },
+  };
+  const res = importBundle({ cli, dir: "b", runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  assert.equal(res.created.squads, 2, "both squads created");
+  assert.deepEqual(Object.keys(res.squadIdMap).sort(), ["A", "B"]);
+  assert.ok(!("squadId" in res), "single squadId replaced by squadIdMap");
+});

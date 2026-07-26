@@ -253,16 +253,22 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
   const agentRes = importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs });
   // Runs after every agent exists so forward-referencing mentions resolve.
   const mentionRes = rewriteAgentMentions({ cli, manifest, dir, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap, fs });
-  let squadRes = { newId: null, created: 0, updated: 0 };
-  if (manifest.squads?.length) squadRes = importSquad({ cli, squad: manifest.squads[0], agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
+  const squadIdMap = new Map();
+  let squadsCreated = 0, squadsUpdated = 0;
+  for (const squad of manifest.squads ?? []) {
+    const r = importSquad({ cli, squad, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
+    squadIdMap.set(squad.name, r.newId);
+    squadsCreated += r.created;
+    squadsUpdated += r.updated;
+  }
 
   return {
-    created: { skills: skillRes.created, agents: agentRes.created, squads: squadRes.created },
-    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadRes.updated },
+    created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated },
+    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated },
     mentionsRewritten: mentionRes.updated,
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
-    squadId: squadRes.newId,
+    squadIdMap: Object.fromEntries(squadIdMap),
     secretsReminder: (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name),
     secretsApplyFailures: agentRes.secretsApplyFailures,
     avatarApplyFailures: agentRes.avatarApplyFailures,
