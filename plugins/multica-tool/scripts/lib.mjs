@@ -71,7 +71,7 @@ export function getAgent(cli, id) {
   const a = cli.json(["agent", "get", id]);
   return {
     id: a.id, name: a.name, description: a.description, instructions: a.instructions,
-    model: a.model, visibility: a.visibility,
+    model: a.model, visibility: a.visibility, avatar_url: a.avatar_url ?? null,
     max_concurrent_tasks: a.max_concurrent_tasks,
     runtime_config: a.runtime_config,
     custom_args: a.custom_args,
@@ -93,7 +93,7 @@ export function getAgentCustomEnv(cli, id) {
 
 export function getSquad(cli, id) {
   const s = cli.json(["squad", "get", id]);
-  return { id: s.id, name: s.name, description: s.description, instructions: s.instructions, leader_id: s.leader_id };
+  return { id: s.id, name: s.name, description: s.description, instructions: s.instructions, leader_id: s.leader_id, avatar_url: s.avatar_url ?? null };
 }
 
 export const getSquadMembers = (cli, id) =>

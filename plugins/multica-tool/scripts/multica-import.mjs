@@ -55,10 +55,15 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
   return { idMap, created, updated };
 }
 
+// True when a resource already carries an avatar (uploaded image or emoji).
+const hasAvatar = (r) => !!(r && typeof r.avatar_url === "string" && r.avatar_url);
+
 export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = nodeFs }) {
   const idMap = new Map();
   const sourceIdMap = new Map(); // source agent id -> new agent id, for mention rewriting
   const secretsApplyFailures = [];
+  const avatarApplyFailures = [];   // image upload rejected
+  const avatarUnsupported = [];     // emoji avatar — no CLI setter for agents
   let created = 0, updated = 0;
   const existing = listAgents(cli);
 
@@ -91,6 +96,21 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     const skillIds = (rec.skill_names ?? []).map((n) => skillIdMap.get(n)).filter(Boolean);
     cli.run(["agent", "skills", "set", id, "--skill-ids", skillIds.join(",")]);
 
+    // Avatar: only ever set it when the target agent has none — never clobber an
+    // avatar an existing agent already has. Agents accept only image uploads
+    // (`agent avatar --file`); an emoji-only avatar can't be restored via the CLI.
+    if (!hasAvatar(match)) {
+      if (rec.avatar_file) {
+        try {
+          cli.run(["agent", "avatar", id, "--file", `${dir}/${rec.avatar_file}`]);
+        } catch {
+          avatarApplyFailures.push(rec.name);
+        }
+      } else if (typeof rec.avatar_url === "string" && rec.avatar_url.startsWith("emoji:")) {
+        avatarUnsupported.push(rec.name);
+      }
+    }
+
     // mcp_config/custom_env carry real secrets. Each is applied via its OWN
     // follow-up call, never bundled into the create/update call above — that
     // keeps a rejected secret from failing the whole agent create/update, and
@@ -116,7 +136,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       }
     }
   }
-  return { idMap, sourceIdMap, created, updated, secretsApplyFailures };
+  return { idMap, sourceIdMap, created, updated, secretsApplyFailures, avatarApplyFailures, avatarUnsupported };
 }
 
 // Rewrites `mention://agent/<id>` links (e.g. `[@dev-backend](mention://agent/<id>)`)
@@ -165,6 +185,13 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
     const out = cli.run(["squad", "create", "--name", squad.name, "--leader", leaderId, "--description", squad.description ?? "", ...instr]);
     id = JSON.parse(out).id; created++;
   }
+  // Avatar: squads accept only an avatar-url string (emoji or URL) via
+  // `squad update`. Set it only when the target squad has none — never clobber
+  // an existing squad's avatar.
+  if (!hasAvatar(match) && squad.avatar_url) {
+    cli.run(["squad", "update", id, "--avatar-url", squad.avatar_url]);
+  }
+
   // Add non-leader members, skipping any already present so re-runs are idempotent.
   const present = new Set(getSquadMembers(cli, id).map((m) => m.member_id));
   for (const m of squad.members) {
@@ -238,6 +265,8 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
     squadId: squadRes.newId,
     secretsReminder: (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name),
     secretsApplyFailures: agentRes.secretsApplyFailures,
+    avatarApplyFailures: agentRes.avatarApplyFailures,
+    avatarUnsupported: agentRes.avatarUnsupported,
   };
 }
 

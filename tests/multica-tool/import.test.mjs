@@ -196,6 +196,43 @@ test("importAgents threads description through to create (regression: was silent
   assert.equal(create[create.indexOf("--description") + 1], "helps with stuff");
 });
 
+test("importAgents (create): uploads an image avatar from the bundle via agent avatar --file", () => {
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify({ ...JSON.parse(AGENT_FILE), avatar_file: "agents/helper.avatar.png" }), readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  const { avatarApplyFailures, avatarUnsupported } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const up = calls.find((a) => a[0] === "agent" && a[1] === "avatar");
+  assert.deepEqual(up, ["agent", "avatar", "ag_NEW1", "--file", "./agents/helper.avatar.png"]);
+  assert.deepEqual(avatarApplyFailures, []);
+  assert.deepEqual(avatarUnsupported, []);
+});
+
+test("importAgents (update): never clobbers the avatar when the existing agent already has one", () => {
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify({ ...JSON.parse(AGENT_FILE), avatar_file: "agents/helper.avatar.png" }), readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [{ id: "ag_TGT9", name: "Helper", avatar_url: "emoji:🦊" }] : {}), run: (a) => { calls.push(a); return "{}"; } };
+  importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  assert.ok(!calls.some((a) => a[0] === "agent" && a[1] === "avatar"), "existing agent already has an avatar → left untouched");
+});
+
+test("importAgents (update): sets the avatar when the existing agent has none", () => {
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify({ ...JSON.parse(AGENT_FILE), avatar_file: "agents/helper.avatar.png" }), readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [{ id: "ag_TGT9", name: "Helper" }] : {}), run: (a) => { calls.push(a); return "{}"; } };
+  importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const up = calls.find((a) => a[0] === "agent" && a[1] === "avatar");
+  assert.equal(up?.[2], "ag_TGT9", "avatar applied to the existing agent that had none");
+});
+
+test("importAgents flags an emoji-only avatar as unsupported (no CLI setter for agents)", () => {
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify({ ...JSON.parse(AGENT_FILE), avatar_url: "emoji:🤖" }), readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  const { avatarUnsupported } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  assert.deepEqual(avatarUnsupported, ["Helper"]);
+  assert.ok(!calls.some((a) => a[0] === "agent" && a[1] === "avatar"), "no file to upload for an emoji-only avatar");
+});
+
 test("importAgents throws when runtime is unmapped", () => {
   const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] };
   const cli = { json: () => [], run: () => "{}" };
@@ -297,6 +334,31 @@ test("importSquad skips members already present (regression: idempotent re-run)"
   importSquad({ cli, squad: SQUAD_ENTRY, agentIdMap });
   const adds = calls.filter((a) => a[1] === "member" && a[2] === "add");
   assert.equal(adds.length, 0, "Helper2 already a member → not re-added");
+});
+
+test("importSquad sets the avatar-url on a newly created squad", () => {
+  const calls = [];
+  const cli = { calls, json: (a) => (a.includes("list") ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"sq_NEW1"}' : "{}"; } };
+  const agentIdMap = new Map([["Helper", "ag_NEW1"], ["Helper2", "ag_NEW2"]]);
+  importSquad({ cli, squad: { ...SQUAD_ENTRY, avatar_url: "emoji:🦍" }, agentIdMap });
+  const av = calls.find((a) => a[0] === "squad" && a[1] === "update" && a.includes("--avatar-url"));
+  assert.deepEqual(av, ["squad", "update", "sq_NEW1", "--avatar-url", "emoji:🦍"]);
+});
+
+test("importSquad never clobbers the avatar when the existing squad already has one", () => {
+  const calls = [];
+  const cli = {
+    calls,
+    json: (a) => {
+      if (a[1] === "member" && a[2] === "list") return [];
+      if (a.includes("list")) return [{ id: "sq_OLD", name: "Team", avatar_url: "emoji:🐸" }];
+      return {};
+    },
+    run: (a) => { calls.push(a); return "{}"; },
+  };
+  const agentIdMap = new Map([["Helper", "ag_NEW1"], ["Helper2", "ag_NEW2"]]);
+  importSquad({ cli, squad: { ...SQUAD_ENTRY, avatar_url: "emoji:🦍" }, agentIdMap });
+  assert.ok(!calls.some((a) => a.includes("--avatar-url")), "existing squad already has an avatar → left untouched");
 });
 
 import { collectSourceRuntimes } from "../../plugins/multica-tool/scripts/multica-import.mjs";

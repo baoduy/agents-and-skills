@@ -1,8 +1,31 @@
 import * as nodeFs from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
+
+// An avatar_url is either an uploaded-image URL (http[s]://…) or an inline
+// "emoji:🦍" marker. Only image URLs carry bytes worth bundling; emoji markers
+// are just carried as strings in the record.
+const isImageAvatar = (url) => typeof url === "string" && /^https?:\/\//.test(url);
+
+// Extension for the bundled avatar file, from the URL path; defaults to .png.
+function avatarExt(url) {
+  const m = /\.([a-z0-9]{2,5})(?:[?#]|$)/i.exec(url.split("/").pop() || "");
+  return m ? `.${m[1].toLowerCase()}` : ".png";
+}
+
+// Synchronous binary fetch (keeps exportResource sync). Runs the download in a
+// short-lived node subprocess so no top-level async is needed; returns a Buffer,
+// or null on any failure (non-2xx, network error) — a missing avatar is
+// non-fatal, the export continues with just the recorded avatar_url string.
+export function fetchBinary(url) {
+  const script = "fetch(process.argv[1]).then(r=>{if(!r.ok)process.exit(3);return r.arrayBuffer()}).then(b=>process.stdout.write(Buffer.from(b))).catch(()=>process.exit(4))";
+  const res = spawnSync(process.execPath, ["-e", script, url], { maxBuffer: 64 * 1024 * 1024 });
+  if (res.status !== 0 || !res.stdout?.length) return null;
+  return res.stdout;
+}
 
 export function redactAgent(a) {
   // a is a normalized agent from getAgent, with `custom_env`/
@@ -42,7 +65,7 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad 
     source_workspace_id: sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, source_id: s.source_id })),
     agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, source_id: a.source_id, source_runtime_id: a.source_runtime_id, source_runtime_provider: a.source_runtime_provider ?? null, skill_names: a.skill_names, had_secrets: !!a.had_secrets })),
-    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", leader_name: squad.leader_name, members: squad.members }] : [],
+    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members }] : [],
   };
 }
 
@@ -74,7 +97,7 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
   return entry;
 }
 
-export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs }) {
+export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs, download = fetchBinary }) {
   const skills = new Map();       // name -> normalized skill
   const agentsById = new Map();   // id   -> { raw, red, skill_names }
   let squad = null;
@@ -95,6 +118,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
       name: sq.name,
       description: sq.description,
       instructions: sq.instructions,
+      avatar_url: sq.avatar_url,
       leader_name: nameOf(sq.leader_id),
       members: members.map((m) => ({ agent_name: nameOf(m.member_id), role: m.role })),
     };
@@ -129,6 +153,18 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     const record = { ...red.record, skill_names };
     if (red.hadSecrets) warnings.push(raw.name);
     fs.mkdirSync(`${outDir}/agents`, { recursive: true });
+    // Download an uploaded-image avatar into the bundle so import can re-upload
+    // it (the only way to set an agent avatar). Emoji avatars stay as the
+    // recorded avatar_url string; a failed download leaves avatar_url without a
+    // file, and import simply won't restore it.
+    if (isImageAvatar(record.avatar_url)) {
+      const rel = entry.file.replace(/\.json$/, `.avatar${avatarExt(record.avatar_url)}`);
+      const bytes = download(record.avatar_url);
+      if (bytes && bytes.length) {
+        fs.writeFileSync(`${outDir}/${rel}`, bytes);
+        record.avatar_file = rel;
+      }
+    }
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
   for (const entry of manifest.squads) {

@@ -52,3 +52,7 @@ Parse the JSON output and report:
 - Squad ID if a squad was synced.
 - If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents' bundle files contained custom environment variables or MCP config in PLAINTEXT — the temporary export directory (already cleaned up) briefly held these secrets in plaintext: `<agent-name>`."
 - If `secretsApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: mcp_config or custom_env failed to apply to the following agents during sync (the agent itself was still created/updated) — set them manually in the Multica UI: `<agent-name>`."
+- If `avatarApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: the avatar image failed to upload for the following agents — set it manually in the destination workspace: `<agent-name>`."
+- If `avatarUnsupported` is non-empty, surface every agent name verbatim with: "NOTE: the following agents had an emoji avatar at the source, which the CLI cannot set on an agent — set it manually in the destination workspace: `<agent-name>`."
+
+Avatars sync automatically, but **only when the destination resource has none** — an existing agent or squad that already carries an avatar is never overwritten.

@@ -52,6 +52,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" \
 
 The script writes `manifest.json`, skill SKILL.md files, agent JSON files, and squad JSON files into `<dir>`.
 
+Avatars are captured automatically: an agent's uploaded-image avatar is downloaded into the bundle (`agents/<slug>.avatar.<ext>`) and referenced by `avatar_file`; emoji avatars (agents and squads) and a squad's avatar are recorded as the `avatar_url` string.
+
 ## Step 5 — Report results
 
 Parse the JSON output from the script and report:
