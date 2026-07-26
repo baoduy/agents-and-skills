@@ -11,6 +11,8 @@ export const AGENT_GET = {
   model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6,
   runtime_config: {}, custom_args: [], runtime_id: "rt_SRC1", thinking_level: "",
   has_custom_env: true, custom_env_key_count: 1, avatar_url: "emoji:🤖",
+  service_tier: "", permission_mode: "public_to",
+  invocation_targets: [{ target_id: "ws_SRC", target_type: "workspace" }],
   mcp_config: { mcpServers: { x: { token: "t" } } }, mcp_config_redacted: false,
   skills: [{ id: "sk_SRC1", name: "Greet", description: "says hi" }],
 };

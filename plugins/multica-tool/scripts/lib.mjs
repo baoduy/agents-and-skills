@@ -72,6 +72,9 @@ export function getAgent(cli, id) {
   return {
     id: a.id, name: a.name, description: a.description, instructions: a.instructions,
     model: a.model, visibility: a.visibility, avatar_url: a.avatar_url ?? null,
+    service_tier: a.service_tier ?? "",
+    permission_mode: a.permission_mode ?? null,
+    invocation_targets: (a.invocation_targets ?? []).map((t) => ({ target_id: t.target_id, target_type: t.target_type })),
     max_concurrent_tasks: a.max_concurrent_tasks,
     runtime_config: a.runtime_config,
     custom_args: a.custom_args,
