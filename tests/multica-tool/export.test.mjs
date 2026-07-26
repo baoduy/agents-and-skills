@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest, exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { AGENT_GET, SKILL_GET, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET } from "./fixtures.mjs";
+import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
@@ -93,7 +93,7 @@ test("buildManifest dedups skills/agents by name and wires by name", () => {
     sourceWorkspaceId: "ws_SRC",
     skills: [{ name: "Greet", source_id: "sk_SRC1" }, { name: "Greet", source_id: "sk_SRC1" }],
     agents: [{ name: "Helper", source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: ["Greet"], had_secrets: true }],
-    squad: { name: "Team", description: "the team", leader_name: "Helper", members: [{ agent_name: "Helper2", role: "member" }] },
+    squads: [{ name: "Team", description: "the team", leader_name: "Helper", members: [{ agent_name: "Helper2", role: "member" }] }],
   });
   assert.equal(m.version, "1");
   assert.equal(m.skills.length, 1, "skills deduped by name");
@@ -173,15 +173,76 @@ test("export continues when the audited agent env get call fails (e.g. insuffici
   assert.ok(manifest.agents[0].had_secrets);
 });
 
+test("export agent records an emoji avatar as a string and downloads no file", () => {
+  const fs = memFs();
+  let downloadCalls = 0;
+  exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/a", sourceWorkspaceId: "ws", fs, download: () => { downloadCalls++; return null; } });
+  const record = JSON.parse(fs.files["/a/agents/helper.json"]);
+  assert.equal(record.avatar_url, "emoji:🤖", "emoji avatar carried as a string");
+  assert.ok(!("avatar_file" in record), "emoji avatar has no bundled file");
+  assert.equal(downloadCalls, 0, "emoji avatars are never downloaded");
+});
+
+test("export agent downloads an image avatar into the bundle and records avatar_file", () => {
+  const fs = memFs();
+  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
+  const download = (url) => { assert.equal(url, "https://cdn.example.com/uploads/pixel.png"); return Buffer.from("PNGBYTES"); };
+  exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC4" }, outDir: "/img", sourceWorkspaceId: "ws", fs, download });
+  const record = JSON.parse(fs.files["/img/agents/pixel.json"]);
+  assert.equal(record.avatar_file, "agents/pixel.avatar.png", "avatar_file points at the bundled image");
+  assert.equal(String(fs.files["/img/agents/pixel.avatar.png"]), "PNGBYTES", "image bytes written to the bundle");
+});
+
+test("export agent tolerates a failed avatar download — keeps avatar_url, writes no file", () => {
+  const fs = memFs();
+  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
+  exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC4" }, outDir: "/imgfail", sourceWorkspaceId: "ws", fs, download: () => null });
+  const record = JSON.parse(fs.files["/imgfail/agents/pixel.json"]);
+  assert.equal(record.avatar_url, "https://cdn.example.com/uploads/pixel.png", "avatar_url still recorded");
+  assert.ok(!("avatar_file" in record), "no avatar_file when the download failed");
+});
+
 test("export squad resolves leader and member names by id and writes squad file", () => {
   const fs = memFs();
   const { manifest, warnings } = exportResource({ cli: fakeCli(), scope: "squad", ids: { squadId: "sq_SRC1" }, outDir: "/s", sourceWorkspaceId: "ws", fs });
   const squad = JSON.parse(fs.files["/s/squads/team.json"]);
   assert.equal(squad.leader_name, "Helper", "leader_id ag_SRC1 resolved to name");
+  assert.equal(squad.avatar_url, "emoji:🦍", "squad avatar_url captured in export");
   assert.equal(squad.instructions, "# Team charter\nShip it.", "squad instructions captured in export");
   assert.deepEqual(squad.members.map((m) => m.agent_name).sort(), ["Helper", "Helper2"]);
   assert.equal(manifest.agents.length, 2, "both member agents captured");
   assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");
   const helper = manifest.agents.find((a) => a.name === "Helper");
   assert.equal(helper.source_id, "ag_SRC1", "source agent id recorded in manifest for mention rewriting on import");
+});
+
+test("export all collects every resource and writes a shared agent exactly once", () => {
+  const fs = memFs();
+  const cli = {
+    json: (args) => {
+      const two = args.slice(0, 2).join(" ");
+      const three = args.slice(0, 3).join(" ");
+      if (two === "skill list") return [{ id: "sk_SRC1", name: "Greet" }];
+      if (two === "agent list") return [{ id: "ag_SRC1" }, { id: "ag_SRC2" }];
+      if (two === "squad list") return [{ id: "sq_A", name: "A" }, { id: "sq_B", name: "B" }];
+      if (three === "skill get sk_SRC1") return SKILL_GET;
+      if (three === "agent get ag_SRC1") return AGENT_GET;
+      if (three === "agent get ag_SRC2") return AGENT_GET_2;
+      if (three === "runtime list") return RUNTIME_LIST_SRC;
+      if (three === "squad get sq_A") return { id: "sq_A", name: "A", description: "", instructions: "", leader_id: "ag_SRC1", avatar_url: "emoji:🅰️" };
+      if (three === "squad get sq_B") return { id: "sq_B", name: "B", description: "", instructions: "", leader_id: "ag_SRC2", avatar_url: "emoji:🅱️" };
+      if (three === "squad member list") {
+        if (args[3] === "sq_A") return [{ member_id: "ag_SRC1", member_type: "agent", role: "leader" }, { member_id: "ag_SRC2", member_type: "agent", role: "member" }];
+        if (args[3] === "sq_B") return [{ member_id: "ag_SRC2", member_type: "agent", role: "leader" }];
+      }
+      throw new Error("unexpected " + args.join(" "));
+    },
+    run: () => "",
+  };
+  const { manifest } = exportResource({ cli, scope: "all", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  assert.equal(manifest.skills.length, 1, "one skill");
+  assert.equal(manifest.agents.length, 2, "ag_SRC1 + ag_SRC2 each once (ag_SRC2 shared by both squads)");
+  assert.equal(manifest.squads.length, 2, "both squads present");
+  assert.ok(fs.files["/all/agents/helper2.json"], "shared agent written once");
+  assert.ok(fs.files["/all/squads/a.json"] && fs.files["/all/squads/b.json"], "both squad files written");
 });

@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, listRuntimes, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 // Relative paths of every file under root (recursing into subdirs like scripts/).
 function walkSkillFiles(fs, root, rel = "") {
@@ -55,10 +55,20 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
   return { idMap, created, updated };
 }
 
+// True when a resource already carries an avatar (uploaded image or emoji).
+const hasAvatar = (r) => !!(r && typeof r.avatar_url === "string" && r.avatar_url);
+
 export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = nodeFs }) {
   const idMap = new Map();
   const sourceIdMap = new Map(); // source agent id -> new agent id, for mention rewriting
   const secretsApplyFailures = [];
+  const avatarApplyFailures = [];   // image upload rejected
+  const avatarUnsupported = [];     // emoji avatar — no CLI setter for agents
+  const permissionApplyFailures = [];  // CLI rejected --public-to-member
+  const permissionUnsupported = [];    // no member target resolved in the destination
+  // Lazy + memoized: destination member user_ids, only listed when an agent needs them.
+  let destMemberIds = null;
+  const getDestMemberIds = () => destMemberIds ??= new Set(listWorkspaceMembers(cli).map((m) => m.user_id));
   let created = 0, updated = 0;
   const existing = listAgents(cli);
 
@@ -77,6 +87,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     if (rec.thinking_level) common.push("--thinking-level", rec.thinking_level);
     if (rec.runtime_config && Object.keys(rec.runtime_config).length) common.push("--runtime-config", JSON.stringify(rec.runtime_config));
     if (Array.isArray(rec.custom_args) && rec.custom_args.length) common.push("--custom-args", JSON.stringify(rec.custom_args));
+    if (rec.service_tier) common.push("--service-tier", rec.service_tier);
     const match = findByName(existing, rec.name);
     let id;
     if (match) {
@@ -90,6 +101,39 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     if (rec.source_id) sourceIdMap.set(rec.source_id, id);
     const skillIds = (rec.skill_names ?? []).map((n) => skillIdMap.get(n)).filter(Boolean);
     cli.run(["agent", "skills", "set", id, "--skill-ids", skillIds.join(",")]);
+
+    // Avatar: only ever set it when the target agent has none — never clobber an
+    // avatar an existing agent already has. Agents accept only image uploads
+    // (`agent avatar --file`); an emoji-only avatar can't be restored via the CLI.
+    if (!hasAvatar(match)) {
+      if (rec.avatar_file) {
+        try {
+          cli.run(["agent", "avatar", id, "--file", `${dir}/${rec.avatar_file}`]);
+        } catch {
+          avatarApplyFailures.push(rec.name);
+        }
+      } else if (typeof rec.avatar_url === "string" && rec.avatar_url.startsWith("emoji:")) {
+        avatarUnsupported.push(rec.name);
+      }
+    }
+
+    // Restore member-specific public_to sharing that --visibility can't express.
+    // (private and workspace-wide public_to already round-trip via --visibility.)
+    if (rec.permission_mode === "public_to") {
+      const memberTargets = (rec.invocation_targets ?? []).filter((t) => t.target_type === "user");
+      if (memberTargets.length) {
+        const resolvable = memberTargets.map((t) => t.target_id).filter((tid) => getDestMemberIds().has(tid));
+        if (!resolvable.length) {
+          permissionUnsupported.push(rec.name);
+        } else {
+          try {
+            cli.run(["agent", "update", id, "--permission-mode", "public_to", ...resolvable.flatMap((tid) => ["--public-to-member", tid])]);
+          } catch {
+            permissionApplyFailures.push(rec.name);
+          }
+        }
+      }
+    }
 
     // mcp_config/custom_env carry real secrets. Each is applied via its OWN
     // follow-up call, never bundled into the create/update call above — that
@@ -116,7 +160,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       }
     }
   }
-  return { idMap, sourceIdMap, created, updated, secretsApplyFailures };
+  return { idMap, sourceIdMap, created, updated, secretsApplyFailures, avatarApplyFailures, avatarUnsupported, permissionApplyFailures, permissionUnsupported };
 }
 
 // Rewrites `mention://agent/<id>` links (e.g. `[@dev-backend](mention://agent/<id>)`)
@@ -165,6 +209,13 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
     const out = cli.run(["squad", "create", "--name", squad.name, "--leader", leaderId, "--description", squad.description ?? "", ...instr]);
     id = JSON.parse(out).id; created++;
   }
+  // Avatar: squads accept only an avatar-url string (emoji or URL) via
+  // `squad update`. Set it only when the target squad has none — never clobber
+  // an existing squad's avatar.
+  if (!hasAvatar(match) && squad.avatar_url) {
+    cli.run(["squad", "update", id, "--avatar-url", squad.avatar_url]);
+  }
+
   // Add non-leader members, skipping any already present so re-runs are idempotent.
   const present = new Set(getSquadMembers(cli, id).map((m) => m.member_id));
   for (const m of squad.members) {
@@ -226,18 +277,28 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
   const agentRes = importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs });
   // Runs after every agent exists so forward-referencing mentions resolve.
   const mentionRes = rewriteAgentMentions({ cli, manifest, dir, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap, fs });
-  let squadRes = { newId: null, created: 0, updated: 0 };
-  if (manifest.squads?.length) squadRes = importSquad({ cli, squad: manifest.squads[0], agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
+  const squadIdMap = new Map();
+  let squadsCreated = 0, squadsUpdated = 0;
+  for (const squad of manifest.squads ?? []) {
+    const r = importSquad({ cli, squad, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
+    squadIdMap.set(squad.name, r.newId);
+    squadsCreated += r.created;
+    squadsUpdated += r.updated;
+  }
 
   return {
-    created: { skills: skillRes.created, agents: agentRes.created, squads: squadRes.created },
-    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadRes.updated },
+    created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated },
+    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated },
     mentionsRewritten: mentionRes.updated,
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
-    squadId: squadRes.newId,
+    squadIdMap: Object.fromEntries(squadIdMap),
     secretsReminder: (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name),
     secretsApplyFailures: agentRes.secretsApplyFailures,
+    avatarApplyFailures: agentRes.avatarApplyFailures,
+    avatarUnsupported: agentRes.avatarUnsupported,
+    permissionApplyFailures: agentRes.permissionApplyFailures,
+    permissionUnsupported: agentRes.permissionUnsupported,
   };
 }
 

@@ -44,13 +44,17 @@ where `<slug>` is a lowercased, hyphenated form of the resource name.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" \
-  --scope <type> \
+  --scope <type|all> \
   --id <id> \
   --out <dir> \
   [--workspace <workspace-name>]
 ```
 
+Pass `--scope all` (with no `--id`) to export the **entire workspace** — every skill, agent, and squad — into one flat, deduped bundle. A skill or agent shared across many agents/squads is written exactly once and referenced by name.
+
 The script writes `manifest.json`, skill SKILL.md files, agent JSON files, and squad JSON files into `<dir>`.
+
+Avatars are captured automatically: an agent's uploaded-image avatar is downloaded into the bundle (`agents/<slug>.avatar.<ext>`) and referenced by `avatar_file`; emoji avatars (agents and squads) and a squad's avatar are recorded as the `avatar_url` string.
 
 ## Step 5 — Report results
 

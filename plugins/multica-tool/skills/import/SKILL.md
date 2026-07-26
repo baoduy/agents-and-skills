@@ -40,13 +40,19 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
 
 The import also rewrites any `mention://agent/<id>` link inside squad and agent instructions (e.g. `[@dev-backend](mention://agent/<id>)`) from the source agent's id to its new id in the target workspace — the CLI does this automatically for every agent captured in the bundle; no extra flag needed. Mentions pointing to an agent outside the bundle are left untouched.
 
+Avatars are restored automatically, but **only when the target resource has none** — an existing agent or squad that already carries an avatar is never overwritten. New agents get their bundled image re-uploaded; new squads get their `avatar_url` (emoji or URL) set. An agent whose source avatar was an emoji can't be restored (the CLI has no emoji setter for agents) and is reported as unsupported.
+
 ## Step 3 — Report results
 
 Parse the JSON output and report:
 
 - Created and updated counts for skills, agents, and squads.
 - Name-to-ID maps for skills and agents (`skillIdMap`, `agentIdMap`).
-- Squad ID if a squad was imported.
+- `squadIdMap`: name-to-ID map for every squad imported.
 - `mentionsRewritten`: how many agents had an agent-mention link rewritten to its new id.
 - If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents' bundle files contained custom environment variables or MCP config in PLAINTEXT — the source export directory should be treated as sensitive: `<agent-name>`."
 - If `secretsApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: mcp_config or custom_env failed to apply to the following agents during import (the agent itself was still created/updated) — set them manually in the Multica UI: `<agent-name>`."
+- If `avatarApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: the avatar image failed to upload for the following agents — set it manually in the Multica UI: `<agent-name>`."
+- If `avatarUnsupported` is non-empty, surface every agent name verbatim with: "NOTE: the following agents had an emoji avatar at the source, which the CLI cannot set on an agent — set it manually in the Multica UI: `<agent-name>`."
+- If `permissionApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: member-specific sharing failed to apply for the following agents — set their invocation permissions manually in the Multica UI: `<agent-name>`."
+- If `permissionUnsupported` is non-empty, surface every agent name verbatim with: "NOTE: the following agents were shared with specific members at the source, but none of those users exist in the target workspace — re-share manually if needed: `<agent-name>`."

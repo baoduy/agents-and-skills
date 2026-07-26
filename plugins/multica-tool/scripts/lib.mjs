@@ -54,6 +54,7 @@ export const listRuntimes = (cli) => cli.json(["runtime", "list"]);
 export const listSkills = (cli) => cli.json(["skill", "list"]);
 export const listAgents = (cli) => cli.json(["agent", "list"]);
 export const listSquads = (cli) => cli.json(["squad", "list"]);
+export const listWorkspaceMembers = (cli) => cli.json(["workspace", "member", "list"]);
 
 // Get-wrappers: the ONLY place that knows the raw CLI field names — an
 // explicit allow-list, so unexpected/internal CLI fields never leak into a
@@ -71,7 +72,10 @@ export function getAgent(cli, id) {
   const a = cli.json(["agent", "get", id]);
   return {
     id: a.id, name: a.name, description: a.description, instructions: a.instructions,
-    model: a.model, visibility: a.visibility,
+    model: a.model, visibility: a.visibility, avatar_url: a.avatar_url ?? null,
+    service_tier: a.service_tier ?? "",
+    permission_mode: a.permission_mode ?? null,
+    invocation_targets: (a.invocation_targets ?? []).map((t) => ({ target_id: t.target_id, target_type: t.target_type })),
     max_concurrent_tasks: a.max_concurrent_tasks,
     runtime_config: a.runtime_config,
     custom_args: a.custom_args,
@@ -93,7 +97,7 @@ export function getAgentCustomEnv(cli, id) {
 
 export function getSquad(cli, id) {
   const s = cli.json(["squad", "get", id]);
-  return { id: s.id, name: s.name, description: s.description, instructions: s.instructions, leader_id: s.leader_id };
+  return { id: s.id, name: s.name, description: s.description, instructions: s.instructions, leader_id: s.leader_id, avatar_url: s.avatar_url ?? null };
 }
 
 export const getSquadMembers = (cli, id) =>

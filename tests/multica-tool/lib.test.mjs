@@ -95,6 +95,14 @@ test("getAgent captures mcp_config_redacted as a boolean", () => {
   assert.equal(getAgent(cli, "ag_SRC1").mcp_config_redacted, false, "AGENT_GET fixture is not redacted");
 });
 
+test("getAgent captures service_tier, permission_mode, and invocation_targets", () => {
+  const cli = cliReturning({ "agent get ag_SRC1": AGENT_GET });
+  const a = getAgent(cli, "ag_SRC1");
+  assert.equal(a.service_tier, "");
+  assert.equal(a.permission_mode, "public_to");
+  assert.deepEqual(a.invocation_targets, [{ target_id: "ws_SRC", target_type: "workspace" }]);
+});
+
 test("getAgentCustomEnv reads custom_env via the audited agent env get command", () => {
   const cli = cliReturning({ "agent env get ag_SRC1": AGENT_ENV_GET });
   assert.deepEqual(getAgentCustomEnv(cli, "ag_SRC1"), { API_KEY: "secret-value" });
