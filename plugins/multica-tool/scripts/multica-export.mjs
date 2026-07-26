@@ -1,7 +1,7 @@
 import * as nodeFs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listSquads, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
@@ -54,7 +54,7 @@ export function redactAgent(a) {
   };
 }
 
-export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad }) {
+export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads }) {
   const seenSkills = new Map();
   for (const s of skills) if (!seenSkills.has(s.name)) seenSkills.set(s.name, s);
   const seenAgents = new Map();
@@ -65,7 +65,7 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squad 
     source_workspace_id: sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, source_id: s.source_id })),
     agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, source_id: a.source_id, source_runtime_id: a.source_runtime_id, source_runtime_provider: a.source_runtime_provider ?? null, skill_names: a.skill_names, had_secrets: !!a.had_secrets })),
-    squads: squad ? [{ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members }] : [],
+    squads: (squads ?? []).map((squad) => ({ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members })),
   };
 }
 
@@ -100,35 +100,40 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
 export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs, download = fetchBinary }) {
   const skills = new Map();       // name -> normalized skill
   const agentsById = new Map();   // id   -> { raw, red, skill_names }
-  let squad = null;
+  const squads = [];
   // Lazy + memoized: only fetched when an agent is actually collected (skips
   // the extra CLI call on skill-only exports).
   let providerById = null;
   const getProviderById = () => providerById ??= new Map(listRuntimes(cli).map((r) => [r.id, r.provider]));
 
-  if (scope === "skill") collectSkill(cli, ids.skillId, skills);
-  if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
-  if (scope === "squad") {
-    const sq = getSquad(cli, ids.squadId);
-    const members = getSquadMembers(cli, ids.squadId).filter((m) => m.member_type === "agent");
+  // Collect a squad's agents (leader + members) and return the squad bundle object.
+  function collectOneSquad(squadId) {
+    const sq = getSquad(cli, squadId);
+    const members = getSquadMembers(cli, squadId).filter((m) => m.member_type === "agent");
     for (const m of members) collectAgent(cli, m.member_id, agentsById, skills, getProviderById());
     if (!agentsById.has(sq.leader_id)) collectAgent(cli, sq.leader_id, agentsById, skills, getProviderById());
     const nameOf = (id) => agentsById.get(id)?.raw.name;
-    squad = {
-      name: sq.name,
-      description: sq.description,
-      instructions: sq.instructions,
-      avatar_url: sq.avatar_url,
+    return {
+      name: sq.name, description: sq.description, instructions: sq.instructions, avatar_url: sq.avatar_url,
       leader_name: nameOf(sq.leader_id),
       members: members.map((m) => ({ agent_name: nameOf(m.member_id), role: m.role })),
     };
+  }
+
+  if (scope === "skill") collectSkill(cli, ids.skillId, skills);
+  else if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
+  else if (scope === "squad") squads.push(collectOneSquad(ids.squadId));
+  else if (scope === "all") {
+    for (const s of listSkills(cli)) collectSkill(cli, s.id, skills);
+    for (const a of listAgents(cli)) collectAgent(cli, a.id, agentsById, skills, getProviderById());
+    for (const sq of listSquads(cli)) squads.push(collectOneSquad(sq.id));
   }
 
   const manifest = buildManifest({
     scope, sourceWorkspaceId,
     skills: [...skills.values()].map((s) => ({ name: s.name, source_id: s.id })),
     agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, source_id: a.raw.id, source_runtime_id: a.raw.runtime_id, source_runtime_provider: a.raw.source_runtime_provider, skill_names: a.skill_names, had_secrets: a.red.hadSecrets })),
-    squad,
+    squads,
   });
 
   const warnings = [];
@@ -184,8 +189,8 @@ function main() {
   const out       = get("--out");
   const workspace = get("--workspace"); // optional: source workspace name
 
-  if (!scope || !id || !out) {
-    console.error("Usage: multica-export.mjs --scope <skill|agent|squad> --id <id> --out <dir> [--workspace <name>]");
+  if (!scope || !out || (scope !== "all" && !id)) {
+    console.error("Usage: multica-export.mjs --scope <skill|agent|squad|all> --id <id> --out <dir> [--workspace <name>]  (--id not needed for --scope all)");
     process.exit(1);
   }
 
@@ -200,7 +205,8 @@ function main() {
   if (scope === "skill")       ids.skillId  = id;
   else if (scope === "agent")  ids.agentId  = id;
   else if (scope === "squad")  ids.squadId  = id;
-  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad`); process.exit(1); }
+  else if (scope === "all")    { /* whole workspace — no id */ }
+  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad|all`); process.exit(1); }
 
   const result = exportResource({ cli, scope, ids, outDir: out, sourceWorkspaceId, fs: nodeFs });
   console.log(JSON.stringify(result, null, 2));

@@ -93,7 +93,7 @@ test("buildManifest dedups skills/agents by name and wires by name", () => {
     sourceWorkspaceId: "ws_SRC",
     skills: [{ name: "Greet", source_id: "sk_SRC1" }, { name: "Greet", source_id: "sk_SRC1" }],
     agents: [{ name: "Helper", source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: ["Greet"], had_secrets: true }],
-    squad: { name: "Team", description: "the team", leader_name: "Helper", members: [{ agent_name: "Helper2", role: "member" }] },
+    squads: [{ name: "Team", description: "the team", leader_name: "Helper", members: [{ agent_name: "Helper2", role: "member" }] }],
   });
   assert.equal(m.version, "1");
   assert.equal(m.skills.length, 1, "skills deduped by name");
@@ -214,4 +214,35 @@ test("export squad resolves leader and member names by id and writes squad file"
   assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");
   const helper = manifest.agents.find((a) => a.name === "Helper");
   assert.equal(helper.source_id, "ag_SRC1", "source agent id recorded in manifest for mention rewriting on import");
+});
+
+test("export all collects every resource and writes a shared agent exactly once", () => {
+  const fs = memFs();
+  const cli = {
+    json: (args) => {
+      const two = args.slice(0, 2).join(" ");
+      const three = args.slice(0, 3).join(" ");
+      if (two === "skill list") return [{ id: "sk_SRC1", name: "Greet" }];
+      if (two === "agent list") return [{ id: "ag_SRC1" }, { id: "ag_SRC2" }];
+      if (two === "squad list") return [{ id: "sq_A", name: "A" }, { id: "sq_B", name: "B" }];
+      if (three === "skill get sk_SRC1") return SKILL_GET;
+      if (three === "agent get ag_SRC1") return AGENT_GET;
+      if (three === "agent get ag_SRC2") return AGENT_GET_2;
+      if (three === "runtime list") return RUNTIME_LIST_SRC;
+      if (three === "squad get sq_A") return { id: "sq_A", name: "A", description: "", instructions: "", leader_id: "ag_SRC1", avatar_url: "emoji:🅰️" };
+      if (three === "squad get sq_B") return { id: "sq_B", name: "B", description: "", instructions: "", leader_id: "ag_SRC2", avatar_url: "emoji:🅱️" };
+      if (three === "squad member list") {
+        if (args[3] === "sq_A") return [{ member_id: "ag_SRC1", member_type: "agent", role: "leader" }, { member_id: "ag_SRC2", member_type: "agent", role: "member" }];
+        if (args[3] === "sq_B") return [{ member_id: "ag_SRC2", member_type: "agent", role: "leader" }];
+      }
+      throw new Error("unexpected " + args.join(" "));
+    },
+    run: () => "",
+  };
+  const { manifest } = exportResource({ cli, scope: "all", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  assert.equal(manifest.skills.length, 1, "one skill");
+  assert.equal(manifest.agents.length, 2, "ag_SRC1 + ag_SRC2 each once (ag_SRC2 shared by both squads)");
+  assert.equal(manifest.squads.length, 2, "both squads present");
+  assert.ok(fs.files["/all/agents/helper2.json"], "shared agent written once");
+  assert.ok(fs.files["/all/squads/a.json"] && fs.files["/all/squads/b.json"], "both squad files written");
 });
