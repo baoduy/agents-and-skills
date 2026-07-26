@@ -233,6 +233,66 @@ test("importAgents flags an emoji-only avatar as unsupported (no CLI setter for 
   assert.ok(!calls.some((a) => a[0] === "agent" && a[1] === "avatar"), "no file to upload for an emoji-only avatar");
 });
 
+test("importAgents passes --service-tier when set, omits it when empty", () => {
+  const mk = (svc) => {
+    const fs = { existsSync: () => true, readFileSync: () => JSON.stringify({ ...JSON.parse(AGENT_FILE), service_tier: svc }), readdirSync: () => [] };
+    const calls = [];
+    const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+    importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+    return calls.find((a) => a[1] === "create");
+  };
+  const withTier = mk("flex");
+  assert.equal(withTier[withTier.indexOf("--service-tier") + 1], "flex");
+  assert.ok(!mk("").includes("--service-tier"), "empty service_tier omitted");
+});
+
+test("importAgents restores member-specific public_to only for members that exist in the destination", () => {
+  const rec = { ...JSON.parse(AGENT_FILE), permission_mode: "public_to", invocation_targets: [{ target_id: "u1", target_type: "user" }, { target_id: "u_missing", target_type: "user" }] };
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify(rec), readdirSync: () => [] };
+  const calls = [];
+  const cli = {
+    calls,
+    json: (a) => {
+      if (a[0] === "workspace" && a[1] === "member" && a[2] === "list") return [{ user_id: "u1" }, { user_id: "u2" }];
+      if (a[1] === "list") return [];
+      return {};
+    },
+    run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; },
+  };
+  const { permissionUnsupported } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const pub = calls.find((a) => a.includes("--public-to-member"));
+  assert.deepEqual(pub, ["agent", "update", "ag_NEW1", "--public-to-member", "u1"], "only the resolvable member id applied");
+  assert.deepEqual(permissionUnsupported, [], "at least one member resolved, so not unsupported");
+});
+
+test("importAgents reports permissionUnsupported and makes no call when no member target resolves", () => {
+  const rec = { ...JSON.parse(AGENT_FILE), permission_mode: "public_to", invocation_targets: [{ target_id: "u_gone", target_type: "user" }] };
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify(rec), readdirSync: () => [] };
+  const calls = [];
+  const cli = {
+    calls,
+    json: (a) => {
+      if (a[0] === "workspace" && a[1] === "member" && a[2] === "list") return [{ user_id: "u1" }];
+      if (a[1] === "list") return [];
+      return {};
+    },
+    run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; },
+  };
+  const { permissionUnsupported } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  assert.deepEqual(permissionUnsupported, ["Helper"]);
+  assert.ok(!calls.some((a) => a.includes("--public-to-member")), "no call when nothing resolves");
+});
+
+test("importAgents makes no public-to-member call for a workspace-wide public_to agent", () => {
+  const rec = { ...JSON.parse(AGENT_FILE), permission_mode: "public_to", invocation_targets: [{ target_id: "ws", target_type: "workspace" }] };
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify(rec), readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  assert.ok(!calls.some((a) => a.includes("--public-to-member")), "workspace target handled by --visibility, no follow-up");
+  assert.ok(!calls.some((a) => a[0] === "workspace" && a[1] === "member"), "member list never fetched when no user targets");
+});
+
 test("importAgents throws when runtime is unmapped", () => {
   const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] };
   const cli = { json: () => [], run: () => "{}" };

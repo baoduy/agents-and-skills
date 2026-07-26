@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, listRuntimes, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 // Relative paths of every file under root (recursing into subdirs like scripts/).
 function walkSkillFiles(fs, root, rel = "") {
@@ -64,6 +64,11 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
   const secretsApplyFailures = [];
   const avatarApplyFailures = [];   // image upload rejected
   const avatarUnsupported = [];     // emoji avatar — no CLI setter for agents
+  const permissionApplyFailures = [];  // CLI rejected --public-to-member
+  const permissionUnsupported = [];    // no member target resolved in the destination
+  // Lazy + memoized: destination member user_ids, only listed when an agent needs them.
+  let destMemberIds = null;
+  const getDestMemberIds = () => destMemberIds ??= new Set(listWorkspaceMembers(cli).map((m) => m.user_id));
   let created = 0, updated = 0;
   const existing = listAgents(cli);
 
@@ -82,6 +87,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     if (rec.thinking_level) common.push("--thinking-level", rec.thinking_level);
     if (rec.runtime_config && Object.keys(rec.runtime_config).length) common.push("--runtime-config", JSON.stringify(rec.runtime_config));
     if (Array.isArray(rec.custom_args) && rec.custom_args.length) common.push("--custom-args", JSON.stringify(rec.custom_args));
+    if (rec.service_tier) common.push("--service-tier", rec.service_tier);
     const match = findByName(existing, rec.name);
     let id;
     if (match) {
@@ -111,6 +117,24 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       }
     }
 
+    // Restore member-specific public_to sharing that --visibility can't express.
+    // (private and workspace-wide public_to already round-trip via --visibility.)
+    if (rec.permission_mode === "public_to") {
+      const memberTargets = (rec.invocation_targets ?? []).filter((t) => t.target_type === "user");
+      if (memberTargets.length) {
+        const resolvable = memberTargets.map((t) => t.target_id).filter((tid) => getDestMemberIds().has(tid));
+        if (!resolvable.length) {
+          permissionUnsupported.push(rec.name);
+        } else {
+          try {
+            cli.run(["agent", "update", id, ...resolvable.flatMap((tid) => ["--public-to-member", tid])]);
+          } catch {
+            permissionApplyFailures.push(rec.name);
+          }
+        }
+      }
+    }
+
     // mcp_config/custom_env carry real secrets. Each is applied via its OWN
     // follow-up call, never bundled into the create/update call above — that
     // keeps a rejected secret from failing the whole agent create/update, and
@@ -136,7 +160,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       }
     }
   }
-  return { idMap, sourceIdMap, created, updated, secretsApplyFailures, avatarApplyFailures, avatarUnsupported };
+  return { idMap, sourceIdMap, created, updated, secretsApplyFailures, avatarApplyFailures, avatarUnsupported, permissionApplyFailures, permissionUnsupported };
 }
 
 // Rewrites `mention://agent/<id>` links (e.g. `[@dev-backend](mention://agent/<id>)`)
@@ -273,6 +297,8 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
     secretsApplyFailures: agentRes.secretsApplyFailures,
     avatarApplyFailures: agentRes.avatarApplyFailures,
     avatarUnsupported: agentRes.avatarUnsupported,
+    permissionApplyFailures: agentRes.permissionApplyFailures,
+    permissionUnsupported: agentRes.permissionUnsupported,
   };
 }
 

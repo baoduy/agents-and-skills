@@ -54,6 +54,7 @@ export const listRuntimes = (cli) => cli.json(["runtime", "list"]);
 export const listSkills = (cli) => cli.json(["skill", "list"]);
 export const listAgents = (cli) => cli.json(["agent", "list"]);
 export const listSquads = (cli) => cli.json(["squad", "list"]);
+export const listWorkspaceMembers = (cli) => cli.json(["workspace", "member", "list"]);
 
 // Get-wrappers: the ONLY place that knows the raw CLI field names — an
 // explicit allow-list, so unexpected/internal CLI fields never leak into a
