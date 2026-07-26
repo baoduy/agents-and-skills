@@ -163,7 +163,7 @@ test("importAgents (update path): follow-up calls target the existing matched ag
 });
 
 test("importAgents skips both follow-up calls when the source has neither secret", () => {
-  const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] }; // no mcpConfig/customEnv keys
+  const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] }; // no mcp_config/custom_env keys
   const calls = [];
   const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a, opts) => { calls.push({ a, opts }); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
   const { secretsApplyFailures } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });

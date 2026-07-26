@@ -76,7 +76,7 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
 
 export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs }) {
   const skills = new Map();       // name -> normalized skill
-  const agentsById = new Map();   // id   -> { raw, red, skillNames }
+  const agentsById = new Map();   // id   -> { raw, red, skill_names }
   let squad = null;
   // Lazy + memoized: only fetched when an agent is actually collected (skips
   // the extra CLI call on skill-only exports).
