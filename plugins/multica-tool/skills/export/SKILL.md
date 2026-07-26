@@ -44,11 +44,13 @@ where `<slug>` is a lowercased, hyphenated form of the resource name.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" \
-  --scope <type> \
+  --scope <type|all> \
   --id <id> \
   --out <dir> \
   [--workspace <workspace-name>]
 ```
+
+Pass `--scope all` (with no `--id`) to export the **entire workspace** — every skill, agent, and squad — into one flat, deduped bundle. A skill or agent shared across many agents/squads is written exactly once and referenced by name.
 
 The script writes `manifest.json`, skill SKILL.md files, agent JSON files, and squad JSON files into `<dir>`.
 

@@ -48,9 +48,11 @@ Parse the JSON output and report:
 
 - Created and updated counts for skills, agents, and squads.
 - Name-to-ID maps for skills and agents (`skillIdMap`, `agentIdMap`).
-- Squad ID if a squad was imported.
+- `squadIdMap`: name-to-ID map for every squad imported.
 - `mentionsRewritten`: how many agents had an agent-mention link rewritten to its new id.
 - If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents' bundle files contained custom environment variables or MCP config in PLAINTEXT — the source export directory should be treated as sensitive: `<agent-name>`."
 - If `secretsApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: mcp_config or custom_env failed to apply to the following agents during import (the agent itself was still created/updated) — set them manually in the Multica UI: `<agent-name>`."
 - If `avatarApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: the avatar image failed to upload for the following agents — set it manually in the Multica UI: `<agent-name>`."
 - If `avatarUnsupported` is non-empty, surface every agent name verbatim with: "NOTE: the following agents had an emoji avatar at the source, which the CLI cannot set on an agent — set it manually in the Multica UI: `<agent-name>`."
+- If `permissionApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: member-specific sharing failed to apply for the following agents — set their invocation permissions manually in the Multica UI: `<agent-name>`."
+- If `permissionUnsupported` is non-empty, surface every agent name verbatim with: "NOTE: the following agents were shared with specific members at the source, but none of those users exist in the target workspace — re-share manually if needed: `<agent-name>`."
