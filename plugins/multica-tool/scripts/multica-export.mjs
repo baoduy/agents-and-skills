@@ -22,7 +22,7 @@ function avatarExt(url) {
 // non-fatal, the export continues with just the recorded avatar_url string.
 export function fetchBinary(url) {
   const script = "fetch(process.argv[1]).then(r=>{if(!r.ok)process.exit(3);return r.arrayBuffer()}).then(b=>process.stdout.write(Buffer.from(b))).catch(()=>process.exit(4))";
-  const res = spawnSync(process.execPath, ["-e", script, url], { maxBuffer: 64 * 1024 * 1024 });
+  const res = spawnSync(process.execPath, ["-e", script, "--", url], { maxBuffer: 64 * 1024 * 1024, timeout: 15_000 });
   if (res.status !== 0 || !res.stdout?.length) return null;
   return res.stdout;
 }

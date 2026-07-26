@@ -127,7 +127,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
           permissionUnsupported.push(rec.name);
         } else {
           try {
-            cli.run(["agent", "update", id, ...resolvable.flatMap((tid) => ["--public-to-member", tid])]);
+            cli.run(["agent", "update", id, "--permission-mode", "public_to", ...resolvable.flatMap((tid) => ["--public-to-member", tid])]);
           } catch {
             permissionApplyFailures.push(rec.name);
           }

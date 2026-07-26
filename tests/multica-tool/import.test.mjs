@@ -261,7 +261,7 @@ test("importAgents restores member-specific public_to only for members that exis
   };
   const { permissionUnsupported } = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
   const pub = calls.find((a) => a.includes("--public-to-member"));
-  assert.deepEqual(pub, ["agent", "update", "ag_NEW1", "--public-to-member", "u1"], "only the resolvable member id applied");
+  assert.deepEqual(pub, ["agent", "update", "ag_NEW1", "--permission-mode", "public_to", "--public-to-member", "u1"], "only the resolvable member id applied, with explicit public_to mode");
   assert.deepEqual(permissionUnsupported, [], "at least one member resolved, so not unsupported");
 });
 
