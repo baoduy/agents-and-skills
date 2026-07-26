@@ -80,19 +80,19 @@ test("getSkill trims files to {path,content}", () => {
   assert.deepEqual(s.files, [{ path: "ref.md", content: "extra" }]);
 });
 
-test("getAgent normalizes snake_case to camelCase and embeds skills", () => {
+test("getAgent passes through an allow-list of snake_case CLI fields and embeds skills", () => {
   const cli = cliReturning({ "agent get ag_SRC1": AGENT_GET });
   const a = getAgent(cli, "ag_SRC1");
-  assert.equal(a.maxConcurrentTasks, 6);
-  assert.equal(a.runtimeId, "rt_SRC1");
-  assert.equal(a.hasCustomEnv, true);
-  assert.deepEqual(a.mcpConfig, { mcpServers: { x: { token: "t" } } });
+  assert.equal(a.max_concurrent_tasks, 6);
+  assert.equal(a.runtime_id, "rt_SRC1");
+  assert.equal(a.has_custom_env, true);
+  assert.deepEqual(a.mcp_config, { mcpServers: { x: { token: "t" } } });
   assert.deepEqual(a.skills, [{ id: "sk_SRC1", name: "Greet" }]);
 });
 
-test("getAgent captures mcpConfigRedacted as a boolean", () => {
+test("getAgent captures mcp_config_redacted as a boolean", () => {
   const cli = cliReturning({ "agent get ag_SRC1": AGENT_GET });
-  assert.equal(getAgent(cli, "ag_SRC1").mcpConfigRedacted, false, "AGENT_GET fixture is not redacted");
+  assert.equal(getAgent(cli, "ag_SRC1").mcp_config_redacted, false, "AGENT_GET fixture is not redacted");
 });
 
 test("getAgentCustomEnv reads custom_env via the audited agent env get command", () => {
@@ -105,10 +105,10 @@ test("getAgentCustomEnv defaults to {} when custom_env is absent", () => {
   assert.deepEqual(getAgentCustomEnv(cli, "ag_SRC2"), {});
 });
 
-test("getSquad exposes leaderId; getSquadMembers normalizes member_id and empty role", () => {
+test("getSquad exposes leader_id; getSquadMembers normalizes member_id and empty role", () => {
   const cli = cliReturning({ "squad get sq_SRC1": SQUAD_GET, "squad member list sq_SRC1": SQUAD_MEMBERS });
-  assert.equal(getSquad(cli, "sq_SRC1").leaderId, "ag_SRC1");
+  assert.equal(getSquad(cli, "sq_SRC1").leader_id, "ag_SRC1");
   const mem = getSquadMembers(cli, "sq_SRC1");
-  assert.deepEqual(mem[0], { memberId: "ag_SRC1", memberType: "agent", role: "leader" });
+  assert.deepEqual(mem[0], { member_id: "ag_SRC1", member_type: "agent", role: "leader" });
   assert.equal(mem[1].role, "member", "empty role normalized to member");
 });
