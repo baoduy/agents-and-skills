@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { importSkills } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 
 const MANIFEST = {
-  version: "1", scope: "skill", sourceWorkspaceId: "ws_SRC",
-  skills: [{ name: "Greet", dir: "skills/greet", sourceId: "sk_SRC1" }],
+  version: "1", scope: "skill", source_workspace_id: "ws_SRC",
+  skills: [{ name: "Greet", dir: "skills/greet", source_id: "sk_SRC1" }],
   agents: [], squads: [],
 };
 // Mirrors real fs: readdirSync is SHALLOW and (with withFileTypes) reports dirs.
@@ -95,11 +95,11 @@ test("importSkills fills description on update only when the existing skill has 
 import { importAgents } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 
 const AGENT_MANIFEST = {
-  version: "1", scope: "agent", sourceWorkspaceId: "ws_SRC", skills: [],
-  agents: [{ name: "Helper", file: "agents/helper.json", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"] }],
+  version: "1", scope: "agent", source_workspace_id: "ws_SRC", skills: [],
+  agents: [{ name: "Helper", file: "agents/helper.json", source_runtime_id: "rt_SRC1", skill_names: ["Greet"] }],
   squads: [],
 };
-const AGENT_FILE = JSON.stringify({ name: "Helper", instructions: "be nice", model: "claude-sonnet-4-6", visibility: "workspace", maxConcurrentTasks: 6, sourceId: "ag_SRC1", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"] });
+const AGENT_FILE = JSON.stringify({ name: "Helper", instructions: "be nice", model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6, source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: ["Greet"] });
 
 test("importAgents remaps runtime id and sets mapped skill ids", () => {
   const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] };
@@ -116,8 +116,8 @@ test("importAgents remaps runtime id and sets mapped skill ids", () => {
 
 const AGENT_FILE_WITH_SECRETS = JSON.stringify({
   name: "Helper", instructions: "be nice", model: "claude-sonnet-4-6", visibility: "workspace",
-  maxConcurrentTasks: 6, sourceId: "ag_SRC1", sourceRuntimeId: "rt_SRC1", skillNames: ["Greet"],
-  mcpConfig: { mcpServers: { x: { command: "npx" } } }, customEnv: { API_KEY: "secret-value" },
+  max_concurrent_tasks: 6, source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: ["Greet"],
+  mcp_config: { mcpServers: { x: { command: "npx" } } }, custom_env: { API_KEY: "secret-value" },
 });
 
 test("importAgents (create path): mcp-config and custom-env are applied via separate follow-up calls, not bundled into agent create", () => {
@@ -223,7 +223,7 @@ test("rewriteMentions is a no-op on text with no mentions, or empty/missing text
 });
 
 const MENTION_MANIFEST = {
-  version: "1", scope: "squad", sourceWorkspaceId: "ws_SRC", skills: [],
+  version: "1", scope: "squad", source_workspace_id: "ws_SRC", skills: [],
   agents: [
     { name: "Helper", file: "agents/helper.json" },
     { name: "Helper2", file: "agents/helper2.json" },
@@ -250,8 +250,8 @@ test("rewriteAgentMentions updates only agents whose instructions reference a kn
 import { importSquad } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 
 const SQUAD_ENTRY = {
-  name: "Team", file: "squads/team.json", leaderName: "Helper", instructions: "# Team charter\nDeliver features.",
-  members: [{ agentName: "Helper", role: "leader" }, { agentName: "Helper2", role: "member" }],
+  name: "Team", file: "squads/team.json", leader_name: "Helper", instructions: "# Team charter\nDeliver features.",
+  members: [{ agent_name: "Helper", role: "leader" }, { agent_name: "Helper2", role: "member" }],
 };
 
 test("importSquad creates with mapped leader and adds non-leader members by mapped id", () => {
@@ -302,14 +302,14 @@ test("importSquad skips members already present (regression: idempotent re-run)"
 import { collectSourceRuntimes } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 
 test("collectSourceRuntimes returns distinct ids", () => {
-  const m = { agents: [{ sourceRuntimeId: "rt_a" }, { sourceRuntimeId: "rt_a" }, { sourceRuntimeId: "rt_b" }] };
+  const m = { agents: [{ source_runtime_id: "rt_a" }, { source_runtime_id: "rt_a" }, { source_runtime_id: "rt_b" }] };
   assert.deepEqual(collectSourceRuntimes(m).sort(), ["rt_a", "rt_b"]);
 });
 
 import { resolveRuntimeMap } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 import { RUNTIME_LIST_DEST_UNIQUE, RUNTIME_LIST_DEST_AMBIGUOUS } from "./fixtures.mjs";
 
-const MANIFEST_WITH_PROVIDER = { agents: [{ sourceRuntimeId: "rt_SRC1", sourceRuntimeProvider: "claude" }] };
+const MANIFEST_WITH_PROVIDER = { agents: [{ source_runtime_id: "rt_SRC1", source_runtime_provider: "claude" }] };
 
 test("resolveRuntimeMap auto-maps by provider when exactly one destination runtime matches", () => {
   const cli = { json: () => RUNTIME_LIST_DEST_UNIQUE };
@@ -334,7 +334,7 @@ test("resolveRuntimeMap: an explicit --runtime-map entry wins over auto-mapping 
 
 test("resolveRuntimeMap leaves it unresolved (without calling the CLI) when no provider was recorded", () => {
   const cli = { json: () => { throw new Error("must not list runtimes with nothing resolvable"); } };
-  const manifest = { agents: [{ sourceRuntimeId: "rt_SRC1" }] }; // older bundle, no sourceRuntimeProvider
+  const manifest = { agents: [{ source_runtime_id: "rt_SRC1" }] }; // older bundle, no source_runtime_provider
   const { unresolved } = resolveRuntimeMap({ cli, manifest, runtimeMap: new Map() });
   assert.deepEqual(unresolved, [{ srcId: "rt_SRC1", provider: undefined, matchCount: 0 }]);
 });
