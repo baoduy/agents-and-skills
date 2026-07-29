@@ -243,7 +243,11 @@ test("export squad resolves leader and member names by id and writes squad file"
   const squad = JSON.parse(fs.files["/s/squads/team.json"]);
   assert.equal(squad.leader_name, "Helper", "leader_id ag_SRC1 resolved to name");
   assert.equal(squad.avatar_url, "emoji:🦍", "squad avatar_url captured in export");
-  assert.equal(squad.instructions, "# Team charter\nShip it.", "squad instructions captured in export");
+  assert.ok(!("instructions" in squad), "squad instructions no longer embedded in the JSON");
+  assert.equal(squad.instructions_file, "squads/team.md", "squad JSON points at the .md");
+  assert.equal(fs.files["/s/squads/team.md"], "# Team charter\nShip it.", "squad instructions written to squads/<slug>.md");
+  assert.equal(manifest.squads[0].instructions_file, "squads/team.md", "manifest squad entry carries instructions_file");
+  assert.ok(!("instructions" in manifest.squads[0]), "manifest squad entry drops instructions");
   assert.deepEqual(squad.members.map((m) => m.agent_name).sort(), ["Helper", "Helper2"]);
   assert.equal(manifest.agents.length, 2, "both member agents captured");
   assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");
@@ -280,4 +284,6 @@ test("export all collects every resource and writes a shared agent exactly once"
   assert.equal(manifest.squads.length, 2, "both squads present");
   assert.ok(fs.files["/all/agents/helper2.json"], "shared agent written once");
   assert.ok(fs.files["/all/squads/a.json"] && fs.files["/all/squads/b.json"], "both squad files written");
+  assert.equal(fs.files["/all/squads/a.md"], undefined, "empty squad instructions write no .md");
+  assert.ok(!("instructions_file" in JSON.parse(fs.files["/all/squads/a.json"])), "no instructions_file for empty squad");
 });

@@ -66,7 +66,13 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads
     source_workspace_id: sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, source_id: s.source_id })),
     agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, source_id: a.source_id, source_runtime_id: a.source_runtime_id, source_runtime_provider: a.source_runtime_provider ?? null, skill_names: a.skill_names, had_secrets: !!a.had_secrets })),
-    squads: (squads ?? []).map((squad) => ({ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members })),
+    squads: (squads ?? []).map((squad) => {
+      const file = `squads/${slugify(squad.name)}.json`;
+      const entry = { name: squad.name, file, description: squad.description ?? "", avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members };
+      // Instructions go to a sibling .md (see squad write loop); only referenced when non-empty.
+      if (squad.instructions) entry.instructions_file = file.replace(/\.json$/, ".md");
+      return entry;
+    }),
   };
 }
 
@@ -180,8 +186,12 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     }
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
+  const squadInstrByName = new Map(squads.map((s) => [s.name, s.instructions ?? ""]));
   for (const entry of manifest.squads) {
     fs.mkdirSync(`${outDir}/squads`, { recursive: true });
+    if (entry.instructions_file) {
+      fs.writeFileSync(`${outDir}/${entry.instructions_file}`, squadInstrByName.get(entry.name) ?? "");
+    }
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(entry, null, 2));
   }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
