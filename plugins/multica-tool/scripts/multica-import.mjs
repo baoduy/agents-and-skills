@@ -1,6 +1,16 @@
 import * as nodeFs from "node:fs";
 import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
+// Instructions live in a sibling .md referenced by `instructions_file` (mirrors
+// avatar_file). Legacy bundles carry no instructions_file and keep instructions
+// inline in the JSON — fall back to that so older exports still import.
+function readInstructions(fs, dir, rec) {
+  if (rec.instructions_file && fs.existsSync(`${dir}/${rec.instructions_file}`)) {
+    return fs.readFileSync(`${dir}/${rec.instructions_file}`, "utf8");
+  }
+  return rec.instructions ?? "";
+}
+
 // Relative paths of every file under root (recursing into subdirs like scripts/).
 function walkSkillFiles(fs, root, rel = "") {
   const out = [];
@@ -82,7 +92,8 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       "--max-concurrent-tasks", String(rec.max_concurrent_tasks ?? 6),
     ];
     if (rec.description) common.push("--description", rec.description);
-    if (rec.instructions) common.push("--instructions", rec.instructions);
+    const instructions = readInstructions(fs, dir, rec);
+    if (instructions) common.push("--instructions", instructions);
     if (rec.model) common.push("--model", rec.model);
     if (rec.thinking_level) common.push("--thinking-level", rec.thinking_level);
     if (rec.runtime_config && Object.keys(rec.runtime_config).length) common.push("--runtime-config", JSON.stringify(rec.runtime_config));
@@ -184,9 +195,10 @@ export function rewriteAgentMentions({ cli, manifest, dir, agentIdMap, sourceIdM
   let updated = 0;
   for (const a of manifest.agents) {
     const rec = JSON.parse(fs.readFileSync(`${dir}/${a.file}`, "utf8"));
-    if (!rec.instructions) continue;
-    const rewritten = rewriteMentions(rec.instructions, sourceIdMap);
-    if (rewritten === rec.instructions) continue;
+    const instructions = readInstructions(fs, dir, rec);
+    if (!instructions) continue;
+    const rewritten = rewriteMentions(instructions, sourceIdMap);
+    if (rewritten === instructions) continue;
     cli.run(["agent", "update", agentIdMap.get(rec.name), "--instructions", rewritten]);
     updated++;
   }
@@ -280,6 +292,7 @@ export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
   const squadIdMap = new Map();
   let squadsCreated = 0, squadsUpdated = 0;
   for (const squad of manifest.squads ?? []) {
+    squad.instructions = readInstructions(fs, dir, squad);
     const r = importSquad({ cli, squad, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
     squadIdMap.set(squad.name, r.newId);
     squadsCreated += r.created;

@@ -114,6 +114,28 @@ test("importAgents remaps runtime id and sets mapped skill ids", () => {
   assert.equal(set[set.indexOf("--skill-ids") + 1], "sk_NEW1", "mapped skill id applied");
 });
 
+test("importAgents reads instructions from the sibling .md when instructions_file is set", () => {
+  const files = {
+    "./agents/helper.json": JSON.stringify({ name: "Helper", instructions_file: "agents/helper.md", model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6, source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: [] }),
+    "./agents/helper.md": "enhanced instructions from md",
+  };
+  const fs = memFs(files);
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map(), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const create = calls.find((a) => a[0] === "agent" && a[1] === "create");
+  assert.equal(create[create.indexOf("--instructions") + 1], "enhanced instructions from md", "instructions came from the .md, not the JSON");
+});
+
+test("importAgents falls back to inline JSON instructions when there is no instructions_file (legacy bundle)", () => {
+  const fs = { existsSync: () => true, readFileSync: () => AGENT_FILE, readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const create = calls.find((a) => a[0] === "agent" && a[1] === "create");
+  assert.equal(create[create.indexOf("--instructions") + 1], "be nice", "legacy inline instructions still used when no instructions_file");
+});
+
 const AGENT_FILE_WITH_SECRETS = JSON.stringify({
   name: "Helper", instructions: "be nice", model: "claude-sonnet-4-6", visibility: "workspace",
   max_concurrent_tasks: 6, source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: ["Greet"],
@@ -495,4 +517,34 @@ test("importBundle imports every squad and returns a squadIdMap", () => {
   assert.equal(res.created.squads, 2, "both squads created");
   assert.deepEqual(Object.keys(res.squadIdMap).sort(), ["A", "B"]);
   assert.ok(!("squadId" in res), "single squadId replaced by squadIdMap");
+});
+
+test("importBundle reads squad instructions from the squad .md", () => {
+  const files = {
+    "./manifest.json": JSON.stringify({
+      version: "1", skills: [],
+      agents: [{ name: "Helper", file: "agents/helper.json", source_runtime_id: "rt_SRC1", skill_names: [] }],
+      squads: [{ name: "Team", file: "squads/team.json", leader_name: "Helper", instructions_file: "squads/team.md", members: [{ agent_name: "Helper", role: "leader" }] }],
+    }),
+    "./agents/helper.json": JSON.stringify({ name: "Helper", model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6, source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", skill_names: [] }),
+    "./squads/team.md": "# Charter from md",
+  };
+  const fs = memFs(files);
+  const calls = [];
+  const cli = {
+    json: (a) => {
+      if (a[0] === "squad" && a[1] === "member" && a[2] === "list") return [];
+      if (a[1] === "list") return [];
+      return {};
+    },
+    run: (a) => {
+      calls.push(a);
+      if (a[0] === "squad" && a[1] === "create") return '{"id":"sq_NEW1"}';
+      if (a.includes("create")) return '{"id":"ag_NEW1"}';
+      return "{}";
+    },
+  };
+  importBundle({ cli, dir: ".", runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const squadCreate = calls.find((a) => a[0] === "squad" && a[1] === "create");
+  assert.equal(squadCreate[squadCreate.indexOf("--instructions") + 1], "# Charter from md", "squad instructions read from the .md");
 });
