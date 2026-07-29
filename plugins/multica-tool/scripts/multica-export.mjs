@@ -31,7 +31,7 @@ export function redactAgent(a) {
   // a is a normalized agent from getAgent, with `custom_env`/
   // `custom_env_fetch_failed` attached by the caller (collectAgent) — getAgent
   // itself never fetches custom_env, since it requires a separate audited call.
-  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, ...rest } = a;
+  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, instructions, ...rest } = a;
   const mcpUsable = !mcp_config_redacted && nonEmpty(mcp_config);
   const envUsable = !custom_env_fetch_failed && nonEmpty(custom_env);
   // mcp_config_redacted / custom_env_fetch_failed alone still flag hadSecrets even
@@ -39,8 +39,8 @@ export function redactAgent(a) {
   // but couldn't be captured, not just silently see an empty bundle.
   const hadSecrets = mcpUsable || envUsable || !!mcp_config_redacted || !!custom_env_fetch_failed;
   return {
-    // source_id lets import-time mention rewriting map stale `mention://agent/<id>`
-    // links (in this or another agent's/squad's instructions) to the new id.
+    // instructions are written to a sibling .md by the caller (see avatar_file),
+    // never embedded in the JSON record.
     record: {
       ...rest,
       source_id: id,
@@ -51,6 +51,7 @@ export function redactAgent(a) {
       had_secrets: hadSecrets,
     },
     hadSecrets,
+    instructions: instructions ?? "",
   };
 }
 
@@ -169,6 +170,13 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
         fs.writeFileSync(`${outDir}/${rel}`, bytes);
         record.avatar_file = rel;
       }
+    }
+    // Instructions live in a sibling .md for reviewability (same sibling-file
+    // pattern as avatar_file); only written when non-empty.
+    if (red.instructions) {
+      const rel = entry.file.replace(/\.json$/, ".md");
+      fs.writeFileSync(`${outDir}/${rel}`, red.instructions);
+      record.instructions_file = rel;
     }
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
