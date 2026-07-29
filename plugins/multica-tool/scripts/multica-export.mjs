@@ -39,10 +39,10 @@ export function redactAgent(a) {
   // but couldn't be captured, not just silently see an empty bundle.
   const hadSecrets = mcpUsable || envUsable || !!mcp_config_redacted || !!custom_env_fetch_failed;
   return {
-    // instructions are written to a sibling .md by the caller (see avatar_file),
-    // never embedded in the JSON record.
     record: {
       ...rest,
+      // source_id lets import-time mention rewriting map stale `mention://agent/<id>`
+      // links (in this or another agent's/squad's instructions) to the new id.
       source_id: id,
       source_runtime_id: runtime_id,
       skill_names: [],
@@ -51,6 +51,8 @@ export function redactAgent(a) {
       had_secrets: hadSecrets,
     },
     hadSecrets,
+    // instructions are written to a sibling .md by the caller (see avatar_file),
+    // never embedded in the JSON record.
     instructions: instructions ?? "",
   };
 }
