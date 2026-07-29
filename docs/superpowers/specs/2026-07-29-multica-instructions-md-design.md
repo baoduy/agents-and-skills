@@ -43,52 +43,71 @@ For a squad whose manifest `file` is `squads/<slug>.json`:
 Conventions:
 
 - The `.md` path is derived from the manifest `file` by replacing the `.json`
-  suffix with `.md` — the same sibling-file convention already used for avatars
-  (`multica-export.mjs` avatar handling: `entry.file.replace(/\.json$/, ...)`).
-- **Empty or absent instructions → no `.md` is written.** Nothing is lost; the
-  absence of the file simply means "no instructions".
+  suffix with `.md` (e.g. `agents/helper.json` → `agents/helper.md`), and the
+  path is **recorded explicitly** so import knows where to look — mirroring the
+  existing `avatar_file` pattern:
+  - **Agents:** the per-agent JSON record gains an `instructions_file` key
+    (exactly like the existing `avatar_file` key) and drops `instructions`.
+  - **Squads:** the manifest `squads[]` entry (and the per-squad JSON) gains an
+    `instructions_file` key alongside `avatar_url` and drops `instructions`.
+- Recording the path explicitly (rather than deriving it blind at import time)
+  matches how `avatar_file` already works in this codebase, and lets import
+  distinguish "new bundle, read the `.md`" from "old bundle, read inline JSON"
+  by the mere presence of the key — no path probing on legacy bundles.
+- **Empty or absent instructions → no `.md` is written and no
+  `instructions_file` key is set.** Nothing is lost; the absence means "no
+  instructions".
 
 ## Export changes — `scripts/multica-export.mjs`
 
 1. `redactAgent` pulls `instructions` out of the returned `record` (as it already
    pulls `id`, `runtime_id`, etc.) and returns the instructions string alongside
-   the record so the caller can write the `.md`.
-2. The agent write loop writes `agents/<slug>.md` (derived from `entry.file`) when
-   the instructions string is non-empty. The JSON written no longer contains
-   `instructions`.
-3. `buildManifest` squad entries drop the `instructions` field.
+   the record (`{ record, hadSecrets, instructions }`) so the caller can write
+   the `.md`.
+2. The agent write loop writes `agents/<slug>.md` (derived from `entry.file` by
+   `.json`→`.md`) when the instructions string is non-empty, and sets
+   `record.instructions_file` to that relative path. The JSON written no longer
+   contains `instructions`.
+3. `buildManifest` squad entries drop the `instructions` field and set
+   `instructions_file` (`squads/<slug>.md`) when instructions are non-empty.
 4. The squad write loop writes `squads/<slug>.md` when non-empty; the per-squad
-   JSON no longer contains `instructions`.
+   JSON (a stringify of the manifest entry) therefore carries `instructions_file`
+   and no `instructions`.
 
 ## Import changes — `scripts/multica-import.mjs`
 
-Add one helper:
+Add one helper (`rec` is an agent record or a squad manifest entry — both carry
+`instructions_file` and `instructions`):
 
 ```
-readInstructions(fs, dir, jsonFile, rec)
-  mdPath = jsonFile.replace(/\.json$/, ".md")
-  if fs.existsSync(`${dir}/${mdPath}`) → return that file's contents
+readInstructions(fs, dir, rec)
+  if rec.instructions_file && fs.existsSync(`${dir}/${rec.instructions_file}`)
+      → return that file's contents
   else → return rec.instructions ?? ""      // backward-compat fallback
 ```
 
 The fallback is the compatibility guarantee: an **old bundle** (instructions in
-JSON, no `.md`) still imports unchanged, because `rec.instructions` is still
-present there. A **new bundle** has no `instructions` key in JSON but has the
-`.md`, so the `.md` branch is taken. A new agent that genuinely had no
-instructions has neither, and the helper returns `""`. No manifest version bump
-is required — import performs no version gate, and the reader is tolerant of both
-layouts.
+JSON, no `instructions_file`) still imports unchanged, because `rec.instructions`
+is still present and the `instructions_file` guard is falsy. A **new bundle** has
+no `instructions` key but has `instructions_file` + the `.md`, so the `.md`
+branch is taken. A new agent that genuinely had no instructions has neither key,
+and the helper returns `""`. No manifest version bump is required — import
+performs no version gate, and the reader is tolerant of both layouts.
+
+Because the guard keys on `rec.instructions_file` (absent on every legacy
+record), existing import tests that use a non-path-aware fake fs keep exercising
+the JSON fallback and pass unchanged.
 
 Wire the helper in three places:
 
 1. `importAgents` — replace the direct `rec.instructions` read used to build the
-   `--instructions` flag with the helper's result.
-2. `rewriteAgentMentions` — read instructions via the helper (not `rec.instructions`)
-   before rewriting `mention://agent/<id>` links.
-3. The squad loop in `importBundle` — read the squad's instructions from its
-   `.md` (fallback to the manifest entry's `instructions`) and set
-   `squad.instructions` before calling `importSquad`, so `importSquad` itself
-   stays unchanged and its existing mention-rewrite path keeps working.
+   `--instructions` flag with `readInstructions(fs, dir, rec)`.
+2. `rewriteAgentMentions` — read instructions via `readInstructions(fs, dir, rec)`
+   (not `rec.instructions`) before rewriting `mention://agent/<id>` links.
+3. The squad loop in `importBundle` — set `squad.instructions =
+   readInstructions(fs, dir, squad)` before calling `importSquad`, so
+   `importSquad` itself stays unchanged and its existing mention-rewrite path
+   keeps working.
 
 ## Sync — `scripts/multica-sync.mjs`
 
@@ -97,14 +116,16 @@ directory, so it inherits the new round-trip automatically.
 
 ## Testing — `tests/multica-tool/`
 
-- **export.test.mjs**: assert `agents/<slug>.md` and `squads/<slug>.md` exist with
-  the expected instructions, and that the written JSON (and manifest `squads[]`)
-  no longer carry an `instructions` key. Assert that an agent/squad with empty
-  instructions produces no `.md`.
-- **import.test.mjs**: a new-layout bundle restores instructions from the `.md`
-  (agent `--instructions`, squad create, and mention rewriting all read the
-  `.md`). Add one **backward-compat test**: a JSON-only bundle (instructions in
-  JSON, no `.md`) still imports the instructions via the fallback.
+- **export.test.mjs**: assert `redactAgent` returns `instructions` separately and
+  its `record` has no `instructions` key; assert `agents/<slug>.md` and
+  `squads/<slug>.md` exist with the expected instructions, the JSON carries
+  `instructions_file` and no `instructions`, and an agent/squad with empty
+  instructions produces neither the `.md` nor an `instructions_file` key.
+- **import.test.mjs**: a new-layout bundle (record has `instructions_file`, the
+  `.md` is present) restores instructions from the `.md` for agent
+  `--instructions`, squad create, and mention rewriting. Keep the existing
+  JSON-inline tests as the **backward-compat** path (no `instructions_file` →
+  fallback to `rec.instructions`); they must pass unchanged.
 - **sync.test.mjs**: existing end-to-end behavior must still pass unchanged.
 
 Tests must encode intent: the export tests fail if instructions leak back into
