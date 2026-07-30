@@ -402,6 +402,56 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
   };
 }
 
+export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
+  const inc = include ?? new Set(["skills", "agents", "squads"]);
+  const manifest = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
+  const count = (k) => (manifest[k] ?? []).length;
+  const bundle = { skills: count("skills"), agents: count("agents"), squads: count("squads"), projects: count("projects") };
+  const willImport = {
+    skills: inc.has("skills") ? bundle.skills : 0,
+    agents: inc.has("agents") ? bundle.agents : 0,
+    squads: inc.has("squads") ? bundle.squads : 0,
+    projects: inc.has("projects") ? bundle.projects : 0,
+  };
+
+  const incompatibilities = [];
+  let runtimes = { resolved: [], unresolved: [] };
+  if (inc.has("agents")) {
+    const { effective, unresolved } = resolveRuntimeMap({ cli, manifest, runtimeMap });
+    runtimes = {
+      resolved: [...effective.entries()].map(([s, d]) => `${s}=${d}`),
+      unresolved: unresolved.map((u) => u.srcId),
+    };
+    for (const u of unresolved) {
+      incompatibilities.push({ type: "unmapped-runtime", detail: u.provider
+        ? `${u.srcId} (provider "${u.provider}": ${u.matchCount} matches, expected 1)`
+        : `${u.srcId} (no provider recorded)` });
+    }
+  }
+
+  if (inc.has("projects")) {
+    const bundleAgentNames = new Set((manifest.agents ?? []).map((a) => a.name));
+    for (const entry of manifest.projects ?? []) {
+      const rec = JSON.parse(fs.readFileSync(`${dir}/${entry.file}`, "utf8"));
+      if (rec.priority && rec.priority !== "none") {
+        incompatibilities.push({ type: "priority-not-settable", detail: `${rec.title} (priority "${rec.priority}")` });
+      }
+      for (const r of rec.resources ?? []) {
+        if (r.resource_type !== "github_repo") {
+          incompatibilities.push({ type: "resource-not-portable", detail: `${rec.title} (${r.resource_type})` });
+        }
+      }
+      const leadAvailable = inc.has("agents") && bundleAgentNames.has(rec.lead_name);
+      if (rec.lead_type === "agent" && rec.lead_name && !leadAvailable) {
+        incompatibilities.push({ type: "lead-agent-missing", detail: `${rec.title} → ${rec.lead_name} (ensure this agent exists in the destination)` });
+      }
+    }
+  }
+
+  const secretsReminder = (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name);
+  return { bundle, willImport, runtimes, incompatibilities, secretsReminder };
+}
+
 function parseRuntimeMap(raw) {
   // Parse "srcId1=dstId1,srcId2=dstId2" into a Map.
   const map = new Map();
@@ -421,9 +471,11 @@ function main() {
   const dir       = get("--dir");
   const workspace = get("--workspace");
   const rawMap    = get("--runtime-map");
+  const rawInclude = get("--include");
+  const dryRun    = args.includes("--dry-run");
 
   if (!dir || !workspace) {
-    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>]");
+    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>] [--include <csv>] [--dry-run]");
     process.exit(1);
   }
 
@@ -432,8 +484,13 @@ function main() {
   const wsId      = resolveWorkspaceId(resolver, workspace);
   const cli       = makeCli(realExec, { workspaceId: wsId });
   const runtimeMap = parseRuntimeMap(rawMap);
+  const include = parseInclude(rawInclude);
 
-  const result = importBundle({ cli, dir, runtimeMap, fs: nodeFs });
+  if (dryRun) {
+    console.log(JSON.stringify(preflight({ cli, dir, runtimeMap, include, fs: nodeFs }), null, 2));
+    return;
+  }
+  const result = importBundle({ cli, dir, runtimeMap, include, fs: nodeFs });
   console.log(JSON.stringify(result, null, 2));
 }
 

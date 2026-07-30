@@ -688,3 +688,22 @@ test("importBundle skips a squad whose leader was not imported (agents excluded)
   assert.deepEqual(res.squadsSkipped, ["Team"]);
   assert.ok(!cli.calls.some((a) => a[0] === "squad" && a[1] === "create"));
 });
+
+import { preflight } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+
+test("preflight reports counts and project incompatibilities without writing", () => {
+  const cli = fullRecordingCli();
+  const rep = preflight({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["skills", "agents", "projects"]), fs: bundleFs() });
+  assert.deepEqual(rep.bundle, { skills: 0, agents: 1, squads: 0, projects: 1 });
+  assert.deepEqual(rep.willImport, { skills: 0, agents: 1, squads: 0, projects: 1 });
+  assert.ok(rep.incompatibilities.some((i) => i.type === "priority-not-settable" && i.detail.includes("Launch")));
+  assert.ok(rep.incompatibilities.some((i) => i.type === "resource-not-portable" && i.detail.includes("local_directory")));
+  assert.equal(cli.calls.length, 0, "dry-run performs no writes");
+});
+
+test("preflight flags lead-agent-missing when projects are imported without agents", () => {
+  const cli = fullRecordingCli();
+  const rep = preflight({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["projects"]), fs: bundleFs() });
+  assert.equal(rep.willImport.agents, 0);
+  assert.ok(rep.incompatibilities.some((i) => i.type === "lead-agent-missing" && i.detail.includes("Helper")));
+});
