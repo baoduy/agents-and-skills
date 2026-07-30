@@ -10,10 +10,10 @@ Export a Multica resource (skill, agent, or squad) to a local bundle directory.
 
 ## Step 1 — Verify authentication
 
-Run the export script; it calls `multica auth status` internally and exits with an error message if unauthenticated:
+Run `multica auth status` directly. The export script performs this same check internally before doing any work (via `requireAuth` in `scripts/lib.mjs`), but only after `--scope`/`--out` are supplied — so checking it here up front avoids masking an auth failure behind a later usage error:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" --help 2>&1 || true
+multica auth status 2>&1 || true
 ```
 
 If `multica login` is required, surface that message verbatim and stop.
