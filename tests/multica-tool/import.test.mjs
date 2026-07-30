@@ -483,7 +483,7 @@ test("resolveRuntimeMap leaves it unresolved (without calling the CLI) when no p
   assert.deepEqual(unresolved, [{ srcId: "rt_SRC1", provider: undefined, matchCount: 0 }]);
 });
 
-import { importBundle } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+import { importBundle, parseInclude } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 
 test("importBundle imports every squad and returns a squadIdMap", () => {
   const files = {
@@ -620,4 +620,71 @@ test("importProjects records leadUnresolved and omits --lead when the agent is n
   const create = cli.calls.find((a) => a[1] === "create");
   assert.ok(!create.includes("--lead"), "no lead flag when unresolvable");
   assert.deepEqual(r.leadUnresolved, ["Launch"]);
+});
+
+// Minimal bundle: one agent (Helper) + one project (Launch) led by Helper.
+function bundleFs() {
+  return memFs({
+    "./manifest.json": JSON.stringify({
+      version: "1", scope: "all", source_workspace_id: "ws_SRC",
+      skills: [], squads: [],
+      agents: [{ name: "Helper", file: "agents/helper.json", source_id: "ag_SRC1", source_runtime_id: "rt_SRC1", source_runtime_provider: "claude", skill_names: [], had_secrets: false }],
+      projects: [{ title: "Launch", file: "projects/launch.json", source_id: "pr_SRC1", lead_name: "Helper", lead_type: "agent" }],
+    }),
+    "./agents/helper.json": JSON.stringify({ name: "Helper", visibility: "workspace", max_concurrent_tasks: 6, source_runtime_id: "rt_SRC1", skill_names: [] }),
+    "./projects/launch.json": JSON.stringify(LAUNCH_REC),
+  });
+}
+function fullRecordingCli() {
+  const calls = [];
+  return {
+    calls,
+    json: (args) => {
+      if (args[0] === "runtime" && args[1] === "list") return [{ id: "rt_TGT1", provider: "claude" }];
+      if (args[0] === "agent" && args[1] === "list") return [];
+      if (args[0] === "project" && args[1] === "list") return [];
+      if (args[0] === "project" && args[1] === "resource") return [];
+      if (args[0] === "squad" && args[1] === "list") return [];
+      return {};
+    },
+    run: (args) => { calls.push(args); return args.includes("create") ? '{"id":"NEW"}' : "{}"; },
+  };
+}
+
+test("parseInclude defaults to agents+squads (+skills), projects opt-in", () => {
+  assert.deepEqual([...parseInclude(null)].sort(), ["agents", "skills", "squads"]);
+  assert.deepEqual([...parseInclude("projects")].sort(), ["projects"]);
+  assert.deepEqual([...parseInclude("agents,projects")].sort(), ["agents", "projects", "skills"]);
+});
+
+test("importBundle default include does NOT import projects", () => {
+  const cli = fullRecordingCli();
+  const res = importBundle({ cli, dir: ".", runtimeMap: new Map(), fs: bundleFs() });
+  assert.equal(res.created.projects, 0);
+  assert.ok(!cli.calls.some((a) => a[0] === "project" && a[1] === "create"), "no project write by default");
+  assert.ok(cli.calls.some((a) => a[0] === "agent" && a[1] === "create"), "agents still imported");
+});
+
+test("importBundle with projects in include creates the project led by the imported agent", () => {
+  const cli = fullRecordingCli();
+  const res = importBundle({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["skills", "agents", "projects"]), fs: bundleFs() });
+  assert.equal(res.created.projects, 1);
+  const create = cli.calls.find((a) => a[0] === "project" && a[1] === "create");
+  assert.equal(create[create.indexOf("--lead") + 1], "Helper");
+  assert.deepEqual(res.priorityUnsupported, ["Launch"]);
+});
+
+test("importBundle skips a squad whose leader was not imported (agents excluded)", () => {
+  const fs = memFs({
+    "./manifest.json": JSON.stringify({
+      version: "1", scope: "all", source_workspace_id: "ws_SRC",
+      skills: [], agents: [], projects: [],
+      squads: [{ name: "Team", file: "squads/team.json", leader_name: "Helper", members: [] }],
+    }),
+    "./squads/team.json": JSON.stringify({ name: "Team", description: "", leader_name: "Helper", members: [] }),
+  });
+  const cli = fullRecordingCli();
+  const res = importBundle({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["squads"]), fs });
+  assert.deepEqual(res.squadsSkipped, ["Team"]);
+  assert.ok(!cli.calls.some((a) => a[0] === "squad" && a[1] === "create"));
 });
