@@ -14,12 +14,13 @@ Ask the user to confirm the name of the target workspace if not already stated. 
 
 ## Step 2 — Pre-flight (dry run)
 
-Before writing anything, run the import script with `--dry-run` to preview the bundle:
+Before writing anything, run the import script with `--dry-run` to preview the bundle. Preview against the **full** set (`--include agents,squads,projects`) regardless of what the user ultimately chooses to import — incompatibilities for a type (e.g. project caveats) are only computed when that type is included, so previewing everything up front is what lets the user see a project's cost before deciding whether to opt it in:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
   --dir <folder> \
   --workspace <workspace-name> \
+  --include agents,squads,projects \
   [--runtime-map <srcId1=dstId1,srcId2=dstId2,...>] \
   --dry-run
 ```
