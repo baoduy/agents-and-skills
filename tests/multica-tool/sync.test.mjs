@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sync } from "../../plugins/multica-tool/scripts/multica-sync.mjs";
+import { sync, resolveScopeId } from "../../plugins/multica-tool/scripts/multica-sync.mjs";
+import { PROJECT_LIST } from "./fixtures.mjs";
 
 // One exec for both workspaces; records every argv so we can assert which
 // --workspace-id rode along with reads (export) vs writes (import).
@@ -29,4 +30,15 @@ test("sync resolves both workspaces and threads correct --workspace-id on read v
   assert.equal(skillGet[skillGet.indexOf("--workspace-id") + 1], "ws_SRC", "export read used source ws");
   const skillCreate = argvs.find((a) => a[0] === "skill" && a[1] === "create");
   assert.equal(skillCreate[skillCreate.indexOf("--workspace-id") + 1], "ws_DST", "import write used dest ws");
+});
+
+test("resolveScopeId resolves a project by title", () => {
+  const cli = { json: (args) => (args[0] === "project" && args[1] === "list" ? PROJECT_LIST : []) };
+  const r = resolveScopeId(cli, "project", "Launch");
+  assert.deepEqual(r, { scope: "project", ids: { projectId: "pr_SRC1" } });
+});
+
+test("resolveScopeId throws on an unknown project title", () => {
+  const cli = { json: () => PROJECT_LIST };
+  assert.throws(() => resolveScopeId(cli, "project", "Nope"), /Unknown project/);
 });
