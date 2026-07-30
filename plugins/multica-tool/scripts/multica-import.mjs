@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle } from "./lib.mjs";
 
 // Instructions live in a sibling .md referenced by `instructions_file` (mirrors
 // avatar_file). Legacy bundles carry no instructions_file and keep instructions
@@ -237,6 +237,57 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
     cli.run(["squad", "member", "add", id, "--member-id", memberId, "--role", m.role, "--type", "agent"]);
   }
   return { newId: id, created, updated };
+}
+
+export function importProjects({ cli, manifest, dir, agentIdMap, fs = nodeFs }) {
+  const idMap = new Map();
+  let created = 0, updated = 0;
+  const priorityUnsupported = [], resourcesUnsupported = [], leadUnresolved = [];
+  const existing = listProjects(cli);
+  // Lead resolves against just-imported agents first, then destination agents.
+  let destAgentNames = null;
+  const leadResolvable = (name) =>
+    agentIdMap.has(name) || (destAgentNames ??= new Set(listAgents(cli).map((a) => a.name))).has(name);
+
+  for (const entry of manifest.projects ?? []) {
+    const rec = JSON.parse(fs.readFileSync(`${dir}/${entry.file}`, "utf8"));
+    const flags = ["--title", rec.title];
+    if (rec.description) flags.push("--description", rec.description);
+    if (rec.icon) flags.push("--icon", rec.icon);
+    if (rec.status) flags.push("--status", rec.status);
+    if (rec.due_date) flags.push("--due-date", rec.due_date);
+    if (rec.start_date) flags.push("--start-date", rec.start_date);
+    const wantsLead = rec.lead_type === "agent" && !!rec.lead_name;
+    const leadOk = wantsLead && leadResolvable(rec.lead_name);
+    if (leadOk) flags.push("--lead", rec.lead_name);
+
+    const match = findByTitle(existing, rec.title);
+    let id;
+    if (match) {
+      cli.run(["project", "update", match.id, ...flags]);
+      id = match.id; updated++;
+    } else {
+      id = JSON.parse(cli.run(["project", "create", ...flags])).id;
+      created++;
+    }
+    idMap.set(rec.title, id);
+
+    if (wantsLead && !leadOk) leadUnresolved.push(rec.title);
+    if (rec.priority && rec.priority !== "none") priorityUnsupported.push(rec.title);
+
+    // Resources: recreate github_repo only, idempotent by url.
+    const existingUrls = new Set(
+      getProjectResources(cli, id).filter((r) => r.resource_type === "github_repo").map((r) => r.resource_ref?.url).filter(Boolean),
+    );
+    for (const r of rec.resources ?? []) {
+      if (r.resource_type !== "github_repo") { resourcesUnsupported.push(`${rec.title}:${r.resource_type}`); continue; }
+      const url = r.resource_ref?.url;
+      if (!url || existingUrls.has(url)) continue;
+      cli.run(["project", "resource", "add", id, "--type", "github_repo", "--url", url, ...(r.label ? ["--label", r.label] : [])]);
+      existingUrls.add(url);
+    }
+  }
+  return { idMap, created, updated, priorityUnsupported, resourcesUnsupported, leadUnresolved };
 }
 
 export function collectSourceRuntimes(manifest) {

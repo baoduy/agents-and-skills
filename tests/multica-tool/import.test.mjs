@@ -548,3 +548,76 @@ test("importBundle reads squad instructions from the squad .md", () => {
   const squadCreate = calls.find((a) => a[0] === "squad" && a[1] === "create");
   assert.equal(squadCreate[squadCreate.indexOf("--instructions") + 1], "# Charter from md", "squad instructions read from the .md");
 });
+
+import { importProjects } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+
+const PROJECT_MANIFEST = {
+  version: "1", scope: "projects", source_workspace_id: "ws_SRC",
+  skills: [], agents: [], squads: [],
+  projects: [
+    { title: "Launch", file: "projects/launch.json", source_id: "pr_SRC1", lead_name: "Helper", lead_type: "agent" },
+  ],
+};
+const LAUNCH_REC = {
+  title: "Launch", description: "the launch", icon: "🚀",
+  priority: "high", status: "in_progress", due_date: null, start_date: null,
+  source_id: "pr_SRC1", lead_type: "agent", lead_name: "Helper", lead_source_id: "ag_SRC1",
+  resources: [
+    { resource_type: "github_repo", resource_ref: { url: "https://github.com/x/repo.git" }, label: null },
+    { resource_type: "local_directory", resource_ref: { path: "/x" }, label: "local" },
+  ],
+};
+// recordingCli that answers project list / resource list / agent list.
+function projectRecordingCli({ existingProjects = [], existingAgents = [], existingResources = [] } = {}) {
+  const calls = [];
+  return {
+    calls,
+    json: (args) => {
+      const k = args.slice(0, 3).join(" ");
+      if (args[0] === "project" && args[1] === "list") return existingProjects;
+      if (k.startsWith("project resource list")) return existingResources;
+      if (args[0] === "agent" && args[1] === "list") return existingAgents;
+      return {};
+    },
+    run: (args) => { calls.push(args); return args.includes("create") ? '{"id":"pr_NEW1"}' : "{}"; },
+  };
+}
+
+test("importProjects creates the project, sets --lead to the imported agent, adds github_repo resource, reports unsupported bits", () => {
+  const fs = memFs({ "./projects/launch.json": JSON.stringify(LAUNCH_REC) });
+  const cli = projectRecordingCli();
+  const agentIdMap = new Map([["Helper", "ag_NEW1"]]);
+  const r = importProjects({ cli, manifest: PROJECT_MANIFEST, dir: ".", agentIdMap, fs });
+  assert.equal(r.created, 1);
+  const create = cli.calls.find((a) => a[0] === "project" && a[1] === "create");
+  assert.equal(create[create.indexOf("--lead") + 1], "Helper", "lead set by agent name");
+  assert.equal(create[create.indexOf("--title") + 1], "Launch");
+  assert.ok(!create.includes("--priority"), "priority is never passed (no CLI flag)");
+  const addRepo = cli.calls.find((a) => a[0] === "project" && a[1] === "resource" && a[2] === "add");
+  assert.equal(addRepo[addRepo.indexOf("--url") + 1], "https://github.com/x/repo.git");
+  assert.deepEqual(r.priorityUnsupported, ["Launch"]);
+  assert.deepEqual(r.resourcesUnsupported, ["Launch:local_directory"]);
+  assert.deepEqual(r.leadUnresolved, []);
+});
+
+test("importProjects updates by title and does not re-add an existing resource (idempotent)", () => {
+  const fs = memFs({ "./projects/launch.json": JSON.stringify(LAUNCH_REC) });
+  const cli = projectRecordingCli({
+    existingProjects: [{ id: "pr_TGT9", title: "Launch" }],
+    existingResources: [{ resource_type: "github_repo", resource_ref: { url: "https://github.com/x/repo.git" }, label: null }],
+  });
+  const r = importProjects({ cli, manifest: PROJECT_MANIFEST, dir: ".", agentIdMap: new Map([["Helper", "ag_NEW1"]]), fs });
+  assert.equal(r.updated, 1); assert.equal(r.created, 0);
+  assert.equal(r.idMap.get("Launch"), "pr_TGT9");
+  assert.ok(cli.calls.some((a) => a[0] === "project" && a[1] === "update" && a[2] === "pr_TGT9"));
+  assert.ok(!cli.calls.some((a) => a[1] === "resource" && a[2] === "add"), "existing url not re-added");
+});
+
+test("importProjects records leadUnresolved and omits --lead when the agent is nowhere", () => {
+  const fs = memFs({ "./projects/launch.json": JSON.stringify(LAUNCH_REC) });
+  const cli = projectRecordingCli(); // no existing agents, empty agentIdMap
+  const r = importProjects({ cli, manifest: PROJECT_MANIFEST, dir: ".", agentIdMap: new Map(), fs });
+  const create = cli.calls.find((a) => a[1] === "create");
+  assert.ok(!create.includes("--lead"), "no lead flag when unresolvable");
+  assert.deepEqual(r.leadUnresolved, ["Launch"]);
+});
