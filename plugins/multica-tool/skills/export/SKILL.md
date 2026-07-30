@@ -54,7 +54,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" \
 
 Pass `--scope all` (with no `--id`) to export the **entire workspace** — every skill, agent, squad, and project — into one flat, deduped bundle. A skill or agent shared across many agents/squads is written exactly once and referenced by name.
 
-Exporting a project (or `projects`/`all`) also **bundles the project's lead agent** so the bundle is self-contained; projects carry metadata only (title, description, icon, priority, status, dates, lead mapping) and `github_repo` resources — never issues.
+Exporting a project (or `projects`/`all`) also **bundles the project's lead agent** so the bundle is self-contained; projects carry metadata only (title, description, icon, priority, status, dates, lead mapping) plus their attached resource records — never issues. On import, only `github_repo` resources are portable and recreated; other resource types are reported and skipped.
 
 The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Each agent's and squad's **instructions** (system prompt / charter) are written to a sibling Markdown file — `agents/<slug>.md`, `squads/<slug>.md` — referenced by an `instructions_file` key in the JSON, so the prose is easy to read, diff, and edit. Agents/squads with no instructions get no `.md`.
 
