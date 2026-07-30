@@ -52,7 +52,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" \
 
 Pass `--scope all` (with no `--id`) to export the **entire workspace** — every skill, agent, and squad — into one flat, deduped bundle. A skill or agent shared across many agents/squads is written exactly once and referenced by name.
 
-The script writes `manifest.json`, skill SKILL.md files, agent JSON files, and squad JSON files into `<dir>`.
+The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Each agent's and squad's **instructions** (system prompt / charter) are written to a sibling Markdown file — `agents/<slug>.md`, `squads/<slug>.md` — referenced by an `instructions_file` key in the JSON, so the prose is easy to read, diff, and edit. Agents/squads with no instructions get no `.md`.
 
 Avatars are captured automatically: an agent's uploaded-image avatar is downloaded into the bundle (`agents/<slug>.avatar.<ext>`) and referenced by `avatar_file`; emoji avatars (agents and squads) and a squad's avatar are recorded as the `avatar_url` string.
 

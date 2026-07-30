@@ -31,7 +31,7 @@ export function redactAgent(a) {
   // a is a normalized agent from getAgent, with `custom_env`/
   // `custom_env_fetch_failed` attached by the caller (collectAgent) — getAgent
   // itself never fetches custom_env, since it requires a separate audited call.
-  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, ...rest } = a;
+  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, instructions, ...rest } = a;
   const mcpUsable = !mcp_config_redacted && nonEmpty(mcp_config);
   const envUsable = !custom_env_fetch_failed && nonEmpty(custom_env);
   // mcp_config_redacted / custom_env_fetch_failed alone still flag hadSecrets even
@@ -39,10 +39,10 @@ export function redactAgent(a) {
   // but couldn't be captured, not just silently see an empty bundle.
   const hadSecrets = mcpUsable || envUsable || !!mcp_config_redacted || !!custom_env_fetch_failed;
   return {
-    // source_id lets import-time mention rewriting map stale `mention://agent/<id>`
-    // links (in this or another agent's/squad's instructions) to the new id.
     record: {
       ...rest,
+      // source_id lets import-time mention rewriting map stale `mention://agent/<id>`
+      // links (in this or another agent's/squad's instructions) to the new id.
       source_id: id,
       source_runtime_id: runtime_id,
       skill_names: [],
@@ -51,6 +51,9 @@ export function redactAgent(a) {
       had_secrets: hadSecrets,
     },
     hadSecrets,
+    // instructions are written to a sibling .md by the caller (see avatar_file),
+    // never embedded in the JSON record.
+    instructions: instructions ?? "",
   };
 }
 
@@ -65,7 +68,13 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads
     source_workspace_id: sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, source_id: s.source_id })),
     agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, source_id: a.source_id, source_runtime_id: a.source_runtime_id, source_runtime_provider: a.source_runtime_provider ?? null, skill_names: a.skill_names, had_secrets: !!a.had_secrets })),
-    squads: (squads ?? []).map((squad) => ({ name: squad.name, file: `squads/${slugify(squad.name)}.json`, description: squad.description ?? "", instructions: squad.instructions ?? "", avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members })),
+    squads: (squads ?? []).map((squad) => {
+      const file = `squads/${slugify(squad.name)}.json`;
+      const entry = { name: squad.name, file, description: squad.description ?? "", avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members };
+      // Instructions go to a sibling .md (see squad write loop); only referenced when non-empty.
+      if (squad.instructions) entry.instructions_file = file.replace(/\.json$/, ".md");
+      return entry;
+    }),
   };
 }
 
@@ -170,10 +179,21 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
         record.avatar_file = rel;
       }
     }
+    // Instructions live in a sibling .md for reviewability (same sibling-file
+    // pattern as avatar_file); only written when non-empty.
+    if (red.instructions) {
+      const rel = entry.file.replace(/\.json$/, ".md");
+      fs.writeFileSync(`${outDir}/${rel}`, red.instructions);
+      record.instructions_file = rel;
+    }
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
+  const squadInstrByName = new Map(squads.map((s) => [s.name, s.instructions ?? ""]));
   for (const entry of manifest.squads) {
     fs.mkdirSync(`${outDir}/squads`, { recursive: true });
+    if (entry.instructions_file) {
+      fs.writeFileSync(`${outDir}/${entry.instructions_file}`, squadInstrByName.get(entry.name) ?? "");
+    }
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(entry, null, 2));
   }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));

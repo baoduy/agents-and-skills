@@ -87,6 +87,23 @@ test("redactAgent flags hadSecrets when the audited env fetch failed, writes no 
   assert.equal(hadSecrets, true);
 });
 
+test("redactAgent returns instructions separately and strips them from the record", () => {
+  const normalized = getAgent({ json: () => AGENT_GET }, "ag_SRC1");
+  normalized.custom_env = {};
+  normalized.custom_env_fetch_failed = false;
+  const { record, instructions } = redactAgent(normalized);
+  assert.equal(instructions, "be nice", "instructions returned alongside the record");
+  assert.ok(!("instructions" in record), "instructions no longer embedded in the JSON record");
+});
+
+test("redactAgent returns empty-string instructions when the agent has none", () => {
+  const normalized = getAgent({ json: () => AGENT_GET_2 }, "ag_SRC2");
+  normalized.custom_env = {};
+  normalized.custom_env_fetch_failed = false;
+  const { instructions } = redactAgent(normalized);
+  assert.equal(instructions, "", "empty instructions normalized to \"\"");
+});
+
 test("buildManifest dedups skills/agents by name and wires by name", () => {
   const m = buildManifest({
     scope: "squad",
@@ -139,6 +156,24 @@ test("export agent writes mcp_config/custom_env to disk and warns when either is
   assert.deepEqual(warnings, ["Helper"]);          // has_custom_env true / mcp_config present → warned
   assert.equal(manifest.agents[0].source_runtime_provider, "claude", "runtime provider captured for later auto-mapping");
   assert.equal(record.source_runtime_provider, "claude");
+});
+
+test("export agent writes instructions to a sibling .md and records instructions_file", () => {
+  const fs = memFs();
+  exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/oi", sourceWorkspaceId: "ws", fs });
+  const record = JSON.parse(fs.files["/oi/agents/helper.json"]);
+  assert.equal(fs.files["/oi/agents/helper.md"], "be nice", "instructions written to agents/<slug>.md");
+  assert.equal(record.instructions_file, "agents/helper.md", "record points at the .md");
+  assert.ok(!("instructions" in record), "instructions no longer in the JSON record");
+});
+
+test("export agent with empty instructions writes no .md and no instructions_file", () => {
+  const fs = memFs();
+  exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC2" }, outDir: "/oe", sourceWorkspaceId: "ws", fs });
+  const record = JSON.parse(fs.files["/oe/agents/helper2.json"]);
+  assert.equal(fs.files["/oe/agents/helper2.md"], undefined, "no .md written for empty instructions");
+  assert.ok(!("instructions_file" in record), "no instructions_file key when empty");
+  assert.ok(!("instructions" in record), "instructions never embedded");
 });
 
 test("manifest.json never carries mcp_config/custom_env, even when the agent record does (regression: secrets must stay out of the manifest/stdout projection)", () => {
@@ -208,7 +243,11 @@ test("export squad resolves leader and member names by id and writes squad file"
   const squad = JSON.parse(fs.files["/s/squads/team.json"]);
   assert.equal(squad.leader_name, "Helper", "leader_id ag_SRC1 resolved to name");
   assert.equal(squad.avatar_url, "emoji:🦍", "squad avatar_url captured in export");
-  assert.equal(squad.instructions, "# Team charter\nShip it.", "squad instructions captured in export");
+  assert.ok(!("instructions" in squad), "squad instructions no longer embedded in the JSON");
+  assert.equal(squad.instructions_file, "squads/team.md", "squad JSON points at the .md");
+  assert.equal(fs.files["/s/squads/team.md"], "# Team charter\nShip it.", "squad instructions written to squads/<slug>.md");
+  assert.equal(manifest.squads[0].instructions_file, "squads/team.md", "manifest squad entry carries instructions_file");
+  assert.ok(!("instructions" in manifest.squads[0]), "manifest squad entry drops instructions");
   assert.deepEqual(squad.members.map((m) => m.agent_name).sort(), ["Helper", "Helper2"]);
   assert.equal(manifest.agents.length, 2, "both member agents captured");
   assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");
@@ -245,4 +284,6 @@ test("export all collects every resource and writes a shared agent exactly once"
   assert.equal(manifest.squads.length, 2, "both squads present");
   assert.ok(fs.files["/all/agents/helper2.json"], "shared agent written once");
   assert.ok(fs.files["/all/squads/a.json"] && fs.files["/all/squads/b.json"], "both squad files written");
+  assert.equal(fs.files["/all/squads/a.md"], undefined, "empty squad instructions write no .md");
+  assert.ok(!("instructions_file" in JSON.parse(fs.files["/all/squads/a.json"])), "no instructions_file for empty squad");
 });
