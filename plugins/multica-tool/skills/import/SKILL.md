@@ -13,7 +13,7 @@ Import a local Multica bundle (produced by the export skill) into a target works
 You need the exact workspace name as registered in Multica for `--workspace` in the steps below.
 
 - If the user named a target workspace, use it.
-- If the user did **not** name one, default to the **basename of the import folder** — e.g. importing from `export/mx-workspace` defaults the target workspace to `mx-workspace`. State the inferred workspace name to the user before continuing.
+- If the user did **not** name one, default to the **basename of the import folder** — e.g. importing from `export/mx-workspace` defaults the target workspace to `mx-workspace`. State the inferred workspace name to the user before continuing. This default is reliable for whole-workspace bundles (`export/<workspace-name>`); a single-resource bundle nested under `export/<workspace-name>/<slug>-<type>` has the resource slug as its basename, not the workspace — name the target workspace explicitly in that case.
 
 No existence check is needed here: the Step 2 dry-run fails with `Unknown workspace "<name>"` if the inferred workspace is not present in the target account, at which point ask the user for the correct name.
 

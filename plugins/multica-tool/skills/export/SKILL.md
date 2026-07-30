@@ -37,13 +37,7 @@ If the user specified an output directory, use it verbatim. Otherwise default to
 First resolve `<workspace-name>`:
 
 - If the user named a source workspace (the value you would pass as `--workspace <name>`), use that name.
-- Otherwise, read the current default workspace's name:
-
-```bash
-multica workspace get --output json
-```
-
-  and take its `.name`.
+- Otherwise, run `multica workspace get --output json` and take its `.name` (the current default workspace).
 
 Slugify the resolved name for filesystem safety — lowercase it, replace each run of non-`[a-z0-9]` characters with a single `-`, and trim leading/trailing `-` (the same rule the scripts use internally).
 
