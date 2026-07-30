@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest, exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2 } from "./fixtures.mjs";
+import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, SKILL_GET_2, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2 } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
@@ -340,4 +340,48 @@ test("export --scope projects records an unled project with lead_name null", () 
   const backlog = JSON.parse(fs.files["out/projects/backlog.json"]);
   assert.equal(backlog.lead_name, null);
   assert.equal(backlog.lead_type, null);
+});
+
+test("export all prunes skills no agent references", () => {
+  const fs = memFs();
+  const cli = {
+    json: (args) => {
+      const two = args.slice(0, 2).join(" ");
+      const three = args.slice(0, 3).join(" ");
+      if (two === "skill list") return [{ id: "sk_SRC1", name: "Greet" }, { id: "sk_SRC2", name: "Lonely" }];
+      if (two === "agent list") return [{ id: "ag_SRC1" }, { id: "ag_SRC2" }];
+      if (two === "squad list") return [];
+      if (two === "project list") return [];
+      if (three === "skill get sk_SRC1") return SKILL_GET;
+      if (three === "skill get sk_SRC2") return SKILL_GET_2;
+      if (three === "agent get ag_SRC1") return AGENT_GET;   // uses skill Greet
+      if (three === "agent get ag_SRC2") return AGENT_GET_2; // no skills
+      if (three === "runtime list") return RUNTIME_LIST_SRC;
+      throw new Error("unexpected " + args.join(" "));
+    },
+    run: () => "",
+  };
+  const { manifest, pruned_skills } = exportResource({ cli, scope: "all", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  // Why: an export must not ship a skill nothing uses.
+  assert.deepEqual(pruned_skills, ["Lonely"], "unreferenced skill reported as pruned");
+  assert.deepEqual(manifest.skills.map((s) => s.name), ["Greet"], "orphan absent from manifest, referenced skill kept");
+  assert.equal(fs.files["/all/skills/lonely/SKILL.md"], undefined, "orphan skill dir never written");
+  assert.ok(fs.files["/all/skills/greet/SKILL.md"], "referenced skill still written");
+});
+
+test("export --scope skill never prunes the requested skill", () => {
+  const fs = memFs();
+  const cli = {
+    json: (args) => {
+      const three = args.slice(0, 3).join(" ");
+      if (three === "skill get sk_SRC2") return SKILL_GET_2;
+      throw new Error("unexpected " + args.join(" "));
+    },
+    run: () => "",
+  };
+  const { manifest, pruned_skills } = exportResource({ cli, scope: "skill", ids: { skillId: "sk_SRC2" }, outDir: "/one", sourceWorkspaceId: "ws", fs, download: () => null });
+  // Why: the explicitly-requested skill is the target, not an orphan.
+  assert.deepEqual(pruned_skills, [], "skill scope skips the prune pass");
+  assert.deepEqual(manifest.skills.map((s) => s.name), ["Lonely"], "requested lone skill survives");
+  assert.ok(fs.files["/one/skills/lonely/SKILL.md"], "requested skill written");
 });

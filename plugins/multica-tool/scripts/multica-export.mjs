@@ -164,6 +164,19 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     for (const p of listProjects(cli)) projects.push(collectProject(cli, p.id, agentsById, skills, getProviderById()));
   }
 
+  // Orphan-skill cleanup: drop skills that no exported agent references via its
+  // skill_names. Only `all` ever produces these — standalone workspace skills
+  // from listSkills that no agent uses. Skipped for `skill` scope: its one
+  // skill is the explicit target, not an orphan.
+  const pruned_skills = [];
+  if (scope !== "skill") {
+    const referenced = new Set();
+    for (const a of agentsById.values()) for (const n of a.skill_names) referenced.add(n);
+    for (const name of [...skills.keys()]) {
+      if (!referenced.has(name)) { pruned_skills.push(name); skills.delete(name); }
+    }
+  }
+
   const manifest = buildManifest({
     scope, sourceWorkspaceId,
     skills: [...skills.values()].map((s) => ({ name: s.name, source_id: s.id })),
@@ -229,7 +242,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(projectByTitle.get(entry.title), null, 2));
   }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
-  return { manifest, warnings };
+  return { manifest, warnings, pruned_skills };
 }
 
 function main() {

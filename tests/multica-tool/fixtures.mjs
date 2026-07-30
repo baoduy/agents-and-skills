@@ -6,6 +6,11 @@ export const SKILL_GET = {
   content: "# Greet\nbody", config: { tone: "warm" },
   files: [{ path: "ref.md", content: "extra", id: "f1", skill_id: "sk_SRC1" }],
 };
+// A second skill referenced by NO agent — used to test orphan-skill pruning.
+export const SKILL_GET_2 = {
+  id: "sk_SRC2", name: "Lonely", description: "nobody uses me",
+  content: "# Lonely\nbody", config: {}, files: [],
+};
 export const AGENT_GET = {
   id: "ag_SRC1", name: "Helper", description: "helps", instructions: "be nice",
   model: "claude-sonnet-4-6", visibility: "workspace", max_concurrent_tasks: 6,
