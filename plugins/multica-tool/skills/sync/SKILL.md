@@ -16,7 +16,9 @@ Expect the user's request in the form:
 sync <type> <name> from <src-ws> to <dest-ws>
 ```
 
-Where `<type>` is `skill`, `agent`, or `squad`; `<name>` is the resource name; `<src-ws>` and `<dest-ws>` are workspace names registered in Multica.
+Where `<type>` is `skill`, `agent`, `squad`, or `project`; `<name>` is the resource name (for `project`, its **title**); `<src-ws>` and `<dest-ws>` are workspace names registered in Multica.
+
+Projects are resolved by title, not ID, e.g. `multica-sync.mjs project "<title>" from <src-ws> <dest-ws>` — the project's lead agent is synced alongside it.
 
 ## Step 2 — Run the sync (auto-mapping first)
 
@@ -47,7 +49,7 @@ The script exports to a temporary directory, imports into the destination worksp
 
 Parse the JSON output and report:
 
-- Created and updated counts for skills, agents, and squads.
+- Created and updated counts for skills, agents, squads, and projects.
 - Name-to-ID maps (`skillIdMap`, `agentIdMap`).
 - `squadIdMap`: name-to-ID map for every squad synced.
 - If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents' bundle files contained custom environment variables or MCP config in PLAINTEXT — the temporary export directory (already cleaned up) briefly held these secrets in plaintext: `<agent-name>`."
