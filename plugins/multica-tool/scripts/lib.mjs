@@ -104,3 +104,26 @@ export const getSquadMembers = (cli, id) =>
   (cli.json(["squad", "member", "list", id]) ?? []).map((m) => ({
     member_id: m.member_id, member_type: m.member_type, role: m.role || "member",
   }));
+
+export const listProjects = (cli) => cli.json(["project", "list"]);
+
+export function findByTitle(list, title) {
+  const hits = (list || []).filter((x) => x.title === title);
+  if (hits.length > 1) throw new Error(`Duplicate title "${title}" — refusing to guess`);
+  return hits[0] || null;
+}
+
+export function getProject(cli, id) {
+  const p = cli.json(["project", "get", id]);
+  return {
+    id: p.id, title: p.title, description: p.description ?? "",
+    icon: p.icon ?? null, priority: p.priority ?? "none", status: p.status ?? null,
+    due_date: p.due_date ?? null, start_date: p.start_date ?? null,
+    lead_id: p.lead_id ?? null, lead_type: p.lead_type ?? null,
+  };
+}
+
+export const getProjectResources = (cli, id) =>
+  (cli.json(["project", "resource", "list", id]) ?? []).map((r) => ({
+    resource_type: r.resource_type, resource_ref: r.resource_ref, label: r.label ?? null,
+  }));

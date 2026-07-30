@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { slugify, makeCli, requireAuth, resolveWorkspaceId, listRuntimes, findByName, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers } from "../../plugins/multica-tool/scripts/lib.mjs";
+import { getProject, getProjectResources, findByTitle } from "../../plugins/multica-tool/scripts/lib.mjs";
 import { SKILL_GET, AGENT_GET, AGENT_ENV_GET, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST } from "./fixtures.mjs";
 
 test("slugify makes filesystem-safe slugs", () => {
@@ -119,4 +120,38 @@ test("getSquad exposes leader_id; getSquadMembers normalizes member_id and empty
   const mem = getSquadMembers(cli, "sq_SRC1");
   assert.deepEqual(mem[0], { member_id: "ag_SRC1", member_type: "agent", role: "leader" });
   assert.equal(mem[1].role, "member", "empty role normalized to member");
+});
+
+test("getProject normalizes to the allow-listed fields only", () => {
+  const raw = {
+    id: "pr_SRC1", title: "Launch", description: "the launch", icon: "🚀",
+    priority: "high", status: "in_progress", due_date: null, start_date: null,
+    lead_id: "ag_SRC1", lead_type: "agent",
+    // fields that must be dropped — source-workspace state, not portable:
+    done_count: 5, issue_count: 9, resource_count: 2, workspace_id: "ws_SRC",
+    created_at: "x", updated_at: "y",
+  };
+  const cli = { json: () => raw };
+  const p = getProject(cli, "pr_SRC1");
+  assert.deepEqual(p, {
+    id: "pr_SRC1", title: "Launch", description: "the launch", icon: "🚀",
+    priority: "high", status: "in_progress", due_date: null, start_date: null,
+    lead_id: "ag_SRC1", lead_type: "agent",
+  });
+});
+
+test("getProjectResources keeps only type/ref/label", () => {
+  const cli = { json: () => [
+    { id: "r1", resource_type: "github_repo", resource_ref: { url: "https://x/repo.git" }, label: null, position: 0, workspace_id: "w" },
+  ] };
+  assert.deepEqual(getProjectResources(cli, "pr_SRC1"), [
+    { resource_type: "github_repo", resource_ref: { url: "https://x/repo.git" }, label: null },
+  ]);
+});
+
+test("findByTitle returns the match and throws on duplicates", () => {
+  const list = [{ id: "a", title: "One" }, { id: "b", title: "Two" }];
+  assert.equal(findByTitle(list, "Two").id, "b");
+  assert.equal(findByTitle(list, "None"), null);
+  assert.throws(() => findByTitle([{ title: "Dup" }, { title: "Dup" }], "Dup"), /Duplicate title/);
 });

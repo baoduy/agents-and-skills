@@ -1,5 +1,12 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle } from "./lib.mjs";
+
+// User-facing selectable types are agents/squads/projects; skills follow agents.
+export function parseInclude(raw) {
+  const set = new Set((raw ? raw.split(",") : ["agents", "squads"]).map((s) => s.trim()).filter(Boolean));
+  if (set.has("agents")) set.add("skills");
+  return set;
+}
 
 // Instructions live in a sibling .md referenced by `instructions_file` (mirrors
 // avatar_file). Legacy bundles carry no instructions_file and keep instructions
@@ -208,6 +215,7 @@ export function rewriteAgentMentions({ cli, manifest, dir, agentIdMap, sourceIdM
 export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
   const existing = listSquads(cli);
   const leaderId = agentIdMap.get(squad.leader_name);
+  if (!leaderId) return { skipped: true, created: 0, updated: 0 };
   const match = findByName(existing, squad.name);
   let id, created = 0, updated = 0;
   // Squad instructions commonly list @mentions of teammate agents by their
@@ -233,10 +241,61 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
   for (const m of squad.members) {
     if (m.agent_name === squad.leader_name) continue;
     const memberId = agentIdMap.get(m.agent_name);
-    if (present.has(memberId)) continue;
+    if (!memberId || present.has(memberId)) continue;
     cli.run(["squad", "member", "add", id, "--member-id", memberId, "--role", m.role, "--type", "agent"]);
   }
   return { newId: id, created, updated };
+}
+
+export function importProjects({ cli, manifest, dir, agentIdMap, fs = nodeFs }) {
+  const idMap = new Map();
+  let created = 0, updated = 0;
+  const priorityUnsupported = [], resourcesUnsupported = [], leadUnresolved = [];
+  const existing = listProjects(cli);
+  // Lead resolves against just-imported agents first, then destination agents.
+  let destAgentNames = null;
+  const leadResolvable = (name) =>
+    agentIdMap.has(name) || (destAgentNames ??= new Set(listAgents(cli).map((a) => a.name))).has(name);
+
+  for (const entry of manifest.projects ?? []) {
+    const rec = JSON.parse(fs.readFileSync(`${dir}/${entry.file}`, "utf8"));
+    const flags = ["--title", rec.title];
+    if (rec.description) flags.push("--description", rec.description);
+    if (rec.icon) flags.push("--icon", rec.icon);
+    if (rec.status) flags.push("--status", rec.status);
+    if (rec.due_date) flags.push("--due-date", rec.due_date);
+    if (rec.start_date) flags.push("--start-date", rec.start_date);
+    const wantsLead = rec.lead_type === "agent" && !!rec.lead_name;
+    const leadOk = wantsLead && leadResolvable(rec.lead_name);
+    if (leadOk) flags.push("--lead", rec.lead_name);
+
+    const match = findByTitle(existing, rec.title);
+    let id;
+    if (match) {
+      cli.run(["project", "update", match.id, ...flags]);
+      id = match.id; updated++;
+    } else {
+      id = JSON.parse(cli.run(["project", "create", ...flags])).id;
+      created++;
+    }
+    idMap.set(rec.title, id);
+
+    if (wantsLead && !leadOk) leadUnresolved.push(rec.title);
+    if (rec.priority && rec.priority !== "none") priorityUnsupported.push(rec.title);
+
+    // Resources: recreate github_repo only, idempotent by url.
+    const existingUrls = new Set(
+      getProjectResources(cli, id).filter((r) => r.resource_type === "github_repo").map((r) => r.resource_ref?.url).filter(Boolean),
+    );
+    for (const r of rec.resources ?? []) {
+      if (r.resource_type !== "github_repo") { resourcesUnsupported.push(`${rec.title}:${r.resource_type}`); continue; }
+      const url = r.resource_ref?.url;
+      if (!url || existingUrls.has(url)) continue;
+      cli.run(["project", "resource", "add", id, "--type", "github_repo", "--url", url, ...(r.label ? ["--label", r.label] : [])]);
+      existingUrls.add(url);
+    }
+  }
+  return { idMap, created, updated, priorityUnsupported, resourcesUnsupported, leadUnresolved };
 }
 
 export function collectSourceRuntimes(manifest) {
@@ -275,44 +334,122 @@ export function resolveRuntimeMap({ cli, manifest, runtimeMap }) {
   return { effective, unresolved };
 }
 
-export function importBundle({ cli, dir, runtimeMap, fs = nodeFs }) {
+export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
+  const inc = include ?? new Set(["skills", "agents", "squads"]);
   const manifest = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
-  const { effective, unresolved } = resolveRuntimeMap({ cli, manifest, runtimeMap });
-  if (unresolved.length) {
-    const detail = unresolved.map(({ srcId, provider, matchCount }) => provider
-      ? `${srcId} (provider "${provider}": ${matchCount} matching runtimes in destination, expected exactly 1)`
-      : `${srcId} (no provider recorded)`).join(", ");
-    throw new Error(`Unmapped runtimes: ${detail} — pass --runtime-map, aborting before any write`);
+
+  let effective = new Map();
+  if (inc.has("agents")) {
+    const r = resolveRuntimeMap({ cli, manifest, runtimeMap });
+    if (r.unresolved.length) {
+      const detail = r.unresolved.map(({ srcId, provider, matchCount }) => provider
+        ? `${srcId} (provider "${provider}": ${matchCount} matching runtimes in destination, expected exactly 1)`
+        : `${srcId} (no provider recorded)`).join(", ");
+      throw new Error(`Unmapped runtimes: ${detail} — pass --runtime-map, aborting before any write`);
+    }
+    effective = r.effective;
   }
 
-  const skillRes = importSkills({ cli, manifest, dir, fs });
-  const agentRes = importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs });
+  const skillRes = inc.has("skills")
+    ? importSkills({ cli, manifest, dir, fs })
+    : { idMap: new Map(), created: 0, updated: 0 };
+  const agentRes = inc.has("agents")
+    ? importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs })
+    : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [] };
   // Runs after every agent exists so forward-referencing mentions resolve.
-  const mentionRes = rewriteAgentMentions({ cli, manifest, dir, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap, fs });
+  const mentionRes = inc.has("agents")
+    ? rewriteAgentMentions({ cli, manifest, dir, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap, fs })
+    : { updated: 0 };
+
   const squadIdMap = new Map();
   let squadsCreated = 0, squadsUpdated = 0;
-  for (const squad of manifest.squads ?? []) {
-    squad.instructions = readInstructions(fs, dir, squad);
-    const r = importSquad({ cli, squad, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
-    squadIdMap.set(squad.name, r.newId);
-    squadsCreated += r.created;
-    squadsUpdated += r.updated;
+  const squadsSkipped = [];
+  if (inc.has("squads")) {
+    for (const squad of manifest.squads ?? []) {
+      squad.instructions = readInstructions(fs, dir, squad);
+      const r = importSquad({ cli, squad, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
+      if (r.skipped) { squadsSkipped.push(squad.name); continue; }
+      squadIdMap.set(squad.name, r.newId);
+      squadsCreated += r.created;
+      squadsUpdated += r.updated;
+    }
+  }
+
+  let projectRes = { idMap: new Map(), created: 0, updated: 0, priorityUnsupported: [], resourcesUnsupported: [], leadUnresolved: [] };
+  if (inc.has("projects")) {
+    projectRes = importProjects({ cli, manifest, dir, agentIdMap: agentRes.idMap, fs });
   }
 
   return {
-    created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated },
-    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated },
+    include: [...inc],
+    created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated, projects: projectRes.created },
+    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated, projects: projectRes.updated },
     mentionsRewritten: mentionRes.updated,
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
     squadIdMap: Object.fromEntries(squadIdMap),
+    projectIdMap: Object.fromEntries(projectRes.idMap),
     secretsReminder: (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name),
     secretsApplyFailures: agentRes.secretsApplyFailures,
     avatarApplyFailures: agentRes.avatarApplyFailures,
     avatarUnsupported: agentRes.avatarUnsupported,
     permissionApplyFailures: agentRes.permissionApplyFailures,
     permissionUnsupported: agentRes.permissionUnsupported,
+    squadsSkipped,
+    priorityUnsupported: projectRes.priorityUnsupported,
+    resourcesUnsupported: projectRes.resourcesUnsupported,
+    leadUnresolved: projectRes.leadUnresolved,
   };
+}
+
+export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
+  const inc = include ?? new Set(["skills", "agents", "squads"]);
+  const manifest = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
+  const count = (k) => (manifest[k] ?? []).length;
+  const bundle = { skills: count("skills"), agents: count("agents"), squads: count("squads"), projects: count("projects") };
+  const willImport = {
+    skills: inc.has("skills") ? bundle.skills : 0,
+    agents: inc.has("agents") ? bundle.agents : 0,
+    squads: inc.has("squads") ? bundle.squads : 0,
+    projects: inc.has("projects") ? bundle.projects : 0,
+  };
+
+  const incompatibilities = [];
+  let runtimes = { resolved: [], unresolved: [] };
+  if (inc.has("agents")) {
+    const { effective, unresolved } = resolveRuntimeMap({ cli, manifest, runtimeMap });
+    runtimes = {
+      resolved: [...effective.entries()].map(([s, d]) => `${s}=${d}`),
+      unresolved: unresolved.map((u) => u.srcId),
+    };
+    for (const u of unresolved) {
+      incompatibilities.push({ type: "unmapped-runtime", detail: u.provider
+        ? `${u.srcId} (provider "${u.provider}": ${u.matchCount} matches, expected 1)`
+        : `${u.srcId} (no provider recorded)` });
+    }
+  }
+
+  if (inc.has("projects")) {
+    const bundleAgentNames = new Set((manifest.agents ?? []).map((a) => a.name));
+    for (const entry of manifest.projects ?? []) {
+      const rec = JSON.parse(fs.readFileSync(`${dir}/${entry.file}`, "utf8"));
+      if (rec.priority && rec.priority !== "none") {
+        incompatibilities.push({ type: "priority-not-settable", detail: `${rec.title} (priority "${rec.priority}")` });
+      }
+      for (const r of rec.resources ?? []) {
+        if (r.resource_type !== "github_repo") {
+          incompatibilities.push({ type: "resource-not-portable", detail: `${rec.title} (${r.resource_type})` });
+        }
+      }
+      const leadAvailable = inc.has("agents") && bundleAgentNames.has(rec.lead_name);
+      if (rec.lead_type === "agent" && rec.lead_name && !leadAvailable) {
+        incompatibilities.push({ type: "lead-agent-missing", detail: `${rec.title} → ${rec.lead_name} (ensure this agent exists in the destination)` });
+      }
+    }
+  }
+
+  const secretsReminder = (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name);
+  return { bundle, willImport, runtimes, incompatibilities, secretsReminder };
 }
 
 function parseRuntimeMap(raw) {
@@ -334,9 +471,11 @@ function main() {
   const dir       = get("--dir");
   const workspace = get("--workspace");
   const rawMap    = get("--runtime-map");
+  const rawInclude = get("--include");
+  const dryRun    = args.includes("--dry-run");
 
   if (!dir || !workspace) {
-    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>]");
+    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>] [--include <csv>] [--dry-run]");
     process.exit(1);
   }
 
@@ -345,8 +484,13 @@ function main() {
   const wsId      = resolveWorkspaceId(resolver, workspace);
   const cli       = makeCli(realExec, { workspaceId: wsId });
   const runtimeMap = parseRuntimeMap(rawMap);
+  const include = parseInclude(rawInclude);
 
-  const result = importBundle({ cli, dir, runtimeMap, fs: nodeFs });
+  if (dryRun) {
+    console.log(JSON.stringify(preflight({ cli, dir, runtimeMap, include, fs: nodeFs }), null, 2));
+    return;
+  }
+  const result = importBundle({ cli, dir, runtimeMap, include, fs: nodeFs });
   console.log(JSON.stringify(result, null, 2));
 }
 

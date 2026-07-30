@@ -12,14 +12,36 @@ Import a local Multica bundle (produced by the export skill) into a target works
 
 Ask the user to confirm the name of the target workspace if not already stated. You will need the exact workspace name as registered in Multica.
 
-## Step 2 — Run the import (auto-mapping first)
+## Step 2 — Pre-flight (dry run)
 
-Each exported agent record carries its source runtime's `provider` (e.g. `claude`, `opencode`) alongside its ID. The import script auto-maps a source runtime to the target workspace's runtime when there is **exactly one** runtime of that provider there — no manual mapping needed in the common case. Try the import without `--runtime-map` first:
+Before writing anything, run the import script with `--dry-run` to preview the bundle. Preview against the **full** set (`--include agents,squads,projects`) regardless of what the user ultimately chooses to import — incompatibilities for a type (e.g. project caveats) are only computed when that type is included, so previewing everything up front is what lets the user see a project's cost before deciding whether to opt it in:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
   --dir <folder> \
-  --workspace <workspace-name>
+  --workspace <workspace-name> \
+  --include agents,squads,projects \
+  [--runtime-map <srcId1=dstId1,srcId2=dstId2,...>] \
+  --dry-run
+```
+
+Present the `bundle` and `willImport` counts, and every entry in `incompatibilities`, to the user.
+
+## Step 3 — Select which types to import
+
+Ask the user which of `agents`, `squads`, `projects` they want to import. **Default is `agents,squads`** — `projects` requires explicit opt-in.
+
+If the pre-flight's `incompatibilities` list contains an `unmapped-runtime` entry, tell the user it must be resolved with `--runtime-map` before the real import — the import **aborts** otherwise (see Step 4 below). Other incompatibility kinds are informational only and applied best-effort, fixed up afterward in the Multica UI: `priority-not-settable` (priority isn't settable via the CLI, so it never round-trips), `resource-not-portable` (only `github_repo` resources are portable — other resource kinds are dropped), and `lead-agent-missing` (a non-agent lead isn't re-applied to the imported project).
+
+## Step 4 — Run the import (auto-mapping first)
+
+Each exported agent record carries its source runtime's `provider` (e.g. `claude`, `opencode`) alongside its ID. The import script auto-maps a source runtime to the target workspace's runtime when there is **exactly one** runtime of that provider there — no manual mapping needed in the common case. Try the import without `--runtime-map` first, passing the selected types from Step 3 via `--include`:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
+  --dir <folder> \
+  --workspace <workspace-name> \
+  --include <agents,squads,projects>
 ```
 
 If it aborts with `Unmapped runtimes: ...` (0 or 2+ runtimes share that provider in the target workspace, or the bundle predates provider capture), resolve manually:
@@ -35,6 +57,7 @@ Ask the user to pick a matching target runtime by name or ID for each unmapped `
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
   --dir <folder> \
   --workspace <workspace-name> \
+  --include <agents,squads,projects> \
   --runtime-map <srcId1=dstId1,srcId2=dstId2,...>
 ```
 
@@ -44,14 +67,15 @@ Instructions are read back from each resource's sibling `.md` (`agents/<slug>.md
 
 Avatars are restored automatically, but **only when the target resource has none** — an existing agent or squad that already carries an avatar is never overwritten. New agents get their bundled image re-uploaded; new squads get their `avatar_url` (emoji or URL) set. An agent whose source avatar was an emoji can't be restored (the CLI has no emoji setter for agents) and is reported as unsupported.
 
-## Step 3 — Report results
+## Step 5 — Report results
 
 Parse the JSON output and report:
 
-- Created and updated counts for skills, agents, and squads.
+- Created and updated counts for skills, agents, squads, and projects (`created.projects`/`updated.projects`).
 - Name-to-ID maps for skills and agents (`skillIdMap`, `agentIdMap`).
 - `squadIdMap`: name-to-ID map for every squad imported.
 - `mentionsRewritten`: how many agents had an agent-mention link rewritten to its new id.
+- If `leadUnresolved`, `priorityUnsupported`, `resourcesUnsupported`, or `squadsSkipped` is non-empty, surface each entry verbatim as an "applied best-effort; adjust in the UI" note — e.g. "NOTE: applied best-effort; adjust in the UI — `<entry>`."
 - If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents' bundle files contained custom environment variables or MCP config in PLAINTEXT — the source export directory should be treated as sensitive: `<agent-name>`."
 - If `secretsApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: mcp_config or custom_env failed to apply to the following agents during import (the agent itself was still created/updated) — set them manually in the Multica UI: `<agent-name>`."
 - If `avatarApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: the avatar image failed to upload for the following agents — set it manually in the Multica UI: `<agent-name>`."

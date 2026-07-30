@@ -1,13 +1,18 @@
 import * as nodeFs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { makeCli, resolveWorkspaceId, findByName, listSkills, listAgents, listSquads, realExec, requireAuth } from "./lib.mjs";
+import { makeCli, resolveWorkspaceId, findByName, findByTitle, listSkills, listAgents, listSquads, listProjects, realExec, requireAuth } from "./lib.mjs";
 import { exportResource } from "./multica-export.mjs";
 import { importBundle } from "./multica-import.mjs";
 
 export function resolveScopeId(cli, type, name) {
+  if (type === "project") {
+    const match = findByTitle(listProjects(cli), name);
+    if (!match) throw new Error(`Unknown project "${name}" in source workspace`);
+    return { scope: "project", ids: { projectId: match.id } };
+  }
   const lists = { skill: listSkills, agent: listAgents, squad: listSquads };
-  if (!lists[type]) throw new Error(`Unknown type "${type}" (skill|agent|squad)`);
+  if (!lists[type]) throw new Error(`Unknown type "${type}" (skill|agent|squad|project)`);
   const match = findByName(lists[type](cli), name);
   if (!match) throw new Error(`Unknown ${type} "${name}" in source workspace`);
   const key = { skill: "skillId", agent: "agentId", squad: "squadId" }[type];
@@ -23,7 +28,10 @@ export function sync({ exec, type, name, srcWsName, destWsName, tmpDir, runtimeM
 
   const { scope, ids } = resolveScopeId(srcCli, type, name);
   exportResource({ cli: srcCli, scope, ids, outDir: tmpDir, sourceWorkspaceId: srcId, fs });
-  return importBundle({ cli: destCli, dir: tmpDir, runtimeMap, fs });
+  const includeByType = { skill: ["skills"], agent: ["agents"], squad: ["agents", "squads"], project: ["agents", "projects"] };
+  const include = new Set(includeByType[type] ?? ["agents", "squads"]);
+  if (include.has("agents")) include.add("skills");
+  return importBundle({ cli: destCli, dir: tmpDir, runtimeMap, include, fs });
 }
 
 function parseRuntimeMap(raw) {

@@ -10,17 +10,17 @@ Export a Multica resource (skill, agent, or squad) to a local bundle directory.
 
 ## Step 1 — Verify authentication
 
-Run the export script; it calls `multica auth status` internally and exits with an error message if unauthenticated:
+Run `multica auth status` directly. The export script performs this same check internally before doing any work (via `requireAuth` in `scripts/lib.mjs`), but only after `--scope`/`--out` are supplied — so checking it here up front avoids masking an auth failure behind a later usage error:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" --help 2>&1 || true
+multica auth status 2>&1 || true
 ```
 
 If `multica login` is required, surface that message verbatim and stop.
 
 ## Step 2 — Determine scope and resource ID
 
-If the user named a specific resource and type (`skill`, `agent`, or `squad`), use those directly.
+If the user named a specific resource and type (`skill`, `agent`, `squad`, or `project`), use those directly.
 
 Otherwise, list available resources for the chosen type and present a pick list:
 
@@ -44,13 +44,17 @@ where `<slug>` is a lowercased, hyphenated form of the resource name.
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" \
-  --scope <type|all> \
+  --scope <skill|agent|squad|project|projects|all> \
   --id <id> \
   --out <dir> \
   [--workspace <workspace-name>]
 ```
 
-Pass `--scope all` (with no `--id`) to export the **entire workspace** — every skill, agent, and squad — into one flat, deduped bundle. A skill or agent shared across many agents/squads is written exactly once and referenced by name.
+`--id` is required for `skill`, `agent`, `squad`, and `project` (a single named resource); it is **not needed** for `projects` (every project in the workspace) or `all` (the entire workspace).
+
+Pass `--scope all` (with no `--id`) to export the **entire workspace** — every skill, agent, squad, and project — into one flat, deduped bundle. A skill or agent shared across many agents/squads is written exactly once and referenced by name.
+
+Exporting a project (or `projects`/`all`) also **bundles the project's lead agent** so the bundle is self-contained; projects carry metadata only (title, description, icon, priority, status, dates, lead mapping) plus their attached resource records — never issues. On import, only `github_repo` resources are portable and recreated; other resource types are reported and skipped.
 
 The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Each agent's and squad's **instructions** (system prompt / charter) are written to a sibling Markdown file — `agents/<slug>.md`, `squads/<slug>.md` — referenced by an `instructions_file` key in the JSON, so the prose is easy to read, diff, and edit. Agents/squads with no instructions get no `.md`.
 
@@ -61,5 +65,6 @@ Avatars are captured automatically: an agent's uploaded-image avatar is download
 Parse the JSON output from the script and report:
 
 - Directory written to.
-- Count of skills, agents, and squads exported.
+- Count of skills, agents, squads, and projects exported.
+- If `pruned_skills` is non-empty, note it: "Pruned N orphan skill(s) not linked to any agent: `<name>`, …" (these are standalone workspace skills that no exported agent references — only `--scope all` produces them).
 - If `warnings` is non-empty, surface every agent name verbatim with this message: "WARNING: the following agents' exported files contain custom environment variables or MCP config in PLAINTEXT — treat the export directory as sensitive (avoid committing it to a public repo, restrict file permissions, delete it once the import is done): `<agent-name>`."

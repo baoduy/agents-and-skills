@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest, exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET } from "./fixtures.mjs";
+import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, SKILL_GET_2, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2 } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
@@ -264,6 +264,7 @@ test("export all collects every resource and writes a shared agent exactly once"
       if (two === "skill list") return [{ id: "sk_SRC1", name: "Greet" }];
       if (two === "agent list") return [{ id: "ag_SRC1" }, { id: "ag_SRC2" }];
       if (two === "squad list") return [{ id: "sq_A", name: "A" }, { id: "sq_B", name: "B" }];
+      if (two === "project list") return [];
       if (three === "skill get sk_SRC1") return SKILL_GET;
       if (three === "agent get ag_SRC1") return AGENT_GET;
       if (three === "agent get ag_SRC2") return AGENT_GET_2;
@@ -286,4 +287,101 @@ test("export all collects every resource and writes a shared agent exactly once"
   assert.ok(fs.files["/all/squads/a.json"] && fs.files["/all/squads/b.json"], "both squad files written");
   assert.equal(fs.files["/all/squads/a.md"], undefined, "empty squad instructions write no .md");
   assert.ok(!("instructions_file" in JSON.parse(fs.files["/all/squads/a.json"])), "no instructions_file for empty squad");
+});
+
+// fakeCli variant that also answers project + runtime/agent calls.
+function projectCli() {
+  return {
+    json: (args) => {
+      const key = args.slice(0, 4).join(" ");
+      const k3 = args.slice(0, 3).join(" ");
+      if (k3 === "project list") return PROJECT_LIST;
+      if (k3 === "project get pr_SRC1") return PROJECT_GET_1;
+      if (k3 === "project get pr_SRC2") return PROJECT_GET_2;
+      if (key === "project resource list pr_SRC1") return PROJECT_RESOURCES_1;
+      if (key === "project resource list pr_SRC2") return PROJECT_RESOURCES_2;
+      if (k3 === "agent get ag_SRC1") return AGENT_GET;
+      if (k3 === "skill get sk_SRC1") return SKILL_GET;
+      if (k3 === "runtime list") return RUNTIME_LIST_SRC;
+      throw new Error("unexpected " + args.join(" "));
+    },
+    run: () => "",
+  };
+}
+
+test("export --scope project bundles the lead agent and writes the project record", () => {
+  const fs = memFs();
+  const { manifest } = exportResource({
+    cli: projectCli(), scope: "project", ids: { projectId: "pr_SRC1" },
+    outDir: "out", sourceWorkspaceId: "ws_SRC", fs, download: () => null,
+  });
+  // lead agent bundled (decision A)
+  assert.ok(manifest.agents.some((a) => a.name === "Helper"), "lead agent bundled");
+  // project manifest entry + file
+  const entry = manifest.projects.find((p) => p.title === "Launch");
+  assert.equal(entry.file, "projects/launch.json");
+  assert.equal(entry.lead_name, "Helper");
+  assert.equal(entry.lead_type, "agent");
+  const rec = JSON.parse(fs.files["out/projects/launch.json"]);
+  assert.equal(rec.title, "Launch");
+  assert.equal(rec.lead_name, "Helper");
+  assert.equal(rec.lead_source_id, "ag_SRC1");
+  assert.equal(rec.priority, "high");
+  assert.equal(rec.resources.length, 2, "both resources recorded (portability decided at import)");
+});
+
+test("export --scope projects records an unled project with lead_name null", () => {
+  const fs = memFs();
+  const { manifest } = exportResource({
+    cli: projectCli(), scope: "projects", ids: {},
+    outDir: "out", sourceWorkspaceId: "ws_SRC", fs, download: () => null,
+  });
+  assert.equal(manifest.projects.length, 2);
+  const backlog = JSON.parse(fs.files["out/projects/backlog.json"]);
+  assert.equal(backlog.lead_name, null);
+  assert.equal(backlog.lead_type, null);
+});
+
+test("export all prunes skills no agent references", () => {
+  const fs = memFs();
+  const cli = {
+    json: (args) => {
+      const two = args.slice(0, 2).join(" ");
+      const three = args.slice(0, 3).join(" ");
+      if (two === "skill list") return [{ id: "sk_SRC1", name: "Greet" }, { id: "sk_SRC2", name: "Lonely" }];
+      if (two === "agent list") return [{ id: "ag_SRC1" }, { id: "ag_SRC2" }];
+      if (two === "squad list") return [];
+      if (two === "project list") return [];
+      if (three === "skill get sk_SRC1") return SKILL_GET;
+      if (three === "skill get sk_SRC2") return SKILL_GET_2;
+      if (three === "agent get ag_SRC1") return AGENT_GET;   // uses skill Greet
+      if (three === "agent get ag_SRC2") return AGENT_GET_2; // no skills
+      if (three === "runtime list") return RUNTIME_LIST_SRC;
+      throw new Error("unexpected " + args.join(" "));
+    },
+    run: () => "",
+  };
+  const { manifest, pruned_skills } = exportResource({ cli, scope: "all", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  // Why: an export must not ship a skill nothing uses.
+  assert.deepEqual(pruned_skills, ["Lonely"], "unreferenced skill reported as pruned");
+  assert.deepEqual(manifest.skills.map((s) => s.name), ["Greet"], "orphan absent from manifest, referenced skill kept");
+  assert.equal(fs.files["/all/skills/lonely/SKILL.md"], undefined, "orphan skill dir never written");
+  assert.ok(fs.files["/all/skills/greet/SKILL.md"], "referenced skill still written");
+});
+
+test("export --scope skill never prunes the requested skill", () => {
+  const fs = memFs();
+  const cli = {
+    json: (args) => {
+      const three = args.slice(0, 3).join(" ");
+      if (three === "skill get sk_SRC2") return SKILL_GET_2;
+      throw new Error("unexpected " + args.join(" "));
+    },
+    run: () => "",
+  };
+  const { manifest, pruned_skills } = exportResource({ cli, scope: "skill", ids: { skillId: "sk_SRC2" }, outDir: "/one", sourceWorkspaceId: "ws", fs, download: () => null });
+  // Why: the explicitly-requested skill is the target, not an orphan.
+  assert.deepEqual(pruned_skills, [], "skill scope skips the prune pass");
+  assert.deepEqual(manifest.skills.map((s) => s.name), ["Lonely"], "requested lone skill survives");
+  assert.ok(fs.files["/one/skills/lonely/SKILL.md"], "requested skill written");
 });
