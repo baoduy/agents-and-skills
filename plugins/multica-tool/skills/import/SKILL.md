@@ -8,9 +8,14 @@ allowed-tools: Bash, Read
 
 Import a local Multica bundle (produced by the export skill) into a target workspace.
 
-## Step 1 — Confirm the target workspace
+## Step 1 — Determine the target workspace
 
-Ask the user to confirm the name of the target workspace if not already stated. You will need the exact workspace name as registered in Multica.
+You need the exact workspace name as registered in Multica for `--workspace` in the steps below.
+
+- If the user named a target workspace, use it.
+- If the user did **not** name one, default to the **basename of the import folder** — e.g. importing from `export/mx-workspace` defaults the target workspace to `mx-workspace`. State the inferred workspace name to the user before continuing.
+
+No existence check is needed here: the Step 2 dry-run fails with `Unknown workspace "<name>"` if the inferred workspace is not present in the target account, at which point ask the user for the correct name.
 
 ## Step 2 — Pre-flight (dry run)
 
