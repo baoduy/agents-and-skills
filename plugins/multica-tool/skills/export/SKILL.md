@@ -32,13 +32,27 @@ Ask the user to select a resource by name. Resolve its `id` from the list output
 
 ## Step 3 — Determine output directory
 
-If the user specified an output directory, use it. Otherwise default to:
+If the user specified an output directory, use it verbatim. Otherwise default to a workspace-rooted path.
 
-```
-./multica-export-<slug>-<type>
+First resolve `<workspace-name>`:
+
+- If the user named a source workspace (the value you would pass as `--workspace <name>`), use that name.
+- Otherwise, read the current default workspace's name:
+
+```bash
+multica workspace get --output json
 ```
 
-where `<slug>` is a lowercased, hyphenated form of the resource name.
+  and take its `.name`.
+
+Slugify the resolved name for filesystem safety — lowercase it, replace each run of non-`[a-z0-9]` characters with a single `-`, and trim leading/trailing `-` (the same rule the scripts use internally).
+
+Then construct the default directory by scope:
+
+- `all` or `projects` (whole workspace) → `export/<workspace-name>`
+- a single resource (`skill`, `agent`, `squad`, or `project`) → `export/<workspace-name>/<slug>-<type>`, where `<slug>` is the slugified resource name and `<type>` is the resource type.
+
+Examples: `export all from mx-workspace` → `export/mx-workspace`; `export skill "Foo Bar" from mx-workspace` → `export/mx-workspace/foo-bar-skill`.
 
 ## Step 4 — Run the export
 
