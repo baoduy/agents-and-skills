@@ -1,7 +1,7 @@
 import * as nodeFs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listSquads, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listSquads, listProjects, getProject, getProjectResources, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
@@ -57,11 +57,13 @@ export function redactAgent(a) {
   };
 }
 
-export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads }) {
+export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads, projects }) {
   const seenSkills = new Map();
   for (const s of skills) if (!seenSkills.has(s.name)) seenSkills.set(s.name, s);
   const seenAgents = new Map();
   for (const a of agents) if (!seenAgents.has(a.name)) seenAgents.set(a.name, a);
+  const seenProjects = new Map();
+  for (const p of projects ?? []) if (!seenProjects.has(p.title)) seenProjects.set(p.title, p);
   return {
     version: "1",
     scope,
@@ -75,6 +77,10 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads
       if (squad.instructions) entry.instructions_file = file.replace(/\.json$/, ".md");
       return entry;
     }),
+    projects: [...seenProjects.values()].map((p) => ({
+      title: p.title, file: `projects/${slugify(p.title)}.json`,
+      source_id: p.source_id, lead_name: p.lead_name ?? null, lead_type: p.lead_type ?? null,
+    })),
   };
 }
 
@@ -106,10 +112,27 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
   return entry;
 }
 
+// Collect a project's portable metadata + its lead agent (bundled, like a squad
+// leader) and github_repo/other resources. Returns the project bundle record.
+function collectProject(cli, id, agentsById, skills, providerById) {
+  const p = getProject(cli, id);
+  let lead_name = null;
+  if (p.lead_type === "agent" && p.lead_id) {
+    lead_name = collectAgent(cli, p.lead_id, agentsById, skills, providerById).raw.name;
+  }
+  return {
+    title: p.title, description: p.description, icon: p.icon,
+    priority: p.priority, status: p.status, due_date: p.due_date, start_date: p.start_date,
+    source_id: id, lead_type: p.lead_type, lead_name, lead_source_id: p.lead_id,
+    resources: getProjectResources(cli, id),
+  };
+}
+
 export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs, download = fetchBinary }) {
   const skills = new Map();       // name -> normalized skill
   const agentsById = new Map();   // id   -> { raw, red, skill_names }
   const squads = [];
+  const projects = [];
   // Lazy + memoized: only fetched when an agent is actually collected (skips
   // the extra CLI call on skill-only exports).
   let providerById = null;
@@ -132,10 +155,13 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   if (scope === "skill") collectSkill(cli, ids.skillId, skills);
   else if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
   else if (scope === "squad") squads.push(collectOneSquad(ids.squadId));
+  else if (scope === "project") projects.push(collectProject(cli, ids.projectId, agentsById, skills, getProviderById()));
+  else if (scope === "projects") for (const p of listProjects(cli)) projects.push(collectProject(cli, p.id, agentsById, skills, getProviderById()));
   else if (scope === "all") {
     for (const s of listSkills(cli)) collectSkill(cli, s.id, skills);
     for (const a of listAgents(cli)) collectAgent(cli, a.id, agentsById, skills, getProviderById());
     for (const sq of listSquads(cli)) squads.push(collectOneSquad(sq.id));
+    for (const p of listProjects(cli)) projects.push(collectProject(cli, p.id, agentsById, skills, getProviderById()));
   }
 
   const manifest = buildManifest({
@@ -143,6 +169,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     skills: [...skills.values()].map((s) => ({ name: s.name, source_id: s.id })),
     agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, source_id: a.raw.id, source_runtime_id: a.raw.runtime_id, source_runtime_provider: a.raw.source_runtime_provider, skill_names: a.skill_names, had_secrets: a.red.hadSecrets })),
     squads,
+    projects,
   });
 
   const warnings = [];
@@ -196,6 +223,11 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     }
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(entry, null, 2));
   }
+  const projectByTitle = new Map(projects.map((p) => [p.title, p]));
+  for (const entry of manifest.projects) {
+    fs.mkdirSync(`${outDir}/projects`, { recursive: true });
+    fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(projectByTitle.get(entry.title), null, 2));
+  }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
   return { manifest, warnings };
 }
@@ -209,8 +241,8 @@ function main() {
   const out       = get("--out");
   const workspace = get("--workspace"); // optional: source workspace name
 
-  if (!scope || !out || (scope !== "all" && !id)) {
-    console.error("Usage: multica-export.mjs --scope <skill|agent|squad|all> --id <id> --out <dir> [--workspace <name>]  (--id not needed for --scope all)");
+  if (!scope || !out || (scope !== "all" && scope !== "projects" && !id)) {
+    console.error("Usage: multica-export.mjs --scope <skill|agent|squad|project|projects|all> --id <id> --out <dir> [--workspace <name>]  (--id not needed for --scope all|projects)");
     process.exit(1);
   }
 
@@ -225,8 +257,10 @@ function main() {
   if (scope === "skill")       ids.skillId  = id;
   else if (scope === "agent")  ids.agentId  = id;
   else if (scope === "squad")  ids.squadId  = id;
+  else if (scope === "project")  ids.projectId = id;
+  else if (scope === "projects") { /* all projects — no id */ }
   else if (scope === "all")    { /* whole workspace — no id */ }
-  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad|all`); process.exit(1); }
+  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad|project|projects|all`); process.exit(1); }
 
   const result = exportResource({ cli, scope, ids, outDir: out, sourceWorkspaceId, fs: nodeFs });
   console.log(JSON.stringify(result, null, 2));

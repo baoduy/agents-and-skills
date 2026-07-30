@@ -62,3 +62,25 @@ export const RUNTIME_LIST_DEST_AMBIGUOUS = [
 ];
 // Raw `agent env get` response — the audited, owner/admin-only command.
 export const AGENT_ENV_GET = { agent_id: "ag_SRC1", custom_env: { API_KEY: "secret-value" } };
+
+// Two projects: one agent-led with mixed resources + non-none priority,
+// one unled with no resources. Lead ag_SRC1 = "Helper" (AGENT_GET).
+export const PROJECT_LIST = [
+  { id: "pr_SRC1", title: "Launch", lead_id: "ag_SRC1", lead_type: "agent", priority: "high" },
+  { id: "pr_SRC2", title: "Backlog", lead_id: null, lead_type: null, priority: "none" },
+];
+export const PROJECT_GET_1 = {
+  id: "pr_SRC1", title: "Launch", description: "the launch", icon: "🚀",
+  priority: "high", status: "in_progress", due_date: null, start_date: null,
+  lead_id: "ag_SRC1", lead_type: "agent",
+};
+export const PROJECT_GET_2 = {
+  id: "pr_SRC2", title: "Backlog", description: "", icon: null,
+  priority: "none", status: "planned", due_date: null, start_date: null,
+  lead_id: null, lead_type: null,
+};
+export const PROJECT_RESOURCES_1 = [
+  { resource_type: "github_repo", resource_ref: { url: "https://github.com/x/repo.git" }, label: null, position: 0 },
+  { resource_type: "local_directory", resource_ref: { path: "/x", daemon_id: "d1" }, label: "local", position: 1 },
+];
+export const PROJECT_RESOURCES_2 = [];
