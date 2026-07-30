@@ -188,7 +188,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
       subscriber_names, had_webhook_trigger: ap.triggers.some((t) => t.kind === "webhook"),
       triggers: ap.triggers.map((t) => t.kind === "webhook"
         ? { kind: "webhook", label: t.label, enabled: t.enabled }
-        : { kind: "schedule", label: t.label, enabled: t.enabled, cron_expression: t.cron_expression, timezone: t.timezone }),
+        : { kind: t.kind, label: t.label, enabled: t.enabled, cron_expression: t.cron_expression, timezone: t.timezone }),
     };
   }
 
