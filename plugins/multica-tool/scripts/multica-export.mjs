@@ -1,7 +1,7 @@
 import * as nodeFs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, getAutopilot, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listAgentsIncludingArchived, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, getAutopilot, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
@@ -31,7 +31,7 @@ export function redactAgent(a) {
   // a is a normalized agent from getAgent, with `custom_env`/
   // `custom_env_fetch_failed` attached by the caller (collectAgent) — getAgent
   // itself never fetches custom_env, since it requires a separate audited call.
-  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, instructions, ...rest } = a;
+  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, instructions, archived_at, ...rest } = a;
   const mcpUsable = !mcp_config_redacted && nonEmpty(mcp_config);
   const envUsable = !custom_env_fetch_failed && nonEmpty(custom_env);
   // mcp_config_redacted / custom_env_fetch_failed alone still flag hadSecrets even
@@ -96,10 +96,15 @@ function collectSkill(cli, id, skills) {
 }
 
 // Keyed by agent id (so squad leader_id/member_id resolve to names). Stores the
-// normalized agent, its redaction result, and its skill names.
+// normalized agent, its redaction result, and its skill names. Returns
+// `{ archived: true, name }` instead of collecting when the agent is archived —
+// callers reached via a squad/project/explicit id lookup must decide how to
+// handle that (the workspace-listing loop never hits this: listAgents() already
+// excludes archived agents server-side).
 function collectAgent(cli, id, agentsById, skills, providerById) {
   if (agentsById.has(id)) return agentsById.get(id);
   const a = getAgent(cli, id);
+  if (a.archived_at) return { archived: true, name: a.name };
   a.source_runtime_provider = providerById.get(a.runtime_id) ?? null;
   a.custom_env = {};
   a.custom_env_fetch_failed = false;
@@ -117,22 +122,6 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
   return entry;
 }
 
-// Collect a project's portable metadata + its lead agent (bundled, like a squad
-// leader) and github_repo/other resources. Returns the project bundle record.
-function collectProject(cli, id, agentsById, skills, providerById) {
-  const p = getProject(cli, id);
-  let lead_name = null;
-  if (p.lead_type === "agent" && p.lead_id) {
-    lead_name = collectAgent(cli, p.lead_id, agentsById, skills, providerById).raw.name;
-  }
-  return {
-    title: p.title, description: p.description, icon: p.icon,
-    priority: p.priority, status: p.status, due_date: p.due_date, start_date: p.start_date,
-    source_id: id, lead_type: p.lead_type, lead_name, lead_source_id: p.lead_id,
-    resources: getProjectResources(cli, id),
-  };
-}
-
 export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs, download = fetchBinary }) {
   const skills = new Map();       // name -> normalized skill
   const agentsById = new Map();   // id   -> { raw, red, skill_names }
@@ -144,17 +133,63 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   let providerById = null;
   const getProviderById = () => providerById ??= new Map(listRuntimes(cli).map((r) => [r.id, r.provider]));
 
-  // Collect a squad's agents (leader + members) and return the squad bundle object.
+  // Archived agents skipped anywhere below, deduped by (name, path, detail) —
+  // the operator-facing "why isn't X in my bundle" report.
+  const archivedAgentsSkipped = [];
+  const seenArchivedSkip = new Set();
+  function recordArchivedSkip(name, path, detail) {
+    const key = [name, path, detail ?? ""].join("|");
+    if (seenArchivedSkip.has(key)) return;
+    seenArchivedSkip.add(key);
+    archivedAgentsSkipped.push(detail ? { name, path, detail } : { name, path });
+  }
+
+  // Collect a squad's agents (leader + members) and return the squad bundle
+  // object — or null when the leader is archived, since a squad can't import
+  // without one (the whole squad is excluded from the bundle, not emitted leaderless).
   function collectOneSquad(squadId) {
     const sq = getSquad(cli, squadId);
-    const members = getSquadMembers(cli, squadId).filter((m) => m.member_type === "agent");
-    for (const m of members) collectAgent(cli, m.member_id, agentsById, skills, getProviderById());
-    if (!agentsById.has(sq.leader_id)) collectAgent(cli, sq.leader_id, agentsById, skills, getProviderById());
+    const leaderEntry = collectAgent(cli, sq.leader_id, agentsById, skills, getProviderById());
+    if (leaderEntry.archived) {
+      recordArchivedSkip(leaderEntry.name, "squad leader", sq.name);
+      return null;
+    }
+    const allMembers = getSquadMembers(cli, squadId).filter((m) => m.member_type === "agent");
+    const members = [];
+    for (const m of allMembers) {
+      const entry = collectAgent(cli, m.member_id, agentsById, skills, getProviderById());
+      if (entry.archived) { recordArchivedSkip(entry.name, "squad member", sq.name); continue; }
+      members.push(m);
+    }
     const nameOf = (id) => agentsById.get(id)?.raw.name;
     return {
       name: sq.name, description: sq.description, instructions: sq.instructions, avatar_url: sq.avatar_url,
       leader_name: nameOf(sq.leader_id),
       members: members.map((m) => ({ agent_name: nameOf(m.member_id), role: m.role })),
+    };
+  }
+
+  // Collect a project's portable metadata + its lead agent (bundled, like a
+  // squad leader) and github_repo/other resources. An archived lead is dropped
+  // (project still exports, just with no lead set) — unlike a squad, a project
+  // has no hard requirement for one.
+  function collectProject(id) {
+    const p = getProject(cli, id);
+    let lead_name = null, lead_type = p.lead_type, lead_source_id = p.lead_id;
+    if (p.lead_type === "agent" && p.lead_id) {
+      const entry = collectAgent(cli, p.lead_id, agentsById, skills, getProviderById());
+      if (entry.archived) {
+        recordArchivedSkip(entry.name, "project lead", p.title);
+        lead_type = null; lead_source_id = null;
+      } else {
+        lead_name = entry.raw.name;
+      }
+    }
+    return {
+      title: p.title, description: p.description, icon: p.icon,
+      priority: p.priority, status: p.status, due_date: p.due_date, start_date: p.start_date,
+      source_id: id, lead_type, lead_name, lead_source_id,
+      resources: getProjectResources(cli, id),
     };
   }
 
@@ -166,11 +201,11 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     const ap = getAutopilot(cli, autopilotId);
     let assignee_name = null;
     if (ap.assignee_type === "agent") {
-      assignee_name = collectAgent(cli, ap.assignee_id, agentsById, skills, getProviderById()).raw.name;
+      const entry = collectAgent(cli, ap.assignee_id, agentsById, skills, getProviderById());
+      assignee_name = entry.archived ? null : entry.raw.name;
     } else if (ap.assignee_type === "squad") {
       const sq = collectOneSquad(ap.assignee_id);
-      squads.push(sq);
-      assignee_name = sq.name;
+      if (sq) { squads.push(sq); assignee_name = sq.name; }
     }
     let project_title = null;
     if (ap.project_id) {
@@ -193,16 +228,24 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   }
 
   if (scope === "skill") collectSkill(cli, ids.skillId, skills);
-  else if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
-  else if (scope === "squad") squads.push(collectOneSquad(ids.squadId));
-  else if (scope === "project") projects.push(collectProject(cli, ids.projectId, agentsById, skills, getProviderById()));
-  else if (scope === "projects") for (const p of listProjects(cli)) projects.push(collectProject(cli, p.id, agentsById, skills, getProviderById()));
+  else if (scope === "agent") {
+    const entry = collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
+    if (entry.archived) throw new Error(`Cannot export agent "${entry.name}": it is archived`);
+  }
+  else if (scope === "squad") { const sq = collectOneSquad(ids.squadId); if (sq) squads.push(sq); }
+  else if (scope === "project") projects.push(collectProject(ids.projectId));
+  else if (scope === "projects") for (const p of listProjects(cli)) projects.push(collectProject(p.id));
   else if (scope === "autopilot") autopilots.push(collectOneAutopilot(ids.autopilotId));
   else if (scope === "all") {
     for (const s of listSkills(cli)) collectSkill(cli, s.id, skills);
     for (const a of listAgents(cli)) collectAgent(cli, a.id, agentsById, skills, getProviderById());
-    for (const sq of listSquads(cli)) squads.push(collectOneSquad(sq.id));
-    for (const p of listProjects(cli)) projects.push(collectProject(cli, p.id, agentsById, skills, getProviderById()));
+    for (const sq of listSquads(cli)) { const built = collectOneSquad(sq.id); if (built) squads.push(built); }
+    for (const p of listProjects(cli)) projects.push(collectProject(p.id));
+    // listAgents() above already excludes archived agents server-side — surface
+    // that exclusion in the report too, not just the squad/project paths.
+    for (const a of listAgentsIncludingArchived(cli)) {
+      if (a.archived_at) recordArchivedSkip(a.name, "workspace listing");
+    }
   }
 
   // Orphan-skill cleanup: drop skills that no exported agent references via its
@@ -290,7 +333,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
   return {
-    manifest, warnings, pruned_skills,
+    manifest, warnings, pruned_skills, archivedAgentsSkipped,
     autopilotWebhookTriggers: autopilots.filter((a) => a.had_webhook_trigger).map((a) => a.title),
   };
 }
