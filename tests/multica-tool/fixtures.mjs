@@ -89,3 +89,47 @@ export const PROJECT_RESOURCES_1 = [
   { resource_type: "local_directory", resource_ref: { path: "/x", daemon_id: "d1" }, label: "local", position: 1 },
 ];
 export const PROJECT_RESOURCES_2 = [];
+
+// autopilot fixtures
+export const AUTOPILOT_GET = {
+  autopilot: {
+    id: "ap_SRC1", title: "Nightly Scan", description: "scan deps nightly", execution_mode: "run_only",
+    issue_title_template: "[Scan] {{.Date}}", priority: null, project_id: "pr_SRC1",
+    assignee_id: "ag_SRC1", assignee_type: "agent",
+    subscribers: [{ user_id: "u1", user_type: "user" }, { user_id: "u_missing", user_type: "user" }],
+  },
+  triggers: [
+    { kind: "schedule", label: "nightly", enabled: true, cron_expression: "0 9 * * *", timezone: "UTC" },
+    { kind: "webhook", label: "ci", enabled: true, cron_expression: null, timezone: null },
+    { kind: "manual", label: null, enabled: true, cron_expression: null, timezone: null },
+  ],
+};
+
+export const AUTOPILOT_GET_SQUAD = {
+  autopilot: {
+    id: "ap_SRC2", title: "Squad Pilot", description: "", execution_mode: "create_issue",
+    issue_title_template: null, priority: null, project_id: null,
+    assignee_id: "sq_SRC1", assignee_type: "squad",
+    subscribers: [],
+  },
+  triggers: [
+    { kind: "schedule", label: "weekly", enabled: true, cron_expression: "0 0 * * 0", timezone: "UTC" },
+  ],
+};
+
+export const AUTOPILOT_GET_MINIMAL = {
+  autopilot: {
+    id: "ap_SRC3", title: "Minimal", description: "", execution_mode: "create_issue",
+    issue_title_template: null, priority: null, project_id: null,
+    assignee_id: "ag_SRC2", assignee_type: "agent",
+    subscribers: [],
+  },
+  triggers: [],
+};
+
+export const WORKSPACE_MEMBERS = [
+  { user_id: "u1", name: "Alice", user_type: "user" },
+  { user_id: "u2", name: "Bob", user_type: "user" },
+];
+
+export const RUNTIME_LIST_AGENT2 = [{ id: "rt_TGT3", name: "Extra Runtime", provider: "claude" }];

@@ -1,7 +1,7 @@
 import * as nodeFs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { makeCli, resolveWorkspaceId, findByName, findByTitle, listSkills, listAgents, listSquads, listProjects, realExec, requireAuth } from "./lib.mjs";
+import { makeCli, resolveWorkspaceId, findByName, findByTitle, listSkills, listAgents, listSquads, listProjects, listAutopilots, realExec, requireAuth } from "./lib.mjs";
 import { exportResource } from "./multica-export.mjs";
 import { importBundle } from "./multica-import.mjs";
 
@@ -11,8 +11,13 @@ export function resolveScopeId(cli, type, name) {
     if (!match) throw new Error(`Unknown project "${name}" in source workspace`);
     return { scope: "project", ids: { projectId: match.id } };
   }
+  if (type === "autopilot") {
+    const match = findByTitle(listAutopilots(cli), name);
+    if (!match) throw new Error(`Unknown autopilot "${name}" in source workspace`);
+    return { scope: "autopilot", ids: { autopilotId: match.id } };
+  }
   const lists = { skill: listSkills, agent: listAgents, squad: listSquads };
-  if (!lists[type]) throw new Error(`Unknown type "${type}" (skill|agent|squad|project)`);
+  if (!lists[type]) throw new Error(`Unknown type "${type}" (skill|agent|squad|project|autopilot)`);
   const match = findByName(lists[type](cli), name);
   if (!match) throw new Error(`Unknown ${type} "${name}" in source workspace`);
   const key = { skill: "skillId", agent: "agentId", squad: "squadId" }[type];
@@ -28,7 +33,7 @@ export function sync({ exec, type, name, srcWsName, destWsName, tmpDir, runtimeM
 
   const { scope, ids } = resolveScopeId(srcCli, type, name);
   exportResource({ cli: srcCli, scope, ids, outDir: tmpDir, sourceWorkspaceId: srcId, fs });
-  const includeByType = { skill: ["skills"], agent: ["agents"], squad: ["agents", "squads"], project: ["agents", "projects"] };
+  const includeByType = { skill: ["skills"], agent: ["agents"], squad: ["agents", "squads"], project: ["agents", "projects"], autopilot: ["agents", "squads", "autopilots"] };
   const include = new Set(includeByType[type] ?? ["agents", "squads"]);
   if (include.has("agents")) include.add("skills");
   return importBundle({ cli: destCli, dir: tmpDir, runtimeMap, include, fs });
