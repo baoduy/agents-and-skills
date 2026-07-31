@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot } from "./lib.mjs";
+import { listSkills, listAgents, listAgentsIncludingArchived, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot } from "./lib.mjs";
 
 // User-facing selectable types are agents/squads/projects/autopilots; skills follow agents.
 export function parseInclude(raw) {
@@ -86,8 +86,10 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
   // Lazy + memoized: destination member user_ids, only listed when an agent needs them.
   let destMemberIds = null;
   const getDestMemberIds = () => destMemberIds ??= new Set(listWorkspaceMembers(cli).map((m) => m.user_id));
-  let created = 0, updated = 0;
-  const existing = listAgents(cli);
+  let created = 0, updated = 0, reused = 0;
+  // Includes archived agents so a bundle name matching a retired agent restores
+  // and reuses it instead of failing to create under the held name.
+  const existing = listAgentsIncludingArchived(cli);
 
   for (const a of manifest.agents) {
     const rec = JSON.parse(fs.readFileSync(`${dir}/${a.file}`, "utf8"));
@@ -108,7 +110,14 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     if (rec.service_tier) common.push("--service-tier", rec.service_tier);
     const match = findByName(existing, rec.name);
     let id;
-    if (match) {
+    if (match && match.archived_at) {
+      // Restored agent then updated exactly like an active-name match — the
+      // matched id is now active, so a re-import of this bundle will find it
+      // via the plain `match` branch below and never restore twice.
+      cli.run(["agent", "restore", match.id]);
+      cli.run(["agent", "update", match.id, "--runtime-id", targetRuntime, ...common]);
+      id = match.id; reused++;
+    } else if (match) {
       cli.run(["agent", "update", match.id, "--runtime-id", targetRuntime, ...common]);
       id = match.id; updated++;
     } else {
@@ -178,7 +187,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       }
     }
   }
-  return { idMap, sourceIdMap, created, updated, secretsApplyFailures, avatarApplyFailures, avatarUnsupported, permissionApplyFailures, permissionUnsupported };
+  return { idMap, sourceIdMap, created, updated, reused, secretsApplyFailures, avatarApplyFailures, avatarUnsupported, permissionApplyFailures, permissionUnsupported };
 }
 
 // Rewrites `mention://agent/<id>` links (e.g. `[@dev-backend](mention://agent/<id>)`)
@@ -448,7 +457,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     : { idMap: new Map(), created: 0, updated: 0 };
   const agentRes = inc.has("agents")
     ? importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs })
-    : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [] };
+    : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, reused: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [] };
   // Runs after every agent exists so forward-referencing mentions resolve.
   const mentionRes = inc.has("agents")
     ? rewriteAgentMentions({ cli, manifest, dir, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap, fs })
@@ -482,6 +491,9 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     include: [...inc],
     created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated, projects: projectRes.created, autopilots: autopilotRes.created },
     updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated, projects: projectRes.updated, autopilots: autopilotRes.updated },
+    // Agents restored from archived + updated to the bundle's definition — distinct
+    // from a plain update (an active-name match). Only agents can be reused today.
+    reused: { agents: agentRes.reused },
     mentionsRewritten: mentionRes.updated,
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
@@ -530,6 +542,16 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
       incompatibilities.push({ type: "unmapped-runtime", detail: u.provider
         ? `${u.srcId} (provider "${u.provider}": ${u.matchCount} matches, expected 1)`
         : `${u.srcId} (no provider recorded)` });
+    }
+
+    // Read-only check, mirrors importAgents' restore-and-reuse match — never
+    // calls restore itself, just reports what a real import would do.
+    const existingAgents = listAgentsIncludingArchived(cli);
+    for (const a of manifest.agents ?? []) {
+      const match = findByName(existingAgents, a.name);
+      if (match && match.archived_at) {
+        incompatibilities.push({ type: "agent-archived-will-restore", detail: `${a.name} (archived in destination — import would restore and reuse it)` });
+      }
     }
   }
 
