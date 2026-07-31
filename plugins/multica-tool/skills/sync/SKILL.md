@@ -16,9 +16,9 @@ Expect the user's request in the form:
 sync <type> <name> from <src-ws> to <dest-ws>
 ```
 
-Where `<type>` is `skill`, `agent`, `squad`, or `project`; `<name>` is the resource name (for `project`, its **title**); `<src-ws>` and `<dest-ws>` are workspace names registered in Multica.
+Where `<type>` is `skill`, `agent`, `squad`, `project`, or `autopilot`; `<name>` is the resource name (for `project` and `autopilot`, its **title**); `<src-ws>` and `<dest-ws>` are workspace names registered in Multica.
 
-Projects are resolved by title, not ID, e.g. `multica-sync.mjs project "<title>" from <src-ws> <dest-ws>` — the project's lead agent is synced alongside it.
+Projects and autopilots are resolved by title, not ID, e.g. `multica-sync.mjs project "<title>" from <src-ws> <dest-ws>` — the project's lead agent is synced alongside it. `multica-sync.mjs autopilot "<title>" from <src-ws> <dest-ws>` syncs the autopilot's assignee (agent, or squad + members) alongside it; a squad-assigned autopilot aborts (see the import skill — the multica CLI has no command to assign a squad to an autopilot).
 
 ## Step 2 — Run the sync (auto-mapping first)
 
@@ -49,9 +49,12 @@ The script exports to a temporary directory, imports into the destination worksp
 
 Parse the JSON output and report:
 
-- Created and updated counts for skills, agents, squads, and projects.
+- Created and updated counts for skills, agents, squads, projects, and autopilots.
 - Name-to-ID maps (`skillIdMap`, `agentIdMap`).
 - `squadIdMap`: name-to-ID map for every squad synced.
+- `autopilotIdMap`: name-to-ID map for every autopilot synced. Importing always creates a new autopilot **paused**, regardless of source status; a re-sync updates the existing one by title without reactivating or duplicating it, and never re-adds a trigger already present.
+- If `autopilotProjectUnresolved`, `autopilotSubscribersUnresolved`, or `autopilotPriorityNotCaptured` is non-empty, surface each entry verbatim as an "applied best-effort" note (project/subscribers skipped when unmatched by name in the destination; priority can never be captured — a platform gap, not a bug here).
+- If `autopilotWebhookReissued` is non-empty, surface every autopilot title verbatim with: "NOTE: the following autopilots had a webhook trigger created with a freshly issued URL in the destination — the previous URL does not carry over: `<autopilot-title>`."
 - If `secretsReminder` is non-empty, surface every agent name verbatim with: "WARNING: the following agents' bundle files contained custom environment variables or MCP config in PLAINTEXT — the temporary export directory (already cleaned up) briefly held these secrets in plaintext: `<agent-name>`."
 - If `secretsApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: mcp_config or custom_env failed to apply to the following agents during sync (the agent itself was still created/updated) — set them manually in the Multica UI: `<agent-name>`."
 - If `avatarApplyFailures` is non-empty, surface every agent name verbatim with: "WARNING: the avatar image failed to upload for the following agents — set it manually in the destination workspace: `<agent-name>`."

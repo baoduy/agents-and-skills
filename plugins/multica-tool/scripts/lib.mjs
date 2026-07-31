@@ -127,3 +127,27 @@ export const getProjectResources = (cli, id) =>
   (cli.json(["project", "resource", "list", id]) ?? []).map((r) => ({
     resource_type: r.resource_type, resource_ref: r.resource_ref, label: r.label ?? null,
   }));
+
+export const listAutopilots = (cli) => cli.json(["autopilot", "list"]).autopilots ?? [];
+
+// `autopilot get` wraps the record as {autopilot, collaborators, triggers} — only
+// autopilot + triggers are portable; collaborators/can_write/can_manage_access are
+// caller-relative and never bundled. `priority` is accepted by `autopilot
+// create`/`update` but never present in this response (verified live) — kept as a
+// field anyway so this starts round-tripping automatically if the API adds it.
+export function getAutopilot(cli, id) {
+  const r = cli.json(["autopilot", "get", id]);
+  const a = r.autopilot;
+  return {
+    id: a.id, title: a.title, description: a.description ?? "",
+    execution_mode: a.execution_mode, issue_title_template: a.issue_title_template ?? null,
+    priority: a.priority ?? null,
+    project_id: a.project_id ?? null,
+    assignee_id: a.assignee_id, assignee_type: a.assignee_type,
+    subscribers: (a.subscribers ?? []).map((s) => ({ user_id: s.user_id, user_type: s.user_type })),
+    triggers: (r.triggers ?? []).map((t) => ({
+      kind: t.kind, label: t.label ?? null, enabled: !!t.enabled,
+      cron_expression: t.cron_expression ?? null, timezone: t.timezone ?? null,
+    })),
+  };
+}
