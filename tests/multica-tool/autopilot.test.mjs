@@ -89,18 +89,17 @@ test("export autopilot captures schedule trigger with cron and timezone", () => 
   assert.equal(schedule.enabled, true);
 });
 
-test("export autopilot captures non-webhook trigger (schedule with cron)", () => {
+test("export autopilot preserves manual trigger kind", () => {
   const fs = memFs();
   const cli = autopilotCli();
   exportResource({ cli, scope: "autopilot", ids: { autopilotId: "ap_SRC1" }, outDir: "/out", sourceWorkspaceId: "ws_SRC", fs });
 
   const rec = JSON.parse(fs.files["/out/autopilots/nightly-scan.json"]);
-  const nonWebhooks = rec.triggers.filter((t) => t.kind !== "webhook");
-  // ponytail: export maps non-webhook triggers as schedule — manual triggers lose their kind.
-  // Defect: the ternary in exportResource collectOneAutopilot hardcodes kind:"schedule" for all non-webhook triggers.
-  assert.ok(nonWebhooks.length >= 2, "schedule and manual triggers both captured (though manual mapped to schedule)");
-  const schedule = nonWebhooks.find((t) => /0 9/.test(t.cron_expression));
-  assert.ok(schedule, "schedule trigger captured");
+  const manual = rec.triggers.find((t) => t.kind === "manual");
+  assert.ok(manual, "manual trigger kind preserved");
+  assert.equal(manual.enabled, true);
+
+  const schedule = rec.triggers.find((t) => t.kind === "schedule");
   assert.equal(schedule.cron_expression, "0 9 * * *");
   assert.equal(schedule.timezone, "UTC");
 });
