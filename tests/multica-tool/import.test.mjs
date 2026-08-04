@@ -218,6 +218,21 @@ test("importAgents threads description through to create (regression: was silent
   assert.equal(create[create.indexOf("--description") + 1], "helps with stuff");
 });
 
+test("importAgents reads description from a sibling .description.md when description_file is set", () => {
+  const fs = {
+    existsSync: () => true,
+    readFileSync: (p) => p.endsWith(".description.md")
+      ? "the full description prose"
+      : JSON.stringify({ ...JSON.parse(AGENT_FILE), description_file: "agents/helper.description.md" }),
+    readdirSync: () => [],
+  };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const create = calls.find((a) => a[1] === "create");
+  assert.equal(create[create.indexOf("--description") + 1], "the full description prose", "description_file content wins over inline");
+});
+
 test("importAgents (create): uploads an image avatar from the bundle via agent avatar --file", () => {
   const fs = { existsSync: () => true, readFileSync: () => JSON.stringify({ ...JSON.parse(AGENT_FILE), avatar_file: "agents/helper.avatar.png" }), readdirSync: () => [] };
   const calls = [];
@@ -598,6 +613,18 @@ test("importProjects creates the project, sets --lead to the imported agent, add
   assert.deepEqual(r.priorityUnsupported, ["Launch"]);
   assert.deepEqual(r.resourcesUnsupported, ["Launch:local_directory"]);
   assert.deepEqual(r.leadUnresolved, []);
+});
+
+test("importProjects reads description from a sibling .description.md when description_file is set", () => {
+  const { description, ...noDesc } = LAUNCH_REC;
+  const fs = memFs({
+    "./projects/launch.json": JSON.stringify({ ...noDesc, description_file: "projects/launch.description.md" }),
+    "./projects/launch.description.md": "the full launch brief",
+  });
+  const cli = projectRecordingCli();
+  importProjects({ cli, manifest: PROJECT_MANIFEST, dir: ".", agentIdMap: new Map([["Helper", "ag_NEW1"]]), fs });
+  const create = cli.calls.find((a) => a[1] === "create");
+  assert.equal(create[create.indexOf("--description") + 1], "the full launch brief", "description came from the .md, not inline JSON");
 });
 
 test("importProjects updates by title and does not re-add an existing resource (idempotent)", () => {

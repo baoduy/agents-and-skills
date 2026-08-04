@@ -13,7 +13,7 @@ Import a local Multica bundle (produced by the export skill) into a target works
 You need the exact workspace name as registered in Multica for `--workspace` in the steps below.
 
 - If the user named a target workspace, use it.
-- If the user did **not** name one, default to the **basename of the import folder** — e.g. importing from `export/mx-workspace` defaults the target workspace to `mx-workspace`. State the inferred workspace name to the user before continuing.
+- If the user did **not** name one, default to the **basename of the import folder** — e.g. importing from `export/mx-workspace` defaults the target workspace to `mx-workspace`. State the inferred workspace name to the user before continuing. This default is reliable for whole-workspace bundles (`export/<workspace-name>`); a single-resource bundle nested under `export/<workspace-name>/<slug>-<type>` has the resource slug as its basename, not the workspace — name the target workspace explicitly in that case.
 
 No existence check is needed here: the Step 2 dry-run fails with `Unknown workspace "<name>"` if the inferred workspace is not present in the target account, at which point ask the user for the correct name.
 
@@ -70,7 +70,7 @@ If it instead aborts with `Unresolved autopilot assignees: ...`, that is not fix
 
 The import also rewrites any `mention://agent/<id>` link inside squad and agent instructions (e.g. `[@dev-backend](mention://agent/<id>)`) from the source agent's id to its new id in the target workspace — the CLI does this automatically for every agent captured in the bundle; no extra flag needed. Mentions pointing to an agent outside the bundle are left untouched.
 
-Instructions are read back from each resource's sibling `.md` (`agents/<slug>.md`, `squads/<slug>.md`) when present — editing that Markdown is the supported way to review and enhance an agent's or squad's instructions before import. Older bundles that predate the split (instructions inline in the JSON, no `instructions_file`) still import unchanged.
+Prose fields are read back from each resource's sibling `.md` when a `*_file` key points at it — **instructions** from `<slug>.md` (agents, squads) and **description** from `<slug>.description.md` (agents, squads, projects, autopilots). Editing that Markdown is the supported way to review and enhance the prose before import. Older bundles that predate the split (prose inline in the JSON, no `*_file` key) still import unchanged.
 
 Avatars are restored automatically, but **only when the target resource has none** — an existing agent or squad that already carries an avatar is never overwritten. New agents get their bundled image re-uploaded; new squads get their `avatar_url` (emoji or URL) set. An agent whose source avatar was an emoji can't be restored (the CLI has no emoji setter for agents) and is reported as unsupported.
 

@@ -37,13 +37,7 @@ If the user specified an output directory, use it verbatim. Otherwise default to
 First resolve `<workspace-name>`:
 
 - If the user named a source workspace (the value you would pass as `--workspace <name>`), use that name.
-- Otherwise, read the current default workspace's name:
-
-```bash
-multica workspace get --output json
-```
-
-  and take its `.name`.
+- Otherwise, run `multica workspace get --output json` and take its `.name` (the current default workspace).
 
 Slugify the resolved name for filesystem safety — lowercase it, replace each run of non-`[a-z0-9]` characters with a single `-`, and trim leading/trailing `-` (the same rule the scripts use internally).
 
@@ -70,7 +64,12 @@ Pass `--scope all` (with no `--id`) to export the **entire workspace** — every
 
 Exporting a project (or `projects`/`all`) also **bundles the project's lead agent** so the bundle is self-contained; projects carry metadata only (title, description, icon, priority, status, dates, lead mapping) plus their attached resource records — never issues. On import, only `github_repo` resources are portable and recreated; other resource types are reported and skipped.
 
-The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Each agent's and squad's **instructions** (system prompt / charter) are written to a sibling Markdown file — `agents/<slug>.md`, `squads/<slug>.md` — referenced by an `instructions_file` key in the JSON, so the prose is easy to read, diff, and edit. Agents/squads with no instructions get no `.md`.
+The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Every resource's prose fields are externalized to sibling Markdown files, never embedded in the JSON — so they are easy to read, diff, and edit:
+
+- **instructions** (system prompt / charter, agents and squads) → `<slug>.md`, referenced by an `instructions_file` key.
+- **description** (agents, squads, projects, autopilots) → `<slug>.description.md`, referenced by a `description_file` key.
+
+An empty field gets no file and no `*_file` key. Skills keep their own layout — the description lives in `SKILL.md` frontmatter and the body is the content.
 
 Avatars are captured automatically: an agent's uploaded-image avatar is downloaded into the bundle (`agents/<slug>.avatar.<ext>`) and referenced by `avatar_file`; emoji avatars (agents and squads) and a squad's avatar are recorded as the `avatar_url` string.
 

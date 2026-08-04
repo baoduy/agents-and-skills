@@ -120,7 +120,8 @@ test("buildManifest dedups skills/agents by name and wires by name", () => {
   assert.deepEqual(m.agents[0].skill_names, ["Greet"]);
   assert.equal(m.agents[0].had_secrets, true);
   assert.equal(m.squads[0].leader_name, "Helper");
-  assert.equal(m.squads[0].description, "the team");
+  assert.equal(m.squads[0].description_file, "squads/team.description.md", "squad description externalized to a sibling .md, not inlined in the manifest");
+  assert.ok(!("description" in m.squads[0]), "squad description no longer embedded in the manifest entry");
 });
 
 test("export skill writes SKILL.md, config, extra files, manifest", () => {
@@ -174,6 +175,24 @@ test("export agent with empty instructions writes no .md and no instructions_fil
   assert.equal(fs.files["/oe/agents/helper2.md"], undefined, "no .md written for empty instructions");
   assert.ok(!("instructions_file" in record), "no instructions_file key when empty");
   assert.ok(!("instructions" in record), "instructions never embedded");
+});
+
+test("export agent writes description to a sibling .description.md and records description_file", () => {
+  const fs = memFs();
+  exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/od", sourceWorkspaceId: "ws", fs });
+  const record = JSON.parse(fs.files["/od/agents/helper.json"]);
+  assert.equal(fs.files["/od/agents/helper.description.md"], "helps", "description written to agents/<slug>.description.md");
+  assert.equal(record.description_file, "agents/helper.description.md", "record points at the .description.md");
+  assert.ok(!("description" in record), "description no longer embedded in the JSON record");
+});
+
+test("export agent with empty description writes no .description.md and no description_file", () => {
+  const fs = memFs();
+  exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC2" }, outDir: "/od2", sourceWorkspaceId: "ws", fs });
+  const record = JSON.parse(fs.files["/od2/agents/helper2.json"]);
+  assert.equal(fs.files["/od2/agents/helper2.description.md"], undefined, "no .description.md written for empty description");
+  assert.ok(!("description_file" in record), "no description_file key when empty");
+  assert.ok(!("description" in record), "description never embedded");
 });
 
 test("manifest.json never carries mcp_config/custom_env, even when the agent record does (regression: secrets must stay out of the manifest/stdout projection)", () => {
@@ -248,6 +267,9 @@ test("export squad resolves leader and member names by id and writes squad file"
   assert.equal(fs.files["/s/squads/team.md"], "# Team charter\nShip it.", "squad instructions written to squads/<slug>.md");
   assert.equal(manifest.squads[0].instructions_file, "squads/team.md", "manifest squad entry carries instructions_file");
   assert.ok(!("instructions" in manifest.squads[0]), "manifest squad entry drops instructions");
+  assert.ok(!("description" in squad), "squad description no longer embedded in the JSON");
+  assert.equal(squad.description_file, "squads/team.description.md", "squad JSON points at the description .md");
+  assert.equal(fs.files["/s/squads/team.description.md"], "the team", "squad description written to squads/<slug>.description.md");
   assert.deepEqual(squad.members.map((m) => m.agent_name).sort(), ["Helper", "Helper2"]);
   assert.equal(manifest.agents.length, 2, "both member agents captured");
   assert.deepEqual(warnings, ["Helper"], "only the agent with secrets is warned");
@@ -328,6 +350,9 @@ test("export --scope project bundles the lead agent and writes the project recor
   assert.equal(rec.lead_source_id, "ag_SRC1");
   assert.equal(rec.priority, "high");
   assert.equal(rec.resources.length, 2, "both resources recorded (portability decided at import)");
+  assert.ok(!("description" in rec), "project description no longer embedded in the JSON record");
+  assert.equal(rec.description_file, "projects/launch.description.md", "project JSON points at the description .md");
+  assert.equal(fs.files["out/projects/launch.description.md"], "the launch", "project description written to projects/<slug>.description.md");
 });
 
 test("export --scope projects records an unled project with lead_name null", () => {
@@ -340,6 +365,8 @@ test("export --scope projects records an unled project with lead_name null", () 
   const backlog = JSON.parse(fs.files["out/projects/backlog.json"]);
   assert.equal(backlog.lead_name, null);
   assert.equal(backlog.lead_type, null);
+  assert.ok(!("description_file" in backlog), "empty-description project gets no description_file");
+  assert.equal(fs.files["out/projects/backlog.description.md"], undefined, "no .description.md for an empty description");
 });
 
 test("export all prunes skills no agent references", () => {

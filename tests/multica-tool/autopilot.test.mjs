@@ -43,7 +43,9 @@ test("export --scope autopilot writes autopilot record and manifest with agent a
   assert.equal(rec.title, "Nightly Scan");
   assert.equal(rec.execution_mode, "run_only");
   assert.equal(rec.issue_title_template, "[Scan] {{.Date}}");
-  assert.equal(rec.description, "scan deps nightly");
+  assert.equal(rec.description_file, "autopilots/nightly-scan.description.md", "description externalized to a sibling .md");
+  assert.equal(fs.files["/out/autopilots/nightly-scan.description.md"], "scan deps nightly", "description prose written to the .md");
+  assert.ok(!("description" in rec), "description no longer embedded in the autopilot JSON record");
   assert.equal(rec.assignee_type, "agent");
   assert.equal(rec.assignee_name, "Helper");
 
@@ -276,6 +278,25 @@ test("importAutopilots creates autopilot paused and sets agent assignee", () => 
   assert.equal(res.updated, 0);
   assert.equal(res.idMap.get("Nightly Scan"), "ap_NEW1");
   assert.deepEqual(res.webhookReissued, []);
+});
+
+test("importAutopilots reads description from a sibling .description.md when description_file is set", () => {
+  const calls = [];
+  const cli = {
+    json: (args) => {
+      if (args[0] === "autopilot" && args[1] === "list") return { autopilots: [] };
+      if (args[0] === "agent" && args[1] === "list") return [{ name: "Helper" }];
+      return {};
+    },
+    run: (args) => { calls.push(args); return args.includes("create") ? '{"id":"ap_NEW1"}' : "{}"; },
+  };
+  const fs = importFs({
+    "./s.json": JSON.stringify({ title: "S", execution_mode: "create_issue", assignee_name: "Helper", assignee_type: "agent", subscriber_names: [], project_title: null, triggers: [], description_file: "s.description.md" }),
+    "./s.description.md": "the full autopilot brief",
+  });
+  importAutopilots({ cli, manifest: { autopilots: [{ title: "S", file: "s.json" }] }, dir: ".", agentIdMap: new Map([["Helper", "ag_NEW1"]]), fs });
+  const create = calls.find((a) => a[1] === "create");
+  assert.equal(create[create.indexOf("--description") + 1], "the full autopilot brief", "description came from the .md, not inline JSON");
 });
 
 test("importAutopilots always creates autopilot and immediately pauses it", () => {
