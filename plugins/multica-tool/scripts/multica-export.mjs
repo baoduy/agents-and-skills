@@ -1,7 +1,7 @@
 import * as nodeFs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listSquads, listProjects, getProject, getProjectResources, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listAgentsIncludingArchived, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, getAutopilot, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
@@ -31,7 +31,7 @@ export function redactAgent(a) {
   // a is a normalized agent from getAgent, with `custom_env`/
   // `custom_env_fetch_failed` attached by the caller (collectAgent) — getAgent
   // itself never fetches custom_env, since it requires a separate audited call.
-  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, instructions, description, ...rest } = a;
+  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, instructions, description, archived_at, ...rest } = a;
   const mcpUsable = !mcp_config_redacted && nonEmpty(mcp_config);
   const envUsable = !custom_env_fetch_failed && nonEmpty(custom_env);
   // mcp_config_redacted / custom_env_fetch_failed alone still flag hadSecrets even
@@ -58,7 +58,7 @@ export function redactAgent(a) {
   };
 }
 
-export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads, projects }) {
+export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads, projects, autopilots }) {
   const seenSkills = new Map();
   for (const s of skills) if (!seenSkills.has(s.name)) seenSkills.set(s.name, s);
   const seenAgents = new Map();
@@ -82,6 +82,11 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads
       title: p.title, file: `projects/${slugify(p.title)}.json`,
       source_id: p.source_id, lead_name: p.lead_name ?? null, lead_type: p.lead_type ?? null,
     })),
+    autopilots: (autopilots ?? []).map((ap) => ({
+      title: ap.title, file: `autopilots/${slugify(ap.title)}.json`, source_id: ap.source_id,
+      assignee_type: ap.assignee_type, assignee_name: ap.assignee_name,
+      project_title: ap.project_title, had_webhook_trigger: ap.had_webhook_trigger,
+    })),
   };
 }
 
@@ -92,10 +97,15 @@ function collectSkill(cli, id, skills) {
 }
 
 // Keyed by agent id (so squad leader_id/member_id resolve to names). Stores the
-// normalized agent, its redaction result, and its skill names.
+// normalized agent, its redaction result, and its skill names. Returns
+// `{ archived: true, name }` instead of collecting when the agent is archived —
+// callers reached via a squad/project/explicit id lookup must decide how to
+// handle that (the workspace-listing loop never hits this: listAgents() already
+// excludes archived agents server-side).
 function collectAgent(cli, id, agentsById, skills, providerById) {
   if (agentsById.has(id)) return agentsById.get(id);
   const a = getAgent(cli, id);
+  if (a.archived_at) return { archived: true, name: a.name };
   a.source_runtime_provider = providerById.get(a.runtime_id) ?? null;
   a.custom_env = {};
   a.custom_env_fetch_failed = false;
@@ -113,38 +123,45 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
   return entry;
 }
 
-// Collect a project's portable metadata + its lead agent (bundled, like a squad
-// leader) and github_repo/other resources. Returns the project bundle record.
-function collectProject(cli, id, agentsById, skills, providerById) {
-  const p = getProject(cli, id);
-  let lead_name = null;
-  if (p.lead_type === "agent" && p.lead_id) {
-    lead_name = collectAgent(cli, p.lead_id, agentsById, skills, providerById).raw.name;
-  }
-  return {
-    title: p.title, description: p.description, icon: p.icon,
-    priority: p.priority, status: p.status, due_date: p.due_date, start_date: p.start_date,
-    source_id: id, lead_type: p.lead_type, lead_name, lead_source_id: p.lead_id,
-    resources: getProjectResources(cli, id),
-  };
-}
-
 export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs, download = fetchBinary }) {
   const skills = new Map();       // name -> normalized skill
   const agentsById = new Map();   // id   -> { raw, red, skill_names }
   const squads = [];
   const projects = [];
+  const autopilots = [];
   // Lazy + memoized: only fetched when an agent is actually collected (skips
   // the extra CLI call on skill-only exports).
   let providerById = null;
   const getProviderById = () => providerById ??= new Map(listRuntimes(cli).map((r) => [r.id, r.provider]));
 
-  // Collect a squad's agents (leader + members) and return the squad bundle object.
+  // Archived agents skipped anywhere below, deduped by (name, path, detail) —
+  // the operator-facing "why isn't X in my bundle" report.
+  const archivedAgentsSkipped = [];
+  const seenArchivedSkip = new Set();
+  function recordArchivedSkip(name, path, detail) {
+    const key = [name, path, detail ?? ""].join("|");
+    if (seenArchivedSkip.has(key)) return;
+    seenArchivedSkip.add(key);
+    archivedAgentsSkipped.push(detail ? { name, path, detail } : { name, path });
+  }
+
+  // Collect a squad's agents (leader + members) and return the squad bundle
+  // object — or null when the leader is archived, since a squad can't import
+  // without one (the whole squad is excluded from the bundle, not emitted leaderless).
   function collectOneSquad(squadId) {
     const sq = getSquad(cli, squadId);
-    const members = getSquadMembers(cli, squadId).filter((m) => m.member_type === "agent");
-    for (const m of members) collectAgent(cli, m.member_id, agentsById, skills, getProviderById());
-    if (!agentsById.has(sq.leader_id)) collectAgent(cli, sq.leader_id, agentsById, skills, getProviderById());
+    const leaderEntry = collectAgent(cli, sq.leader_id, agentsById, skills, getProviderById());
+    if (leaderEntry.archived) {
+      recordArchivedSkip(leaderEntry.name, "squad leader", sq.name);
+      return null;
+    }
+    const allMembers = getSquadMembers(cli, squadId).filter((m) => m.member_type === "agent");
+    const members = [];
+    for (const m of allMembers) {
+      const entry = collectAgent(cli, m.member_id, agentsById, skills, getProviderById());
+      if (entry.archived) { recordArchivedSkip(entry.name, "squad member", sq.name); continue; }
+      members.push(m);
+    }
     const nameOf = (id) => agentsById.get(id)?.raw.name;
     return {
       name: sq.name, description: sq.description, instructions: sq.instructions, avatar_url: sq.avatar_url,
@@ -153,16 +170,83 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     };
   }
 
+  // Collect a project's portable metadata + its lead agent (bundled, like a
+  // squad leader) and github_repo/other resources. An archived lead is dropped
+  // (project still exports, just with no lead set) — unlike a squad, a project
+  // has no hard requirement for one.
+  function collectProject(id) {
+    const p = getProject(cli, id);
+    let lead_name = null, lead_type = p.lead_type, lead_source_id = p.lead_id;
+    if (p.lead_type === "agent" && p.lead_id) {
+      const entry = collectAgent(cli, p.lead_id, agentsById, skills, getProviderById());
+      if (entry.archived) {
+        recordArchivedSkip(entry.name, "project lead", p.title);
+        lead_type = null; lead_source_id = null;
+      } else {
+        lead_name = entry.raw.name;
+      }
+    }
+    return {
+      title: p.title, description: p.description, icon: p.icon,
+      priority: p.priority, status: p.status, due_date: p.due_date, start_date: p.start_date,
+      source_id: id, lead_type, lead_name, lead_source_id,
+      resources: getProjectResources(cli, id),
+    };
+  }
+
+  // Collect a single autopilot: its assignee (agent, or squad + members + skills)
+  // and, when present, the destination-portable project title / subscriber names.
+  // Webhook trigger secrets (url/token) are never read into the bundle — only
+  // kind/label/enabled, matching the existing agent MCP/env redaction pattern.
+  function collectOneAutopilot(autopilotId) {
+    const ap = getAutopilot(cli, autopilotId);
+    let assignee_name = null;
+    if (ap.assignee_type === "agent") {
+      const entry = collectAgent(cli, ap.assignee_id, agentsById, skills, getProviderById());
+      assignee_name = entry.archived ? null : entry.raw.name;
+    } else if (ap.assignee_type === "squad") {
+      const sq = collectOneSquad(ap.assignee_id);
+      if (sq) { squads.push(sq); assignee_name = sq.name; }
+    }
+    let project_title = null;
+    if (ap.project_id) {
+      try { project_title = getProject(cli, ap.project_id).title; } catch { project_title = null; }
+    }
+    let subscriber_names = [];
+    if (ap.subscribers.length) {
+      const members = listWorkspaceMembers(cli);
+      subscriber_names = ap.subscribers.map((s) => members.find((m) => m.user_id === s.user_id)?.name).filter(Boolean);
+    }
+    return {
+      title: ap.title, source_id: ap.id, description: ap.description,
+      execution_mode: ap.execution_mode, issue_title_template: ap.issue_title_template,
+      priority: ap.priority, project_title, assignee_type: ap.assignee_type, assignee_name,
+      subscriber_names, had_webhook_trigger: ap.triggers.some((t) => t.kind === "webhook"),
+      triggers: ap.triggers.map((t) => t.kind === "webhook"
+        ? { kind: "webhook", label: t.label, enabled: t.enabled }
+        : { kind: t.kind, label: t.label, enabled: t.enabled, cron_expression: t.cron_expression, timezone: t.timezone }),
+    };
+  }
+
   if (scope === "skill") collectSkill(cli, ids.skillId, skills);
-  else if (scope === "agent") collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
-  else if (scope === "squad") squads.push(collectOneSquad(ids.squadId));
-  else if (scope === "project") projects.push(collectProject(cli, ids.projectId, agentsById, skills, getProviderById()));
-  else if (scope === "projects") for (const p of listProjects(cli)) projects.push(collectProject(cli, p.id, agentsById, skills, getProviderById()));
+  else if (scope === "agent") {
+    const entry = collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
+    if (entry.archived) throw new Error(`Cannot export agent "${entry.name}": it is archived`);
+  }
+  else if (scope === "squad") { const sq = collectOneSquad(ids.squadId); if (sq) squads.push(sq); }
+  else if (scope === "project") projects.push(collectProject(ids.projectId));
+  else if (scope === "projects") for (const p of listProjects(cli)) projects.push(collectProject(p.id));
+  else if (scope === "autopilot") autopilots.push(collectOneAutopilot(ids.autopilotId));
   else if (scope === "all") {
     for (const s of listSkills(cli)) collectSkill(cli, s.id, skills);
     for (const a of listAgents(cli)) collectAgent(cli, a.id, agentsById, skills, getProviderById());
-    for (const sq of listSquads(cli)) squads.push(collectOneSquad(sq.id));
-    for (const p of listProjects(cli)) projects.push(collectProject(cli, p.id, agentsById, skills, getProviderById()));
+    for (const sq of listSquads(cli)) { const built = collectOneSquad(sq.id); if (built) squads.push(built); }
+    for (const p of listProjects(cli)) projects.push(collectProject(p.id));
+    // listAgents() above already excludes archived agents server-side — surface
+    // that exclusion in the report too, not just the squad/project paths.
+    for (const a of listAgentsIncludingArchived(cli)) {
+      if (a.archived_at) recordArchivedSkip(a.name, "workspace listing");
+    }
   }
 
   // Orphan-skill cleanup: drop skills that no exported agent references via its
@@ -184,6 +268,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, source_id: a.raw.id, source_runtime_id: a.raw.runtime_id, source_runtime_provider: a.raw.source_runtime_provider, skill_names: a.skill_names, had_secrets: a.red.hadSecrets })),
     squads,
     projects,
+    autopilots,
   });
 
   const warnings = [];
@@ -248,8 +333,16 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     fs.mkdirSync(`${outDir}/projects`, { recursive: true });
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(projectByTitle.get(entry.title), null, 2));
   }
+  const autopilotByTitle = new Map(autopilots.map((a) => [a.title, a]));
+  for (const entry of manifest.autopilots) {
+    fs.mkdirSync(`${outDir}/autopilots`, { recursive: true });
+    fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(autopilotByTitle.get(entry.title), null, 2));
+  }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
-  return { manifest, warnings, pruned_skills };
+  return {
+    manifest, warnings, pruned_skills, archivedAgentsSkipped,
+    autopilotWebhookTriggers: autopilots.filter((a) => a.had_webhook_trigger).map((a) => a.title),
+  };
 }
 
 function main() {
@@ -262,7 +355,7 @@ function main() {
   const workspace = get("--workspace"); // optional: source workspace name
 
   if (!scope || !out || (scope !== "all" && scope !== "projects" && !id)) {
-    console.error("Usage: multica-export.mjs --scope <skill|agent|squad|project|projects|all> --id <id> --out <dir> [--workspace <name>]  (--id not needed for --scope all|projects)");
+    console.error("Usage: multica-export.mjs --scope <skill|agent|squad|project|projects|autopilot|all> --id <id> --out <dir> [--workspace <name>]  (--id not needed for --scope all|projects)");
     process.exit(1);
   }
 
@@ -279,8 +372,9 @@ function main() {
   else if (scope === "squad")  ids.squadId  = id;
   else if (scope === "project")  ids.projectId = id;
   else if (scope === "projects") { /* all projects — no id */ }
+  else if (scope === "autopilot") ids.autopilotId = id;
   else if (scope === "all")    { /* whole workspace — no id */ }
-  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad|project|projects|all`); process.exit(1); }
+  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad|project|projects|autopilot|all`); process.exit(1); }
 
   const result = exportResource({ cli, scope, ids, outDir: out, sourceWorkspaceId, fs: nodeFs });
   console.log(JSON.stringify(result, null, 2));

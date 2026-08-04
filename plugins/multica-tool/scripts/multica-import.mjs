@@ -1,7 +1,7 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle } from "./lib.mjs";
+import { listSkills, listAgents, listAgentsIncludingArchived, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot } from "./lib.mjs";
 
-// User-facing selectable types are agents/squads/projects; skills follow agents.
+// User-facing selectable types are agents/squads/projects/autopilots; skills follow agents.
 export function parseInclude(raw) {
   const set = new Set((raw ? raw.split(",") : ["agents", "squads"]).map((s) => s.trim()).filter(Boolean));
   if (set.has("agents")) set.add("skills");
@@ -95,8 +95,10 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
   // Lazy + memoized: destination member user_ids, only listed when an agent needs them.
   let destMemberIds = null;
   const getDestMemberIds = () => destMemberIds ??= new Set(listWorkspaceMembers(cli).map((m) => m.user_id));
-  let created = 0, updated = 0;
-  const existing = listAgents(cli);
+  let created = 0, updated = 0, reused = 0;
+  // Includes archived agents so a bundle name matching a retired agent restores
+  // and reuses it instead of failing to create under the held name.
+  const existing = listAgentsIncludingArchived(cli);
 
   for (const a of manifest.agents) {
     const rec = JSON.parse(fs.readFileSync(`${dir}/${a.file}`, "utf8"));
@@ -118,7 +120,14 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     if (rec.service_tier) common.push("--service-tier", rec.service_tier);
     const match = findByName(existing, rec.name);
     let id;
-    if (match) {
+    if (match && match.archived_at) {
+      // Restored agent then updated exactly like an active-name match — the
+      // matched id is now active, so a re-import of this bundle will find it
+      // via the plain `match` branch below and never restore twice.
+      cli.run(["agent", "restore", match.id]);
+      cli.run(["agent", "update", match.id, "--runtime-id", targetRuntime, ...common]);
+      id = match.id; reused++;
+    } else if (match) {
       cli.run(["agent", "update", match.id, "--runtime-id", targetRuntime, ...common]);
       id = match.id; updated++;
     } else {
@@ -188,7 +197,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       }
     }
   }
-  return { idMap, sourceIdMap, created, updated, secretsApplyFailures, avatarApplyFailures, avatarUnsupported, permissionApplyFailures, permissionUnsupported };
+  return { idMap, sourceIdMap, created, updated, reused, secretsApplyFailures, avatarApplyFailures, avatarUnsupported, permissionApplyFailures, permissionUnsupported };
 }
 
 // Rewrites `mention://agent/<id>` links (e.g. `[@dev-backend](mention://agent/<id>)`)
@@ -308,6 +317,99 @@ export function importProjects({ cli, manifest, dir, agentIdMap, fs = nodeFs }) 
   return { idMap, created, updated, priorityUnsupported, resourcesUnsupported, leadUnresolved };
 }
 
+// `autopilot create`/`update` only accept `--agent` (name or ID) — there is no
+// `--squad` flag, even though the data model supports squad-assigned autopilots
+// (dispatch resolves to the squad leader). A squad assignee, or an agent name not
+// resolvable in this import or the destination, is reported up front so the whole
+// import aborts before any write — mirroring the unmapped-runtime guard above,
+// never silently dropped or reassigned to the wrong agent.
+function unresolvedAutopilotAssignees({ cli, manifest, recs, agentIdMap }) {
+  let destAgentNames = null;
+  const agentResolvable = (name) => agentIdMap.has(name) || (destAgentNames ??= new Set(listAgents(cli).map((a) => a.name))).has(name);
+  const unresolved = [];
+  for (const rec of recs) {
+    if (rec.assignee_type === "squad") {
+      unresolved.push(`"${rec.title}" → squad "${rec.assignee_name}" (the multica CLI has no command to assign a squad to an autopilot)`);
+    } else if (!agentResolvable(rec.assignee_name)) {
+      unresolved.push(`"${rec.title}" → agent "${rec.assignee_name}" (not found in this import or the destination workspace)`);
+    }
+  }
+  return unresolved;
+}
+
+export function importAutopilots({ cli, manifest, dir, agentIdMap, fs = nodeFs }) {
+  const entries = manifest.autopilots ?? [];
+  const recs = entries.map((entry) => JSON.parse(fs.readFileSync(`${dir}/${entry.file}`, "utf8")));
+
+  const unresolved = unresolvedAutopilotAssignees({ cli, manifest, recs, agentIdMap });
+  if (unresolved.length) {
+    throw new Error(`Unresolved autopilot assignees: ${unresolved.join(", ")} — aborting before any write`);
+  }
+
+  const idMap = new Map();
+  let created = 0, updated = 0;
+  const projectUnresolved = [], subscribersUnresolved = [], priorityNotCaptured = [], webhookReissued = [];
+  const existing = listAutopilots(cli);
+  let destProjects = null;
+  const resolveProjectId = (title) => (destProjects ??= listProjects(cli)).find((p) => p.title === title)?.id ?? null;
+  let destMembers = null;
+  const memberExists = (name) => (destMembers ??= listWorkspaceMembers(cli)).some((m) => m.name === name);
+
+  for (const rec of recs) {
+    const common = [];
+    if (rec.description) common.push("--description", rec.description);
+    if (rec.issue_title_template) common.push("--issue-title-template", rec.issue_title_template);
+    // priority is never present today — the multica CLI/API accepts it on write but
+    // never returns it on read, so export can't capture the source's real value.
+    if (rec.priority && rec.priority !== "none") common.push("--priority", rec.priority);
+    else priorityNotCaptured.push(rec.title);
+
+    if (rec.project_title) {
+      const projectId = resolveProjectId(rec.project_title);
+      if (projectId) common.push("--project", projectId);
+      else projectUnresolved.push(rec.title);
+    }
+
+    const wantedSubscribers = rec.subscriber_names ?? [];
+    const resolvableSubscribers = wantedSubscribers.filter(memberExists);
+    subscribersUnresolved.push(...wantedSubscribers.filter((n) => !memberExists(n)).map((n) => `${rec.title}:${n}`));
+    if (resolvableSubscribers.length) common.push(...resolvableSubscribers.flatMap((n) => ["--subscriber", n]));
+
+    const match = findByTitle(existing, rec.title);
+    let id;
+    if (match) {
+      cli.run(["autopilot", "update", match.id, "--agent", rec.assignee_name, "--mode", rec.execution_mode, ...common]);
+      id = match.id; updated++;
+    } else {
+      const out = cli.run(["autopilot", "create", "--title", rec.title, "--agent", rec.assignee_name, "--mode", rec.execution_mode, ...common]);
+      id = JSON.parse(out).id;
+      // Always arrives paused, regardless of source status — activation is a
+      // deliberate follow-up action, never automatic on import.
+      cli.run(["autopilot", "update", id, "--status", "paused"]);
+      created++;
+    }
+    idMap.set(rec.title, id);
+
+    // Triggers are additive and idempotent by kind+label — a re-import never
+    // duplicates a trigger already present on the matched autopilot. Webhook
+    // triggers are always reissued fresh (new secret), never copied from the bundle.
+    const existingTriggers = match ? getAutopilot(cli, id).triggers : [];
+    const present = new Set(existingTriggers.map((t) => `${t.kind}:${t.label ?? ""}`));
+    for (const t of rec.triggers ?? []) {
+      if (present.has(`${t.kind}:${t.label ?? ""}`)) continue;
+      const flags = ["--kind", t.kind];
+      if (t.kind === "schedule") {
+        flags.push("--cron", t.cron_expression);
+        if (t.timezone) flags.push("--timezone", t.timezone);
+      }
+      if (t.label) flags.push("--label", t.label);
+      cli.run(["autopilot", "trigger-add", id, ...flags]);
+      if (t.kind === "webhook") webhookReissued.push(rec.title);
+    }
+  }
+  return { idMap, created, updated, projectUnresolved, subscribersUnresolved, priorityNotCaptured, webhookReissued };
+}
+
 export function collectSourceRuntimes(manifest) {
   return [...new Set((manifest.agents ?? []).map((a) => a.source_runtime_id).filter(Boolean))];
 }
@@ -365,7 +467,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     : { idMap: new Map(), created: 0, updated: 0 };
   const agentRes = inc.has("agents")
     ? importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs })
-    : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [] };
+    : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, reused: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [] };
   // Runs after every agent exists so forward-referencing mentions resolve.
   const mentionRes = inc.has("agents")
     ? rewriteAgentMentions({ cli, manifest, dir, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap, fs })
@@ -390,15 +492,24 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     projectRes = importProjects({ cli, manifest, dir, agentIdMap: agentRes.idMap, fs });
   }
 
+  let autopilotRes = { idMap: new Map(), created: 0, updated: 0, projectUnresolved: [], subscribersUnresolved: [], priorityNotCaptured: [], webhookReissued: [] };
+  if (inc.has("autopilots")) {
+    autopilotRes = importAutopilots({ cli, manifest, dir, agentIdMap: agentRes.idMap, fs });
+  }
+
   return {
     include: [...inc],
-    created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated, projects: projectRes.created },
-    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated, projects: projectRes.updated },
+    created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated, projects: projectRes.created, autopilots: autopilotRes.created },
+    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated, projects: projectRes.updated, autopilots: autopilotRes.updated },
+    // Agents restored from archived + updated to the bundle's definition — distinct
+    // from a plain update (an active-name match). Only agents can be reused today.
+    reused: { agents: agentRes.reused },
     mentionsRewritten: mentionRes.updated,
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
     squadIdMap: Object.fromEntries(squadIdMap),
     projectIdMap: Object.fromEntries(projectRes.idMap),
+    autopilotIdMap: Object.fromEntries(autopilotRes.idMap),
     secretsReminder: (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name),
     secretsApplyFailures: agentRes.secretsApplyFailures,
     avatarApplyFailures: agentRes.avatarApplyFailures,
@@ -409,6 +520,10 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     priorityUnsupported: projectRes.priorityUnsupported,
     resourcesUnsupported: projectRes.resourcesUnsupported,
     leadUnresolved: projectRes.leadUnresolved,
+    autopilotProjectUnresolved: autopilotRes.projectUnresolved,
+    autopilotSubscribersUnresolved: autopilotRes.subscribersUnresolved,
+    autopilotPriorityNotCaptured: autopilotRes.priorityNotCaptured,
+    autopilotWebhookReissued: autopilotRes.webhookReissued,
   };
 }
 
@@ -416,12 +531,13 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
   const inc = include ?? new Set(["skills", "agents", "squads"]);
   const manifest = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
   const count = (k) => (manifest[k] ?? []).length;
-  const bundle = { skills: count("skills"), agents: count("agents"), squads: count("squads"), projects: count("projects") };
+  const bundle = { skills: count("skills"), agents: count("agents"), squads: count("squads"), projects: count("projects"), autopilots: count("autopilots") };
   const willImport = {
     skills: inc.has("skills") ? bundle.skills : 0,
     agents: inc.has("agents") ? bundle.agents : 0,
     squads: inc.has("squads") ? bundle.squads : 0,
     projects: inc.has("projects") ? bundle.projects : 0,
+    autopilots: inc.has("autopilots") ? bundle.autopilots : 0,
   };
 
   const incompatibilities = [];
@@ -436,6 +552,16 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
       incompatibilities.push({ type: "unmapped-runtime", detail: u.provider
         ? `${u.srcId} (provider "${u.provider}": ${u.matchCount} matches, expected 1)`
         : `${u.srcId} (no provider recorded)` });
+    }
+
+    // Read-only check, mirrors importAgents' restore-and-reuse match — never
+    // calls restore itself, just reports what a real import would do.
+    const existingAgents = listAgentsIncludingArchived(cli);
+    for (const a of manifest.agents ?? []) {
+      const match = findByName(existingAgents, a.name);
+      if (match && match.archived_at) {
+        incompatibilities.push({ type: "agent-archived-will-restore", detail: `${a.name} (archived in destination — import would restore and reuse it)` });
+      }
     }
   }
 
@@ -454,6 +580,33 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
       const leadAvailable = inc.has("agents") && bundleAgentNames.has(rec.lead_name);
       if (rec.lead_type === "agent" && rec.lead_name && !leadAvailable) {
         incompatibilities.push({ type: "lead-agent-missing", detail: `${rec.title} → ${rec.lead_name} (ensure this agent exists in the destination)` });
+      }
+    }
+  }
+
+  if (inc.has("autopilots")) {
+    const bundleAgentNames = new Set((manifest.agents ?? []).map((a) => a.name));
+    let destAgentNames = null;
+    const agentAvailable = (name) => (inc.has("agents") && bundleAgentNames.has(name))
+      || (destAgentNames ??= new Set(listAgents(cli).map((a) => a.name))).has(name);
+    let destProjectTitles = null;
+    const projectAvailable = (title) => (destProjectTitles ??= new Set(listProjects(cli).map((p) => p.title))).has(title);
+
+    for (const entry of manifest.autopilots ?? []) {
+      const rec = JSON.parse(fs.readFileSync(`${dir}/${entry.file}`, "utf8"));
+      if (rec.assignee_type === "squad") {
+        incompatibilities.push({ type: "autopilot-squad-assignee-unsupported", detail: `${rec.title} → squad "${rec.assignee_name}" (the multica CLI has no command to assign a squad to an autopilot)` });
+      } else if (!agentAvailable(rec.assignee_name)) {
+        incompatibilities.push({ type: "autopilot-assignee-missing", detail: `${rec.title} → agent "${rec.assignee_name}" (ensure this agent exists in the destination or is included in this import)` });
+      }
+      if (!rec.priority) {
+        incompatibilities.push({ type: "autopilot-priority-not-captured", detail: `${rec.title} (the multica CLI/API never returns an autopilot's priority, so export could not capture it)` });
+      }
+      if (rec.project_title && !projectAvailable(rec.project_title)) {
+        incompatibilities.push({ type: "autopilot-project-missing", detail: `${rec.title} → project "${rec.project_title}" (not found in the destination)` });
+      }
+      if (rec.had_webhook_trigger) {
+        incompatibilities.push({ type: "autopilot-webhook-reissued", detail: `${rec.title} (webhook trigger will get a newly issued URL — the old one never travels)` });
       }
     }
   }

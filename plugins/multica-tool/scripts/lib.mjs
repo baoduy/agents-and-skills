@@ -53,6 +53,9 @@ export function resolveWorkspaceId(cli, name) {
 export const listRuntimes = (cli) => cli.json(["runtime", "list"]);
 export const listSkills = (cli) => cli.json(["skill", "list"]);
 export const listAgents = (cli) => cli.json(["agent", "list"]);
+// Includes archived agents (archived_at set) — used wherever a name match or an
+// id lookup must also see agents excluded from the default listing above.
+export const listAgentsIncludingArchived = (cli) => cli.json(["agent", "list", "--include-archived"]);
 export const listSquads = (cli) => cli.json(["squad", "list"]);
 export const listWorkspaceMembers = (cli) => cli.json(["workspace", "member", "list"]);
 
@@ -72,6 +75,8 @@ export function getAgent(cli, id) {
   const a = cli.json(["agent", "get", id]);
   return {
     id: a.id, name: a.name, description: a.description, instructions: a.instructions,
+    // Export-time signal only (never written to a bundle record — see redactAgent).
+    archived_at: a.archived_at ?? null,
     model: a.model, visibility: a.visibility, avatar_url: a.avatar_url ?? null,
     service_tier: a.service_tier ?? "",
     permission_mode: a.permission_mode ?? null,
@@ -127,3 +132,27 @@ export const getProjectResources = (cli, id) =>
   (cli.json(["project", "resource", "list", id]) ?? []).map((r) => ({
     resource_type: r.resource_type, resource_ref: r.resource_ref, label: r.label ?? null,
   }));
+
+export const listAutopilots = (cli) => cli.json(["autopilot", "list"]).autopilots ?? [];
+
+// `autopilot get` wraps the record as {autopilot, collaborators, triggers} — only
+// autopilot + triggers are portable; collaborators/can_write/can_manage_access are
+// caller-relative and never bundled. `priority` is accepted by `autopilot
+// create`/`update` but never present in this response (verified live) — kept as a
+// field anyway so this starts round-tripping automatically if the API adds it.
+export function getAutopilot(cli, id) {
+  const r = cli.json(["autopilot", "get", id]);
+  const a = r.autopilot;
+  return {
+    id: a.id, title: a.title, description: a.description ?? "",
+    execution_mode: a.execution_mode, issue_title_template: a.issue_title_template ?? null,
+    priority: a.priority ?? null,
+    project_id: a.project_id ?? null,
+    assignee_id: a.assignee_id, assignee_type: a.assignee_type,
+    subscribers: (a.subscribers ?? []).map((s) => ({ user_id: s.user_id, user_type: s.user_type })),
+    triggers: (r.triggers ?? []).map((t) => ({
+      kind: t.kind, label: t.label ?? null, enabled: !!t.enabled,
+      cron_expression: t.cron_expression ?? null, timezone: t.timezone ?? null,
+    })),
+  };
+}
