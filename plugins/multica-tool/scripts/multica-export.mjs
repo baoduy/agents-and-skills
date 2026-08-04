@@ -31,7 +31,7 @@ export function redactAgent(a) {
   // a is a normalized agent from getAgent, with `custom_env`/
   // `custom_env_fetch_failed` attached by the caller (collectAgent) — getAgent
   // itself never fetches custom_env, since it requires a separate audited call.
-  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, instructions, ...rest } = a;
+  const { id, has_custom_env, mcp_config_redacted, custom_env_fetch_failed, mcp_config, custom_env, skills, runtime_id, instructions, description, ...rest } = a;
   const mcpUsable = !mcp_config_redacted && nonEmpty(mcp_config);
   const envUsable = !custom_env_fetch_failed && nonEmpty(custom_env);
   // mcp_config_redacted / custom_env_fetch_failed alone still flag hadSecrets even
@@ -51,9 +51,10 @@ export function redactAgent(a) {
       had_secrets: hadSecrets,
     },
     hadSecrets,
-    // instructions are written to a sibling .md by the caller (see avatar_file),
-    // never embedded in the JSON record.
+    // instructions and description are written to sibling .md files by the caller
+    // (see avatar_file), never embedded in the JSON record.
     instructions: instructions ?? "",
+    description: description ?? "",
   };
 }
 
@@ -225,6 +226,12 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
       const rel = entry.file.replace(/\.json$/, ".md");
       fs.writeFileSync(`${outDir}/${rel}`, red.instructions);
       record.instructions_file = rel;
+    }
+    // Description gets its own sibling .md too (same pattern); only when non-empty.
+    if (red.description) {
+      const rel = entry.file.replace(/\.json$/, ".description.md");
+      fs.writeFileSync(`${outDir}/${rel}`, red.description);
+      record.description_file = rel;
     }
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }

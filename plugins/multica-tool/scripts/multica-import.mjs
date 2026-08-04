@@ -18,6 +18,15 @@ function readInstructions(fs, dir, rec) {
   return rec.instructions ?? "";
 }
 
+// Agent description lives in a sibling .md referenced by `description_file`
+// (mirrors instructions_file). Legacy bundles keep it inline in the JSON.
+function readDescription(fs, dir, rec) {
+  if (rec.description_file && fs.existsSync(`${dir}/${rec.description_file}`)) {
+    return fs.readFileSync(`${dir}/${rec.description_file}`, "utf8");
+  }
+  return rec.description ?? "";
+}
+
 // Relative paths of every file under root (recursing into subdirs like scripts/).
 function walkSkillFiles(fs, root, rel = "") {
   const out = [];
@@ -98,7 +107,8 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       "--visibility", rec.visibility ?? "private",
       "--max-concurrent-tasks", String(rec.max_concurrent_tasks ?? 6),
     ];
-    if (rec.description) common.push("--description", rec.description);
+    const description = readDescription(fs, dir, rec);
+    if (description) common.push("--description", description);
     const instructions = readInstructions(fs, dir, rec);
     if (instructions) common.push("--instructions", instructions);
     if (rec.model) common.push("--model", rec.model);

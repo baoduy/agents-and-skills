@@ -176,6 +176,24 @@ test("export agent with empty instructions writes no .md and no instructions_fil
   assert.ok(!("instructions" in record), "instructions never embedded");
 });
 
+test("export agent writes description to a sibling .description.md and records description_file", () => {
+  const fs = memFs();
+  exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/od", sourceWorkspaceId: "ws", fs });
+  const record = JSON.parse(fs.files["/od/agents/helper.json"]);
+  assert.equal(fs.files["/od/agents/helper.description.md"], "helps", "description written to agents/<slug>.description.md");
+  assert.equal(record.description_file, "agents/helper.description.md", "record points at the .description.md");
+  assert.ok(!("description" in record), "description no longer embedded in the JSON record");
+});
+
+test("export agent with empty description writes no .description.md and no description_file", () => {
+  const fs = memFs();
+  exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC2" }, outDir: "/od2", sourceWorkspaceId: "ws", fs });
+  const record = JSON.parse(fs.files["/od2/agents/helper2.json"]);
+  assert.equal(fs.files["/od2/agents/helper2.description.md"], undefined, "no .description.md written for empty description");
+  assert.ok(!("description_file" in record), "no description_file key when empty");
+  assert.ok(!("description" in record), "description never embedded");
+});
+
 test("manifest.json never carries mcp_config/custom_env, even when the agent record does (regression: secrets must stay out of the manifest/stdout projection)", () => {
   const fs = memFs();
   const { manifest } = exportResource({ cli: fakeCli(), scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/o4", sourceWorkspaceId: "ws", fs });

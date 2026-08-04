@@ -64,7 +64,7 @@ Pass `--scope all` (with no `--id`) to export the **entire workspace** — every
 
 Exporting a project (or `projects`/`all`) also **bundles the project's lead agent** so the bundle is self-contained; projects carry metadata only (title, description, icon, priority, status, dates, lead mapping) plus their attached resource records — never issues. On import, only `github_repo` resources are portable and recreated; other resource types are reported and skipped.
 
-The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Each agent's and squad's **instructions** (system prompt / charter) are written to a sibling Markdown file — `agents/<slug>.md`, `squads/<slug>.md` — referenced by an `instructions_file` key in the JSON, so the prose is easy to read, diff, and edit. Agents/squads with no instructions get no `.md`.
+The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Each agent's and squad's **instructions** (system prompt / charter) are written to a sibling Markdown file — `agents/<slug>.md`, `squads/<slug>.md` — referenced by an `instructions_file` key in the JSON, so the prose is easy to read, diff, and edit. Agents/squads with no instructions get no `.md`. An agent's **description** is likewise written to `agents/<slug>.description.md` and referenced by a `description_file` key (no file when the description is empty).
 
 Avatars are captured automatically: an agent's uploaded-image avatar is downloaded into the bundle (`agents/<slug>.avatar.<ext>`) and referenced by `avatar_file`; emoji avatars (agents and squads) and a squad's avatar are recorded as the `avatar_url` string.
 

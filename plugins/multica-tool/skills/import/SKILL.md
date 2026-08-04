@@ -68,7 +68,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
 
 The import also rewrites any `mention://agent/<id>` link inside squad and agent instructions (e.g. `[@dev-backend](mention://agent/<id>)`) from the source agent's id to its new id in the target workspace — the CLI does this automatically for every agent captured in the bundle; no extra flag needed. Mentions pointing to an agent outside the bundle are left untouched.
 
-Instructions are read back from each resource's sibling `.md` (`agents/<slug>.md`, `squads/<slug>.md`) when present — editing that Markdown is the supported way to review and enhance an agent's or squad's instructions before import. Older bundles that predate the split (instructions inline in the JSON, no `instructions_file`) still import unchanged.
+Instructions are read back from each resource's sibling `.md` (`agents/<slug>.md`, `squads/<slug>.md`) when present — editing that Markdown is the supported way to review and enhance an agent's or squad's instructions before import. An agent's description is read back the same way from `agents/<slug>.description.md` when a `description_file` key is present. Older bundles that predate the split (instructions/description inline in the JSON, no `instructions_file`/`description_file`) still import unchanged.
 
 Avatars are restored automatically, but **only when the target resource has none** — an existing agent or squad that already carries an avatar is never overwritten. New agents get their bundled image re-uploaded; new squads get their `avatar_url` (emoji or URL) set. An agent whose source avatar was an emoji can't be restored (the CLI has no emoji setter for agents) and is reported as unsupported.
 
