@@ -615,6 +615,18 @@ test("importProjects creates the project, sets --lead to the imported agent, add
   assert.deepEqual(r.leadUnresolved, []);
 });
 
+test("importProjects reads description from a sibling .description.md when description_file is set", () => {
+  const { description, ...noDesc } = LAUNCH_REC;
+  const fs = memFs({
+    "./projects/launch.json": JSON.stringify({ ...noDesc, description_file: "projects/launch.description.md" }),
+    "./projects/launch.description.md": "the full launch brief",
+  });
+  const cli = projectRecordingCli();
+  importProjects({ cli, manifest: PROJECT_MANIFEST, dir: ".", agentIdMap: new Map([["Helper", "ag_NEW1"]]), fs });
+  const create = cli.calls.find((a) => a[1] === "create");
+  assert.equal(create[create.indexOf("--description") + 1], "the full launch brief", "description came from the .md, not inline JSON");
+});
+
 test("importProjects updates by title and does not re-add an existing resource (idempotent)", () => {
   const fs = memFs({ "./projects/launch.json": JSON.stringify(LAUNCH_REC) });
   const cli = projectRecordingCli({

@@ -5,6 +5,18 @@ import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembe
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
+// Externalize a prose field to a sibling .md next to `jsonRel`
+// (e.g. agents/x.json + ".description.md" → agents/x.description.md), and record
+// the `<field>_file` pointer on `record`. Empty prose writes nothing and adds no
+// key — same sibling-file pattern as avatar_file, applied uniformly to every
+// resource's instructions/description so no prose is ever embedded in the JSON.
+function writeSidecar(fs, outDir, jsonRel, suffix, text, record, key) {
+  if (!text) return;
+  const rel = jsonRel.replace(/\.json$/, suffix);
+  fs.writeFileSync(`${outDir}/${rel}`, text);
+  record[key] = rel;
+}
+
 // An avatar_url is either an uploaded-image URL (http[s]://…) or an inline
 // "emoji:🦍" marker. Only image URLs carry bytes worth bundling; emoji markers
 // are just carried as strings in the record.
@@ -73,9 +85,11 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads
     agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, source_id: a.source_id, source_runtime_id: a.source_runtime_id, source_runtime_provider: a.source_runtime_provider ?? null, skill_names: a.skill_names, had_secrets: !!a.had_secrets })),
     squads: (squads ?? []).map((squad) => {
       const file = `squads/${slugify(squad.name)}.json`;
-      const entry = { name: squad.name, file, description: squad.description ?? "", avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members };
-      // Instructions go to a sibling .md (see squad write loop); only referenced when non-empty.
+      const entry = { name: squad.name, file, avatar_url: squad.avatar_url ?? null, leader_name: squad.leader_name, members: squad.members };
+      // Instructions and description go to sibling .md files (see squad write
+      // loop); only referenced when non-empty.
       if (squad.instructions) entry.instructions_file = file.replace(/\.json$/, ".md");
+      if (squad.description) entry.description_file = file.replace(/\.json$/, ".description.md");
       return entry;
     }),
     projects: [...seenProjects.values()].map((p) => ({
@@ -305,38 +319,34 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
         record.avatar_file = rel;
       }
     }
-    // Instructions live in a sibling .md for reviewability (same sibling-file
-    // pattern as avatar_file); only written when non-empty.
-    if (red.instructions) {
-      const rel = entry.file.replace(/\.json$/, ".md");
-      fs.writeFileSync(`${outDir}/${rel}`, red.instructions);
-      record.instructions_file = rel;
-    }
-    // Description gets its own sibling .md too (same pattern); only when non-empty.
-    if (red.description) {
-      const rel = entry.file.replace(/\.json$/, ".description.md");
-      fs.writeFileSync(`${outDir}/${rel}`, red.description);
-      record.description_file = rel;
-    }
+    // Instructions and description each live in a sibling .md for reviewability.
+    writeSidecar(fs, outDir, entry.file, ".md", red.instructions, record, "instructions_file");
+    writeSidecar(fs, outDir, entry.file, ".description.md", red.description, record, "description_file");
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
-  const squadInstrByName = new Map(squads.map((s) => [s.name, s.instructions ?? ""]));
+  const squadByName = new Map(squads.map((s) => [s.name, s]));
   for (const entry of manifest.squads) {
     fs.mkdirSync(`${outDir}/squads`, { recursive: true });
-    if (entry.instructions_file) {
-      fs.writeFileSync(`${outDir}/${entry.instructions_file}`, squadInstrByName.get(entry.name) ?? "");
-    }
+    const s = squadByName.get(entry.name);
+    if (entry.instructions_file) fs.writeFileSync(`${outDir}/${entry.instructions_file}`, s?.instructions ?? "");
+    if (entry.description_file) fs.writeFileSync(`${outDir}/${entry.description_file}`, s?.description ?? "");
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(entry, null, 2));
   }
   const projectByTitle = new Map(projects.map((p) => [p.title, p]));
   for (const entry of manifest.projects) {
     fs.mkdirSync(`${outDir}/projects`, { recursive: true });
-    fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(projectByTitle.get(entry.title), null, 2));
+    const record = { ...projectByTitle.get(entry.title) };
+    const desc = record.description; delete record.description;
+    writeSidecar(fs, outDir, entry.file, ".description.md", desc, record, "description_file");
+    fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
   const autopilotByTitle = new Map(autopilots.map((a) => [a.title, a]));
   for (const entry of manifest.autopilots) {
     fs.mkdirSync(`${outDir}/autopilots`, { recursive: true });
-    fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(autopilotByTitle.get(entry.title), null, 2));
+    const record = { ...autopilotByTitle.get(entry.title) };
+    const desc = record.description; delete record.description;
+    writeSidecar(fs, outDir, entry.file, ".description.md", desc, record, "description_file");
+    fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
   return {

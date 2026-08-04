@@ -8,24 +8,18 @@ export function parseInclude(raw) {
   return set;
 }
 
-// Instructions live in a sibling .md referenced by `instructions_file` (mirrors
-// avatar_file). Legacy bundles carry no instructions_file and keep instructions
-// inline in the JSON — fall back to that so older exports still import.
-function readInstructions(fs, dir, rec) {
-  if (rec.instructions_file && fs.existsSync(`${dir}/${rec.instructions_file}`)) {
-    return fs.readFileSync(`${dir}/${rec.instructions_file}`, "utf8");
+// A prose field (instructions/description) lives in a sibling .md referenced by
+// `<field>_file` (mirrors avatar_file). Legacy bundles carry no `<field>_file`
+// and keep the prose inline in the JSON — fall back to that so older exports
+// still import.
+function readSidecar(fs, dir, rec, fileKey, inlineKey) {
+  if (rec[fileKey] && fs.existsSync(`${dir}/${rec[fileKey]}`)) {
+    return fs.readFileSync(`${dir}/${rec[fileKey]}`, "utf8");
   }
-  return rec.instructions ?? "";
+  return rec[inlineKey] ?? "";
 }
-
-// Agent description lives in a sibling .md referenced by `description_file`
-// (mirrors instructions_file). Legacy bundles keep it inline in the JSON.
-function readDescription(fs, dir, rec) {
-  if (rec.description_file && fs.existsSync(`${dir}/${rec.description_file}`)) {
-    return fs.readFileSync(`${dir}/${rec.description_file}`, "utf8");
-  }
-  return rec.description ?? "";
-}
+const readInstructions = (fs, dir, rec) => readSidecar(fs, dir, rec, "instructions_file", "instructions");
+const readDescription = (fs, dir, rec) => readSidecar(fs, dir, rec, "description_file", "description");
 
 // Relative paths of every file under root (recursing into subdirs like scripts/).
 function walkSkillFiles(fs, root, rel = "") {
@@ -279,7 +273,8 @@ export function importProjects({ cli, manifest, dir, agentIdMap, fs = nodeFs }) 
   for (const entry of manifest.projects ?? []) {
     const rec = JSON.parse(fs.readFileSync(`${dir}/${entry.file}`, "utf8"));
     const flags = ["--title", rec.title];
-    if (rec.description) flags.push("--description", rec.description);
+    const description = readDescription(fs, dir, rec);
+    if (description) flags.push("--description", description);
     if (rec.icon) flags.push("--icon", rec.icon);
     if (rec.status) flags.push("--status", rec.status);
     if (rec.due_date) flags.push("--due-date", rec.due_date);
@@ -357,7 +352,8 @@ export function importAutopilots({ cli, manifest, dir, agentIdMap, fs = nodeFs }
 
   for (const rec of recs) {
     const common = [];
-    if (rec.description) common.push("--description", rec.description);
+    const description = readDescription(fs, dir, rec);
+    if (description) common.push("--description", description);
     if (rec.issue_title_template) common.push("--issue-title-template", rec.issue_title_template);
     // priority is never present today — the multica CLI/API accepts it on write but
     // never returns it on read, so export can't capture the source's real value.
@@ -479,6 +475,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
   if (inc.has("squads")) {
     for (const squad of manifest.squads ?? []) {
       squad.instructions = readInstructions(fs, dir, squad);
+      squad.description = readDescription(fs, dir, squad);
       const r = importSquad({ cli, squad, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap });
       if (r.skipped) { squadsSkipped.push(squad.name); continue; }
       squadIdMap.set(squad.name, r.newId);
