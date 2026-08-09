@@ -18,7 +18,7 @@ sync <type> <name> from <src-ws> to <dest-ws>
 
 Where `<type>` is `skill`, `agent`, `squad`, `project`, or `autopilot`; `<name>` is the resource name (for `project` and `autopilot`, its **title**); `<src-ws>` and `<dest-ws>` are workspace names registered in Multica.
 
-Projects and autopilots are resolved by title, not ID, e.g. `multica-sync.mjs project "<title>" from <src-ws> <dest-ws>` — the project's lead agent is synced alongside it. `multica-sync.mjs autopilot "<title>" from <src-ws> <dest-ws>` syncs the autopilot's assignee (agent, or squad + members) alongside it; a squad-assigned autopilot aborts (see the import skill — the multica CLI has no command to assign a squad to an autopilot).
+Projects and autopilots are resolved by title, not ID, e.g. `multica-sync.mjs project "<title>" from <src-ws> <dest-ws>` — the project's lead agent is synced alongside it. `multica-sync.mjs autopilot "<title>" from <src-ws> <dest-ws>` syncs only the autopilot configuration (title, description, triggers, etc.) — its assignee is linked by name and must already exist in the destination workspace; the assignee is not bundled or synced alongside the autopilot. A squad-assigned autopilot aborts (see the import skill — the multica CLI has no command to assign a squad to an autopilot).
 
 ## Step 2 — Run the sync (auto-mapping first)
 

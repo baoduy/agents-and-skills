@@ -73,7 +73,7 @@ An empty field gets no file and no `*_file` key. Skills keep their own layout �
 
 Avatars are captured automatically: an agent's uploaded-image avatar is downloaded into the bundle (`agents/<slug>.avatar.<ext>`) and referenced by `avatar_file`; emoji avatars (agents and squads) and a squad's avatar are recorded as the `avatar_url` string.
 
-Exporting `--scope autopilot` bundles the autopilot's **assignee** so the bundle is self-contained — an agent assignee (and its skills), or a squad assignee (its members, their skills, and the squad itself). It also captures the schedule and webhook triggers, the target project's **title** (not its ID — resolved by name on import) when one is set, and human subscribers' **names** (not their IDs). A webhook trigger's secret (URL/token) is **never** written to the bundle — only that it exists (its label); a fresh secret is issued on import.
+Exporting `--scope autopilot` exports only the autopilot configuration — no agents, skills, or squads are bundled. The assignee is linked by name (`assignee_type` + `assignee_name`); import resolves it against agents already present in the destination workspace. The bundle also captures the schedule and webhook triggers, the target project's **title** (not its ID — resolved by name on import) when one is set, and human subscribers' **names** (not their IDs). A webhook trigger's secret (URL/token) is **never** written to the bundle — only that it exists (its label); a fresh secret is issued on import.
 
 ## Step 5 — Report results
 

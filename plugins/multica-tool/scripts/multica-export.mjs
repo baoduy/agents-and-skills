@@ -208,19 +208,23 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     };
   }
 
-  // Collect a single autopilot: its assignee (agent, or squad + members + skills)
-  // and, when present, the destination-portable project title / subscriber names.
+  // Collect a single autopilot: assignee resolved by name only (no agent/skill
+  // bundling — import resolves against destination agents/squads).
   // Webhook trigger secrets (url/token) are never read into the bundle — only
   // kind/label/enabled, matching the existing agent MCP/env redaction pattern.
   function collectOneAutopilot(autopilotId) {
     const ap = getAutopilot(cli, autopilotId);
     let assignee_name = null;
     if (ap.assignee_type === "agent") {
-      const entry = collectAgent(cli, ap.assignee_id, agentsById, skills, getProviderById());
-      assignee_name = entry.archived ? null : entry.raw.name;
+      try {
+        const a = getAgent(cli, ap.assignee_id);
+        assignee_name = a.archived_at ? null : a.name;
+      } catch { assignee_name = null; }
     } else if (ap.assignee_type === "squad") {
-      const sq = collectOneSquad(ap.assignee_id);
-      if (sq) { squads.push(sq); assignee_name = sq.name; }
+      try {
+        const sq = getSquad(cli, ap.assignee_id);
+        assignee_name = sq.name;
+      } catch { assignee_name = null; }
     }
     let project_title = null;
     if (ap.project_id) {

@@ -33,7 +33,7 @@ export function sync({ exec, type, name, srcWsName, destWsName, tmpDir, runtimeM
 
   const { scope, ids } = resolveScopeId(srcCli, type, name);
   exportResource({ cli: srcCli, scope, ids, outDir: tmpDir, sourceWorkspaceId: srcId, fs });
-  const includeByType = { skill: ["skills"], agent: ["agents"], squad: ["agents", "squads"], project: ["agents", "projects"], autopilot: ["agents", "squads", "autopilots"] };
+  const includeByType = { skill: ["skills"], agent: ["agents"], squad: ["agents", "squads"], project: ["agents", "projects"], autopilot: ["autopilots"] };
   const include = new Set(includeByType[type] ?? ["agents", "squads"]);
   if (include.has("agents")) include.add("skills");
   return importBundle({ cli: destCli, dir: tmpDir, runtimeMap, include, fs });
