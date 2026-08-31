@@ -1,7 +1,8 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listAgentsIncludingArchived, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot } from "./lib.mjs";
+import { listSkills, listAgents, listAgentsIncludingArchived, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot, listLabels, listProperties } from "./lib.mjs";
 
-// User-facing selectable types are agents/squads/projects/autopilots; skills follow agents.
+// User-facing selectable types are agents/squads/projects/autopilots/labels/properties;
+// skills follow agents. Default stays agents,squads — everything else opts in.
 export function parseInclude(raw) {
   const set = new Set((raw ? raw.split(",") : ["agents", "squads"]).map((s) => s.trim()).filter(Boolean));
   if (set.has("agents")) set.add("skills");
@@ -355,10 +356,11 @@ export function importAutopilots({ cli, manifest, dir, agentIdMap, fs = nodeFs }
     const description = readDescription(fs, dir, rec);
     if (description) common.push("--description", description);
     if (rec.issue_title_template) common.push("--issue-title-template", rec.issue_title_template);
-    // priority is never present today — the multica CLI/API accepts it on write but
-    // never returns it on read, so export can't capture the source's real value.
-    if (rec.priority && rec.priority !== "none") common.push("--priority", rec.priority);
-    else priorityNotCaptured.push(rec.title);
+    // Priority never round-trips: the API omits it on read, and as of multica
+    // 0.4.36 `autopilot create`/`update` reject `--priority` outright ("unknown
+    // flag"). Passing a legacy bundle's value through would abort the import, so
+    // it is always reported instead of applied.
+    priorityNotCaptured.push(rec.title);
 
     if (rec.project_title) {
       const projectId = resolveProjectId(rec.project_title);
@@ -404,6 +406,71 @@ export function importAutopilots({ cli, manifest, dir, agentIdMap, fs = nodeFs }
     }
   }
   return { idMap, created, updated, projectUnresolved, subscribersUnresolved, priorityNotCaptured, webhookReissued };
+}
+
+// Workspace issue labels, matched by name. Colour is the only field the CLI can
+// set besides the name — a label's description has no `--description` flag on
+// `label create`/`update` (multica 0.4.36), so it is reported, never applied.
+export function importLabels({ cli, manifest }) {
+  const entries = manifest.labels ?? [];
+  if (!entries.length) return { created: 0, updated: 0, descriptionUnsupported: [] };
+  const existing = listLabels(cli);
+  let created = 0, updated = 0;
+  const descriptionUnsupported = [];
+  for (const l of entries) {
+    const match = findByName(existing, l.name);
+    if (match) {
+      cli.run(["label", "update", match.id, "--color", l.color]);
+      updated++;
+    } else {
+      cli.run(["label", "create", "--name", l.name, "--color", l.color]);
+      created++;
+    }
+    // Only worth reporting when the destination doesn't already carry the same text.
+    if (l.description && match?.description !== l.description) descriptionUnsupported.push(l.name);
+  }
+  return { created, updated, descriptionUnsupported };
+}
+
+// Workspace custom issue property definitions, matched by name — the same key
+// issue values reference, and the key `property update` uses to re-match existing
+// options so their ids (and any values already set on issues) survive.
+//
+// A property's type is immutable: a name collision with a different type is
+// skipped and reported rather than forced, since re-creating it would orphan
+// every value already stored under that name at the destination.
+export function importProperties({ cli, manifest }) {
+  const entries = manifest.properties ?? [];
+  if (!entries.length) return { created: 0, updated: 0, typeConflicts: [], archivedApplied: [] };
+  const existing = listProperties(cli);
+  let created = 0, updated = 0;
+  const typeConflicts = [], archivedApplied = [];
+  for (const p of entries) {
+    const match = findByName(existing, p.name);
+    if (match && match.type !== p.type) {
+      typeConflicts.push(`${p.name} (destination is "${match.type}", bundle is "${p.type}" — type is immutable)`);
+      continue;
+    }
+    // Unarchive first so the update below always lands on an active definition;
+    // the desired archived state is re-applied at the end of the loop body.
+    if (match?.archived) cli.run(["property", "unarchive", p.name]);
+
+    const flags = [];
+    if (p.description) flags.push("--description", p.description);
+    if (p.icon) flags.push("--icon", p.icon);
+    // `--option` is select/multi_select only; every other type exports none.
+    for (const o of p.options ?? []) flags.push("--option", o.color ? `${o.name}:${o.color}` : o.name);
+
+    if (match) {
+      cli.run(["property", "update", p.name, ...flags]);
+      updated++;
+    } else {
+      cli.run(["property", "create", "--name", p.name, "--type", p.type, ...flags]);
+      created++;
+    }
+    if (p.archived) { cli.run(["property", "archive", p.name]); archivedApplied.push(p.name); }
+  }
+  return { created, updated, typeConflicts, archivedApplied };
 }
 
 export function collectSourceRuntimes(manifest) {
@@ -494,10 +561,17 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     autopilotRes = importAutopilots({ cli, manifest, dir, agentIdMap: agentRes.idMap, fs });
   }
 
+  const labelRes = inc.has("labels")
+    ? importLabels({ cli, manifest })
+    : { created: 0, updated: 0, descriptionUnsupported: [] };
+  const propertyRes = inc.has("properties")
+    ? importProperties({ cli, manifest })
+    : { created: 0, updated: 0, typeConflicts: [], archivedApplied: [] };
+
   return {
     include: [...inc],
-    created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated, projects: projectRes.created, autopilots: autopilotRes.created },
-    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated, projects: projectRes.updated, autopilots: autopilotRes.updated },
+    created: { skills: skillRes.created, agents: agentRes.created, squads: squadsCreated, projects: projectRes.created, autopilots: autopilotRes.created, labels: labelRes.created, properties: propertyRes.created },
+    updated: { skills: skillRes.updated, agents: agentRes.updated, squads: squadsUpdated, projects: projectRes.updated, autopilots: autopilotRes.updated, labels: labelRes.updated, properties: propertyRes.updated },
     // Agents restored from archived + updated to the bundle's definition — distinct
     // from a plain update (an active-name match). Only agents can be reused today.
     reused: { agents: agentRes.reused },
@@ -521,6 +595,9 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     autopilotSubscribersUnresolved: autopilotRes.subscribersUnresolved,
     autopilotPriorityNotCaptured: autopilotRes.priorityNotCaptured,
     autopilotWebhookReissued: autopilotRes.webhookReissued,
+    labelDescriptionUnsupported: labelRes.descriptionUnsupported,
+    propertyTypeConflicts: propertyRes.typeConflicts,
+    propertiesArchived: propertyRes.archivedApplied,
   };
 }
 
@@ -528,13 +605,15 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
   const inc = include ?? new Set(["skills", "agents", "squads"]);
   const manifest = JSON.parse(fs.readFileSync(`${dir}/manifest.json`, "utf8"));
   const count = (k) => (manifest[k] ?? []).length;
-  const bundle = { skills: count("skills"), agents: count("agents"), squads: count("squads"), projects: count("projects"), autopilots: count("autopilots") };
+  const bundle = { skills: count("skills"), agents: count("agents"), squads: count("squads"), projects: count("projects"), autopilots: count("autopilots"), labels: count("labels"), properties: count("properties") };
   const willImport = {
     skills: inc.has("skills") ? bundle.skills : 0,
     agents: inc.has("agents") ? bundle.agents : 0,
     squads: inc.has("squads") ? bundle.squads : 0,
     projects: inc.has("projects") ? bundle.projects : 0,
     autopilots: inc.has("autopilots") ? bundle.autopilots : 0,
+    labels: inc.has("labels") ? bundle.labels : 0,
+    properties: inc.has("properties") ? bundle.properties : 0,
   };
 
   const incompatibilities = [];
@@ -596,14 +675,34 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
       } else if (!agentAvailable(rec.assignee_name)) {
         incompatibilities.push({ type: "autopilot-assignee-missing", detail: `${rec.title} → agent "${rec.assignee_name}" (ensure this agent exists in the destination or is included in this import)` });
       }
-      if (!rec.priority) {
-        incompatibilities.push({ type: "autopilot-priority-not-captured", detail: `${rec.title} (the multica CLI/API never returns an autopilot's priority, so export could not capture it)` });
-      }
+      incompatibilities.push({ type: "autopilot-priority-not-captured", detail: `${rec.title} (the multica CLI/API never returns an autopilot's priority on read, and multica 0.4.36 dropped --priority from autopilot create/update — it can be neither captured nor restored)` });
       if (rec.project_title && !projectAvailable(rec.project_title)) {
         incompatibilities.push({ type: "autopilot-project-missing", detail: `${rec.title} → project "${rec.project_title}" (not found in the destination)` });
       }
       if (rec.had_webhook_trigger) {
         incompatibilities.push({ type: "autopilot-webhook-reissued", detail: `${rec.title} (webhook trigger will get a newly issued URL — the old one never travels)` });
+      }
+    }
+  }
+
+  if (inc.has("labels")) {
+    for (const l of manifest.labels ?? []) {
+      if (l.description) {
+        incompatibilities.push({ type: "label-description-not-settable", detail: `${l.name} (the multica CLI exposes no --description flag on label create/update)` });
+      }
+    }
+  }
+
+  if (inc.has("properties")) {
+    // Read-only mirror of importProperties' immutable-type skip.
+    const existingProps = (manifest.properties ?? []).length ? listProperties(cli) : [];
+    for (const prop of manifest.properties ?? []) {
+      const match = findByName(existingProps, prop.name);
+      if (match && match.type !== prop.type) {
+        incompatibilities.push({ type: "property-type-conflict", detail: `${prop.name} (destination is "${match.type}", bundle is "${prop.type}" — type is immutable, this property will be skipped)` });
+      }
+      if (prop.archived) {
+        incompatibilities.push({ type: "property-archived", detail: `${prop.name} (archived at the source — imported, then archived at the destination too)` });
       }
     }
   }
@@ -635,7 +734,7 @@ function main() {
   const dryRun    = args.includes("--dry-run");
 
   if (!dir || !workspace) {
-    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>] [--include <csv>] [--dry-run]");
+    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>] [--include agents,squads,projects,autopilots,labels,properties] [--dry-run]");
     process.exit(1);
   }
 

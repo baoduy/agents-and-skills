@@ -64,6 +64,18 @@ Pass `--scope all` (with no `--id`) to export the **entire workspace** — every
 
 Exporting a project (or `projects`/`all`) also **bundles the project's lead agent** so the bundle is self-contained; projects carry metadata only (title, description, icon, priority, status, dates, lead mapping) plus their attached resource records — never issues. On import, only `github_repo` resources are portable and recreated; other resource types are reported and skipped.
 
+### Issue labels and custom properties
+
+`--scope project`, `projects`, and `all` also bundle the workspace's **issue labels** and **custom issue property definitions** into `manifest.json` (as `labels[]` and `properties[]`), so a migrated project lands somewhere its issues can actually be labelled and filled in. Both are **workspace-scoped in Multica — there is no project-scoped label or property** — so what travels is the whole workspace's taxonomy, not a per-project subset. State that plainly to the user when they ask for "the project's labels".
+
+Narrower scopes (`skill`, `agent`, `squad`, `autopilot`) bundle neither — a single resource is not a workspace migration.
+
+What travels, and what cannot:
+
+- **Labels** — `name` and `color`. A label's `description` is captured in the bundle for review but **cannot be restored**: `label create`/`label update` expose no `--description` flag. Every affected label is listed in `labelDescriptionsNotPortable`.
+- **Properties** — `name`, `type`, `description`, `icon`, `archived`, and each select option's `name` + `color`. Server-assigned `position` and `usage_count` are not bundled (no CLI setter). Option **ids** are deliberately dropped: `property update` re-matches options by name at the destination, which is also how issue values reference them.
+- Archived property definitions **are** included (`property list --include-archived`), so a retired definition arrives retired instead of reappearing in every picker.
+
 The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Every resource's prose fields are externalized to sibling Markdown files, never embedded in the JSON — so they are easy to read, diff, and edit:
 
 - **instructions** (system prompt / charter, agents and squads) → `<slug>.md`, referenced by an `instructions_file` key.
@@ -84,3 +96,5 @@ Parse the JSON output from the script and report:
 - If `pruned_skills` is non-empty, note it: "Pruned N orphan skill(s) not linked to any agent: `<name>`, …" (these are standalone workspace skills that no exported agent references — only `--scope all` produces them).
 - If `warnings` is non-empty, surface every agent name verbatim with this message: "WARNING: the following agents' exported files contain custom environment variables or MCP config in PLAINTEXT — treat the export directory as sensitive (avoid committing it to a public repo, restrict file permissions, delete it once the import is done): `<agent-name>`."
 - If `autopilotWebhookTriggers` is non-empty, surface every autopilot title verbatim with: "NOTE: the following autopilots have a webhook trigger — its secret was NOT exported; a newly issued URL will be created on import: `<autopilot-title>`."
+- Count of labels and custom properties bundled (`manifest.labels.length`, `manifest.properties.length`), noting that both are workspace-wide, not project-specific.
+- If `labelDescriptionsNotPortable` is non-empty, surface every label name verbatim with: "NOTE: the following labels have a description that the multica CLI cannot set on import (`label create`/`update` have no `--description` flag) — re-enter it in the Multica UI at the destination: `<label-name>`."

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { exportResource, buildManifest } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { importBundle, importAutopilots, preflight, parseInclude } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 import { resolveScopeId, sync } from "../../plugins/multica-tool/scripts/multica-sync.mjs";
-import { AUTOPILOT_GET, AUTOPILOT_GET_SQUAD, AUTOPILOT_GET_MINIMAL, AGENT_GET, AGENT_GET_2, SKILL_GET, SQUAD_GET, SQUAD_MEMBERS, PROJECT_GET_1, WORKSPACE_MEMBERS, RUNTIME_LIST_SRC, RUNTIME_LIST_AGENT2 } from "./fixtures.mjs";
+import { AUTOPILOT_GET, AUTOPILOT_GET_SQUAD, AUTOPILOT_GET_MINIMAL, AGENT_GET, AGENT_GET_2, SKILL_GET, SQUAD_GET, SQUAD_MEMBERS, PROJECT_GET_1, WORKSPACE_MEMBERS, RUNTIME_LIST_SRC, RUNTIME_LIST_AGENT2, LABEL_LIST, PROPERTY_LIST } from "./fixtures.mjs";
 
 function memFs() {
   const files = {};
@@ -28,6 +28,8 @@ function autopilotCli(overrides = {}) {
       if (k3 === "workspace member list") return WORKSPACE_MEMBERS;
       const k4 = args.slice(0, 4).join(" ");
       if (k4 === "squad member list sq_SRC1") return SQUAD_MEMBERS;
+      if (args.join(" ") === "label list") return LABEL_LIST;
+      if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -278,6 +280,33 @@ test("importAutopilots creates autopilot paused and sets agent assignee", () => 
   assert.equal(res.updated, 0);
   assert.equal(res.idMap.get("Nightly Scan"), "ap_NEW1");
   assert.deepEqual(res.webhookReissued, []);
+});
+
+test("importAutopilots never passes --priority, even when a legacy bundle carries one", () => {
+  // multica 0.4.36 removed --priority from `autopilot create`/`update`; passing it
+  // exits non-zero with "unknown flag: --priority", which aborts the whole import.
+  // Bundles exported by earlier versions of this tool can still carry the field.
+  const calls = [];
+  const cli = {
+    json: (args) => {
+      if (args[0] === "autopilot" && args[1] === "list") return { autopilots: [] };
+      if (args[0] === "agent" && args[1] === "list") return [{ name: "Helper" }];
+      if (args[0] === "project" && args[1] === "list") return [];
+      if (args[0] === "workspace") return [];
+      return {};
+    },
+    run: (args) => { calls.push(args); return args.includes("create") ? '{"id":"ap_NEW1"}' : "{}"; },
+  };
+  const { manifest, file } = apImportCase({
+    title: "Legacy", file: "legacy.json",
+    recordOverrides: { execution_mode: "run_only", priority: "high" },
+    triggers: [],
+  });
+
+  const res = importAutopilots({ cli, manifest, dir: ".", agentIdMap: new Map([["Helper", "ag_NEW1"]]), fs: importFs(file) });
+  assert.equal(res.created, 1, "the autopilot still imports");
+  assert.ok(!calls.some((a) => a.includes("--priority")), "--priority is never sent to the CLI");
+  assert.deepEqual(res.priorityNotCaptured, ["Legacy"], "the loss is reported, not silently swallowed");
 });
 
 test("importAutopilots reads description from a sibling .description.md when description_file is set", () => {
@@ -560,7 +589,7 @@ test("preflight reports autopilot counts and incompatibilities", () => {
   };
 
   const rep = preflight({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["autopilots"]), fs });
-  assert.deepEqual(rep.bundle, { skills: 0, agents: 0, squads: 0, projects: 0, autopilots: 3 });
+  assert.deepEqual(rep.bundle, { skills: 0, agents: 0, squads: 0, projects: 0, autopilots: 3, labels: 0, properties: 0 });
   assert.ok(rep.incompatibilities.some((i) => i.type === "autopilot-assignee-missing" && i.detail.includes("A")));
   assert.ok(rep.incompatibilities.some((i) => i.type === "autopilot-squad-assignee-unsupported" && i.detail.includes("B")));
   assert.ok(rep.incompatibilities.some((i) => i.type === "autopilot-priority-not-captured" && i.detail.includes("A")));

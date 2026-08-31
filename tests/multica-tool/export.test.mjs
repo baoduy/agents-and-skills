@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest, exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, SKILL_GET_2, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2 } from "./fixtures.mjs";
+import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, SKILL_GET_2, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2, LABEL_LIST, PROPERTY_LIST } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
@@ -15,6 +15,8 @@ function fakeCli() {
       if (key === "agent env get") return AGENT_ENV_GET;
       if (key === "skill get sk_SRC1") return SKILL_GET;
       if (key === "runtime list") return RUNTIME_LIST_SRC;
+      if (args.join(" ") === "label list") return LABEL_LIST;
+      if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -140,6 +142,8 @@ test("export creates nested parent dirs for skill files (regression: scripts/ su
     json: (args) => {
       if (args.slice(0, 3).join(" ") === "skill get sk_N")
         return { id: "sk_N", name: "Nested", content: "x", config: {}, files: [{ path: "scripts/run.sh", content: "echo hi" }] };
+      if (args.join(" ") === "label list") return LABEL_LIST;
+      if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -297,6 +301,8 @@ test("export all collects every resource and writes a shared agent exactly once"
         if (args[3] === "sq_A") return [{ member_id: "ag_SRC1", member_type: "agent", role: "leader" }, { member_id: "ag_SRC2", member_type: "agent", role: "member" }];
         if (args[3] === "sq_B") return [{ member_id: "ag_SRC2", member_type: "agent", role: "leader" }];
       }
+      if (args.join(" ") === "label list") return LABEL_LIST;
+      if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -325,6 +331,8 @@ function projectCli() {
       if (k3 === "agent get ag_SRC1") return AGENT_GET;
       if (k3 === "skill get sk_SRC1") return SKILL_GET;
       if (k3 === "runtime list") return RUNTIME_LIST_SRC;
+      if (args.join(" ") === "label list") return LABEL_LIST;
+      if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -384,6 +392,8 @@ test("export all prunes skills no agent references", () => {
       if (three === "agent get ag_SRC1") return AGENT_GET;   // uses skill Greet
       if (three === "agent get ag_SRC2") return AGENT_GET_2; // no skills
       if (three === "runtime list") return RUNTIME_LIST_SRC;
+      if (args.join(" ") === "label list") return LABEL_LIST;
+      if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -402,6 +412,8 @@ test("export --scope skill never prunes the requested skill", () => {
     json: (args) => {
       const three = args.slice(0, 3).join(" ");
       if (three === "skill get sk_SRC2") return SKILL_GET_2;
+      if (args.join(" ") === "label list") return LABEL_LIST;
+      if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",

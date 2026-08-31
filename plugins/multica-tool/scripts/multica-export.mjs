@@ -1,7 +1,7 @@
 import * as nodeFs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listAgentsIncludingArchived, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, getAutopilot, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listAgentsIncludingArchived, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, getAutopilot, listLabels, listProperties, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
@@ -70,7 +70,7 @@ export function redactAgent(a) {
   };
 }
 
-export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads, projects, autopilots }) {
+export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads, projects, autopilots, labels, properties }) {
   const seenSkills = new Map();
   for (const s of skills) if (!seenSkills.has(s.name)) seenSkills.set(s.name, s);
   const seenAgents = new Map();
@@ -101,6 +101,12 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads
       assignee_type: ap.assignee_type, assignee_name: ap.assignee_name,
       project_title: ap.project_title, had_webhook_trigger: ap.had_webhook_trigger,
     })),
+    // Labels and properties are small, flat, prose-free definitions with no
+    // per-resource files to point at — they live inline here rather than in
+    // sidecar JSON, so the manifest stays the single thing import has to read.
+    // `id` is dropped: both are matched by NAME at the destination.
+    labels: (labels ?? []).map(({ id, ...rest }) => rest),
+    properties: properties ?? [],
   };
 }
 
@@ -246,6 +252,13 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     };
   }
 
+  // Labels and custom properties are workspace-wide, not per-project — two cheap
+  // list calls, bundled only for the scopes that carry issue-bearing work
+  // (`project`, `projects`, `all`), never for a lone skill/agent/squad/autopilot.
+  const wantsTaxonomy = scope === "all" || scope === "project" || scope === "projects";
+  const labels = wantsTaxonomy ? listLabels(cli) : [];
+  const properties = wantsTaxonomy ? listProperties(cli) : [];
+
   if (scope === "skill") collectSkill(cli, ids.skillId, skills);
   else if (scope === "agent") {
     const entry = collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
@@ -287,6 +300,8 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     squads,
     projects,
     autopilots,
+    labels,
+    properties,
   });
 
   const warnings = [];
@@ -356,6 +371,10 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   return {
     manifest, warnings, pruned_skills, archivedAgentsSkipped,
     autopilotWebhookTriggers: autopilots.filter((a) => a.had_webhook_trigger).map((a) => a.title),
+    // Captured in the bundle for review, but `label create`/`update` have no
+    // --description flag — flagged at export time so the gap is known before the
+    // migration, not discovered at the far end.
+    labelDescriptionsNotPortable: labels.filter((l) => l.description).map((l) => l.name),
   };
 }
 

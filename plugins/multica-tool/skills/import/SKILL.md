@@ -19,13 +19,13 @@ No existence check is needed here: the Step 2 dry-run fails with `Unknown worksp
 
 ## Step 2 — Pre-flight (dry run)
 
-Before writing anything, run the import script with `--dry-run` to preview the bundle. Preview against the **full** set (`--include agents,squads,projects,autopilots`) regardless of what the user ultimately chooses to import — incompatibilities for a type (e.g. project caveats) are only computed when that type is included, so previewing everything up front is what lets the user see a project's or autopilot's cost before deciding whether to opt it in:
+Before writing anything, run the import script with `--dry-run` to preview the bundle. Preview against the **full** set (`--include agents,squads,projects,autopilots,labels,properties`) regardless of what the user ultimately chooses to import — incompatibilities for a type (e.g. project caveats) are only computed when that type is included, so previewing everything up front is what lets the user see a project's or autopilot's cost before deciding whether to opt it in:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
   --dir <folder> \
   --workspace <workspace-name> \
-  --include agents,squads,projects,autopilots \
+  --include agents,squads,projects,autopilots,labels,properties \
   [--runtime-map <srcId1=dstId1,srcId2=dstId2,...>] \
   --dry-run
 ```
@@ -34,9 +34,11 @@ Present the `bundle` and `willImport` counts, and every entry in `incompatibilit
 
 ## Step 3 — Select which types to import
 
-Ask the user which of `agents`, `squads`, `projects`, `autopilots` they want to import. **Default is `agents,squads`** — `projects` and `autopilots` each require explicit opt-in.
+Ask the user which of `agents`, `squads`, `projects`, `autopilots`, `labels`, `properties` they want to import. **Default is `agents,squads`** — `projects`, `autopilots`, `labels`, and `properties` each require explicit opt-in.
 
-If the pre-flight's `incompatibilities` list contains an `unmapped-runtime` or `autopilot-squad-assignee-unsupported` entry, tell the user it **aborts the import before any write** (see Step 4 below) — `unmapped-runtime` needs `--runtime-map`; a squad-assigned autopilot has no fix, since the multica CLI has no command to assign a squad to an autopilot (only `--agent`) — drop that autopilot from the bundle or recreate its assignment by hand after importing the squad. An `autopilot-assignee-missing` entry also aborts unless resolved by including `agents` or ensuring that agent already exists in the destination. Other incompatibility kinds are informational only and applied best-effort, fixed up afterward in the Multica UI: `priority-not-settable` (project priority isn't settable via the CLI, so it never round-trips), `resource-not-portable` (only `github_repo` resources are portable — other resource kinds are dropped), `lead-agent-missing` (a non-agent lead isn't re-applied to the imported project), `autopilot-priority-not-captured` (the multica CLI/API never returns an autopilot's priority, so it can't be captured or restored at all — a known platform gap, not a bug in this tool), `autopilot-project-missing` (the autopilot's target project isn't found by title in the destination — it's created/updated with no project set), and `autopilot-webhook-reissued` (informational — the webhook trigger always gets a freshly issued URL).
+`labels` and `properties` write **workspace-wide** definitions (Multica has no project-scoped label or property), so importing them changes the target workspace's issue taxonomy for every project in it, not just the one being migrated. Say so before the user opts in.
+
+If the pre-flight's `incompatibilities` list contains an `unmapped-runtime` or `autopilot-squad-assignee-unsupported` entry, tell the user it **aborts the import before any write** (see Step 4 below) — `unmapped-runtime` needs `--runtime-map`; a squad-assigned autopilot has no fix, since the multica CLI has no command to assign a squad to an autopilot (only `--agent`) — drop that autopilot from the bundle or recreate its assignment by hand after importing the squad. An `autopilot-assignee-missing` entry also aborts unless resolved by including `agents` or ensuring that agent already exists in the destination. Other incompatibility kinds are informational only and applied best-effort, fixed up afterward in the Multica UI: `priority-not-settable` (project priority isn't settable via the CLI, so it never round-trips), `resource-not-portable` (only `github_repo` resources are portable — other resource kinds are dropped), `lead-agent-missing` (a non-agent lead isn't re-applied to the imported project), `autopilot-priority-not-captured` (the multica CLI/API never returns an autopilot's priority, so it can't be captured or restored at all — a known platform gap, not a bug in this tool), `autopilot-project-missing` (the autopilot's target project isn't found by title in the destination — it's created/updated with no project set), `autopilot-webhook-reissued` (informational — the webhook trigger always gets a freshly issued URL), `label-description-not-settable` (the CLI has no `--description` flag on `label create`/`update`, so a label's description never round-trips — re-enter it in the UI), `property-type-conflict` (a property of that name already exists at the destination with a **different** type; type is immutable, so that property is **skipped** entirely rather than re-created, which would orphan every value already stored under that name), and `property-archived` (informational — an archived source definition is imported and then archived at the destination too).
 
 ## Step 4 — Run the import (auto-mapping first)
 
@@ -46,7 +48,7 @@ Each exported agent record carries its source runtime's `provider` (e.g. `claude
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
   --dir <folder> \
   --workspace <workspace-name> \
-  --include <agents,squads,projects,autopilots>
+  --include <agents,squads,projects,autopilots,labels,properties>
 ```
 
 If it aborts with `Unmapped runtimes: ...` (0 or 2+ runtimes share that provider in the target workspace, or the bundle predates provider capture), resolve manually:
@@ -62,7 +64,7 @@ Ask the user to pick a matching target runtime by name or ID for each unmapped `
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-import.mjs" \
   --dir <folder> \
   --workspace <workspace-name> \
-  --include <agents,squads,projects,autopilots> \
+  --include <agents,squads,projects,autopilots,labels,properties> \
   --runtime-map <srcId1=dstId1,srcId2=dstId2,...>
 ```
 
@@ -74,13 +76,15 @@ Prose fields are read back from each resource's sibling `.md` when a `*_file` ke
 
 Avatars are restored automatically, but **only when the target resource has none** — an existing agent or squad that already carries an avatar is never overwritten. New agents get their bundled image re-uploaded; new squads get their `avatar_url` (emoji or URL) set. An agent whose source avatar was an emoji can't be restored (the CLI has no emoji setter for agents) and is reported as unsupported.
 
+Importing `labels` and `properties` matches by **name** and is idempotent: an existing label is updated to the bundle's colour, an existing property is updated in place (`property update` re-matches its options by name so option ids — and any issue values already set — survive). An archived definition is unarchived before the update and re-archived afterwards, so its archived state round-trips without ever writing to an archived record. A property whose name collides with a **different type** at the destination is skipped and reported, never re-created.
+
 Importing `autopilots` always creates a brand-new autopilot **paused**, regardless of the source's status — activation is left as a deliberate follow-up action, never automatic. Re-importing an already-imported autopilot updates it by title (never duplicates) but leaves its current status alone. Its triggers are upserted by kind+label — a re-import never adds a duplicate trigger — and a webhook trigger always gets a freshly issued URL, never the source's.
 
 ## Step 5 — Report results
 
 Parse the JSON output and report:
 
-- Created and updated counts for skills, agents, squads, projects, and autopilots (`created.autopilots`/`updated.autopilots`).
+- Created and updated counts for skills, agents, squads, projects, autopilots, labels, and properties (`created.labels`, `created.properties`, and the matching `updated.*`).
 - Name-to-ID maps for skills and agents (`skillIdMap`, `agentIdMap`).
 - `squadIdMap`: name-to-ID map for every squad imported.
 - `autopilotIdMap`: name-to-ID map for every autopilot imported.
@@ -96,3 +100,6 @@ Parse the JSON output and report:
 - If `autopilotSubscribersUnresolved` is non-empty, surface every `<title>:<member-name>` entry verbatim with: "NOTE: the following autopilot subscribers could not be matched by name in the target workspace — skipped: `<entry>`."
 - If `autopilotPriorityNotCaptured` is non-empty, surface every autopilot title verbatim with: "NOTE: the following autopilots' priority could not be captured from the source (the multica CLI/API never returns it) — a known platform gap, not something this tool can fix: `<autopilot-title>`."
 - If `autopilotWebhookReissued` is non-empty, surface every autopilot title verbatim with: "NOTE: the following autopilots had a webhook trigger created with a freshly issued URL — the previous URL does not carry over: `<autopilot-title>`."
+- If `labelDescriptionUnsupported` is non-empty, surface every label name verbatim with: "NOTE: the following labels' descriptions could not be applied (the multica CLI has no `--description` flag on `label create`/`update`) — re-enter them in the Multica UI: `<label-name>`."
+- If `propertyTypeConflicts` is non-empty, surface every entry verbatim with: "WARNING: the following custom properties were SKIPPED — a property of that name already exists at the destination with a different type, and a property's type is immutable: `<entry>`. Rename one side, or map the values by hand."
+- If `propertiesArchived` is non-empty, surface every property name verbatim with: "NOTE: the following custom properties were imported and then archived, matching their state at the source: `<property-name>`."
