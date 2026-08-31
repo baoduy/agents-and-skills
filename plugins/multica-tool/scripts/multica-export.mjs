@@ -1,7 +1,15 @@
 import * as nodeFs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listAgentsIncludingArchived, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, getAutopilot, listLabels, listProperties, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listAgentsIncludingArchived, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, listAutopilots, getAutopilot, listLabels, listProperties, listWorkspaceMcpServers, listAgentMcpServers, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+
+// Export levels for a WHOLE-WORKSPACE export, lowest tier first. A level pulls
+// in its own tier plus every tier below it, so `project` is the full workspace
+// and `skill` is skills alone. Single-resource exports (`--scope <type> --id`)
+// ignore this and always bundle what that one resource needs.
+export const LEVELS = ["skill", "agent", "squad", "project"];
+export const levelRank = (level) => LEVELS.indexOf(level);
+export const levelAtLeast = (level, tier) => levelRank(level) >= levelRank(tier);
 
 const nonEmpty = (v) => v && typeof v === "object" && Object.keys(v).length > 0;
 
@@ -70,7 +78,7 @@ export function redactAgent(a) {
   };
 }
 
-export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads, projects, autopilots, labels, properties }) {
+export function buildManifest({ scope, level, sourceWorkspaceId, skills, agents, squads, projects, autopilots, labels, properties, mcpServers }) {
   const seenSkills = new Map();
   for (const s of skills) if (!seenSkills.has(s.name)) seenSkills.set(s.name, s);
   const seenAgents = new Map();
@@ -80,6 +88,8 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads
   return {
     version: "1",
     scope,
+    // null for a single-resource export; the requested tier for a workspace export.
+    level: level ?? null,
     source_workspace_id: sourceWorkspaceId,
     skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, source_id: s.source_id })),
     agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, source_id: a.source_id, source_runtime_id: a.source_runtime_id, source_runtime_provider: a.source_runtime_provider ?? null, skill_names: a.skill_names, had_secrets: !!a.had_secrets })),
@@ -101,12 +111,30 @@ export function buildManifest({ scope, sourceWorkspaceId, skills, agents, squads
       assignee_type: ap.assignee_type, assignee_name: ap.assignee_name,
       project_title: ap.project_title, had_webhook_trigger: ap.had_webhook_trigger,
     })),
-    // Labels and properties are small, flat, prose-free definitions with no
-    // per-resource files to point at — they live inline here rather than in
-    // sidecar JSON, so the manifest stays the single thing import has to read.
-    // `id` is dropped: both are matched by NAME at the destination.
-    labels: (labels ?? []).map(({ id, ...rest }) => rest),
-    properties: properties ?? [],
+    // Labels, properties and the workspace MCP roster are workspace-wide sets
+    // with no per-resource file to point at, so each gets its own flat folder
+    // (labels/, properties/, mcp/) and the manifest carries only a pointer plus
+    // a count. Import reads the pointer, falling back to a legacy bundle's
+    // inline array. `id` is dropped from labels: both labels and properties are
+    // matched by NAME at the destination.
+    labels_file: (labels ?? []).length ? "labels/labels.json" : null,
+    labels_count: (labels ?? []).length,
+    properties_file: (properties ?? []).length ? "properties/properties.json" : null,
+    properties_count: (properties ?? []).length,
+    mcp_servers_file: (mcpServers ?? []).length ? "mcp/servers.json" : null,
+    mcp_servers_count: (mcpServers ?? []).length,
+  };
+}
+
+// The payloads written to labels/, properties/ and mcp/. Kept next to
+// buildManifest so the manifest pointers and the files they name can't drift.
+export function buildTaxonomyFiles({ labels, properties, mcpServers }) {
+  return {
+    "labels/labels.json": (labels ?? []).map(({ id, ...rest }) => rest),
+    "properties/properties.json": properties ?? [],
+    // The server entry JSON is not readable via the CLI — only name/transport
+    // travel, so import re-creates the roster as a to-do list, not a copy.
+    "mcp/servers.json": (mcpServers ?? []).map(({ id, ...rest }) => rest),
   };
 }
 
@@ -136,6 +164,13 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
       a.custom_env_fetch_failed = true; // e.g. insufficient permission — non-fatal, warned via hadSecrets
     }
   }
+  // Workspace MCP servers assigned to this agent (name + enabled). Separate from
+  // `mcp_config`, which is the agent's own inline server JSON.
+  try {
+    a.mcp_servers = listAgentMcpServers(cli, id);
+  } catch {
+    a.mcp_servers = []; // e.g. insufficient permission — non-fatal
+  }
   const skill_names = a.skills.map((sk) => collectSkill(cli, sk.id, skills));
   const red = redactAgent(a);
   const entry = { raw: a, red, skill_names };
@@ -143,7 +178,7 @@ function collectAgent(cli, id, agentsById, skills, providerById) {
   return entry;
 }
 
-export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs = nodeFs, download = fetchBinary }) {
+export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspaceId, fs = nodeFs, download = fetchBinary }) {
   const skills = new Map();       // name -> normalized skill
   const agentsById = new Map();   // id   -> { raw, red, skill_names }
   const squads = [];
@@ -190,6 +225,12 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     };
   }
 
+  // A squad can be reached twice in one export (listed at level `squad`, then
+  // again as an autopilot's assignee) — keep exactly one copy, by name.
+  function pushSquad(built) {
+    if (built && !squads.some((s) => s.name === built.name)) squads.push(built);
+  }
+
   // Collect a project's portable metadata + its lead agent (bundled, like a
   // squad leader) and github_repo/other resources. An archived lead is dropped
   // (project still exports, just with no lead set) — unlike a squad, a project
@@ -214,8 +255,10 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     };
   }
 
-  // Collect a single autopilot: assignee resolved by name only (no agent/skill
-  // bundling — import resolves against destination agents/squads).
+  // Collect a single autopilot. Its assignee is BUNDLED (like a squad leader or a
+  // project lead) so the bundle is self-contained — import resolves the assignee
+  // by name, which only works if that agent/squad travels with it or already
+  // exists at the destination.
   // Webhook trigger secrets (url/token) are never read into the bundle — only
   // kind/label/enabled, matching the existing agent MCP/env redaction pattern.
   function collectOneAutopilot(autopilotId) {
@@ -223,13 +266,14 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     let assignee_name = null;
     if (ap.assignee_type === "agent") {
       try {
-        const a = getAgent(cli, ap.assignee_id);
-        assignee_name = a.archived_at ? null : a.name;
+        const entry = collectAgent(cli, ap.assignee_id, agentsById, skills, getProviderById());
+        if (entry.archived) recordArchivedSkip(entry.name, "autopilot assignee", ap.title);
+        else assignee_name = entry.raw.name;
       } catch { assignee_name = null; }
     } else if (ap.assignee_type === "squad") {
       try {
-        const sq = getSquad(cli, ap.assignee_id);
-        assignee_name = sq.name;
+        const built = collectOneSquad(ap.assignee_id);
+        if (built) { pushSquad(built); assignee_name = built.name; }
       } catch { assignee_name = null; }
     }
     let project_title = null;
@@ -243,6 +287,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     }
     return {
       title: ap.title, source_id: ap.id, description: ap.description,
+      status: ap.status,
       execution_mode: ap.execution_mode, issue_title_template: ap.issue_title_template,
       priority: ap.priority, project_title, assignee_type: ap.assignee_type, assignee_name,
       subscriber_names, had_webhook_trigger: ap.triggers.some((t) => t.kind === "webhook"),
@@ -252,40 +297,51 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     };
   }
 
-  // Labels and custom properties are workspace-wide, not per-project — two cheap
-  // list calls, bundled only for the scopes that carry issue-bearing work
-  // (`project`, `projects`, `all`), never for a lone skill/agent/squad/autopilot.
-  const wantsTaxonomy = scope === "all" || scope === "project" || scope === "projects";
+  // Labels, custom properties and the workspace MCP roster are workspace-wide,
+  // not per-project — three cheap list calls, bundled only where issue-bearing
+  // work travels: a single `project` export, or a workspace export at level
+  // `project`. Never for a lone skill/agent/squad/autopilot.
+  const wantsTaxonomy = scope === "project" || (scope === "workspace" && levelAtLeast(level, "project"));
   const labels = wantsTaxonomy ? listLabels(cli) : [];
   const properties = wantsTaxonomy ? listProperties(cli) : [];
+  const mcpServers = wantsTaxonomy ? listWorkspaceMcpServers(cli) : [];
 
   if (scope === "skill") collectSkill(cli, ids.skillId, skills);
   else if (scope === "agent") {
     const entry = collectAgent(cli, ids.agentId, agentsById, skills, getProviderById());
     if (entry.archived) throw new Error(`Cannot export agent "${entry.name}": it is archived`);
   }
-  else if (scope === "squad") { const sq = collectOneSquad(ids.squadId); if (sq) squads.push(sq); }
+  else if (scope === "squad") pushSquad(collectOneSquad(ids.squadId));
   else if (scope === "project") projects.push(collectProject(ids.projectId));
-  else if (scope === "projects") for (const p of listProjects(cli)) projects.push(collectProject(p.id));
   else if (scope === "autopilot") autopilots.push(collectOneAutopilot(ids.autopilotId));
-  else if (scope === "all") {
+  else if (scope === "workspace") {
+    // Tiers are cumulative: every level bundles skills; `agent` and up add every
+    // agent; `squad` and up add every squad; `project` adds projects + autopilots
+    // (plus the taxonomy above).
     for (const s of listSkills(cli)) collectSkill(cli, s.id, skills);
-    for (const a of listAgents(cli)) collectAgent(cli, a.id, agentsById, skills, getProviderById());
-    for (const sq of listSquads(cli)) { const built = collectOneSquad(sq.id); if (built) squads.push(built); }
-    for (const p of listProjects(cli)) projects.push(collectProject(p.id));
-    // listAgents() above already excludes archived agents server-side — surface
-    // that exclusion in the report too, not just the squad/project paths.
-    for (const a of listAgentsIncludingArchived(cli)) {
-      if (a.archived_at) recordArchivedSkip(a.name, "workspace listing");
+    if (levelAtLeast(level, "agent")) {
+      for (const a of listAgents(cli)) collectAgent(cli, a.id, agentsById, skills, getProviderById());
+      // listAgents() above already excludes archived agents server-side — surface
+      // that exclusion in the report too, not just the squad/project paths.
+      for (const a of listAgentsIncludingArchived(cli)) {
+        if (a.archived_at) recordArchivedSkip(a.name, "workspace listing");
+      }
+    }
+    if (levelAtLeast(level, "squad")) {
+      for (const sq of listSquads(cli)) pushSquad(collectOneSquad(sq.id));
+    }
+    if (levelAtLeast(level, "project")) {
+      for (const p of listProjects(cli)) projects.push(collectProject(p.id));
+      for (const ap of listAutopilots(cli)) autopilots.push(collectOneAutopilot(ap.id));
     }
   }
 
   // Orphan-skill cleanup: drop skills that no exported agent references via its
-  // skill_names. Only `all` ever produces these — standalone workspace skills
-  // from listSkills that no agent uses. Skipped for `skill` scope: its one
-  // skill is the explicit target, not an orphan.
+  // skill_names. Skipped for `scope: skill` (its one skill IS the target, not an
+  // orphan) and for a workspace export at level `skill`, where the skills tier is
+  // itself what was asked for.
   const pruned_skills = [];
-  if (scope !== "skill") {
+  if (scope !== "skill" && !(scope === "workspace" && level === "skill")) {
     const referenced = new Set();
     for (const a of agentsById.values()) for (const n of a.skill_names) referenced.add(n);
     for (const name of [...skills.keys()]) {
@@ -294,7 +350,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
   }
 
   const manifest = buildManifest({
-    scope, sourceWorkspaceId,
+    scope, level, sourceWorkspaceId,
     skills: [...skills.values()].map((s) => ({ name: s.name, source_id: s.id })),
     agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, source_id: a.raw.id, source_runtime_id: a.raw.runtime_id, source_runtime_provider: a.raw.source_runtime_provider, skill_names: a.skill_names, had_secrets: a.red.hadSecrets })),
     squads,
@@ -302,6 +358,7 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     autopilots,
     labels,
     properties,
+    mcpServers,
   });
 
   const warnings = [];
@@ -367,9 +424,23 @@ export function exportResource({ cli, scope, ids, outDir, sourceWorkspaceId, fs 
     writeSidecar(fs, outDir, entry.file, ".description.md", desc, record, "description_file");
     fs.writeFileSync(`${outDir}/${entry.file}`, JSON.stringify(record, null, 2));
   }
+  // labels/, properties/, mcp/ — one flat folder per object type, matching the
+  // per-type folders written above. Only written when the manifest points at them.
+  const taxonomyFiles = buildTaxonomyFiles({ labels, properties, mcpServers });
+  for (const rel of [manifest.labels_file, manifest.properties_file, manifest.mcp_servers_file]) {
+    if (!rel) continue;
+    fs.mkdirSync(`${outDir}/${dirname(rel)}`, { recursive: true });
+    fs.writeFileSync(`${outDir}/${rel}`, JSON.stringify(taxonomyFiles[rel], null, 2));
+  }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
   return {
     manifest, warnings, pruned_skills, archivedAgentsSkipped,
+    // Autopilots that were live at the source. Import always lands them paused,
+    // so activation is a deliberate manual step at the destination.
+    autopilotsActiveAtSource: autopilots.filter((a) => a.status === "active").map((a) => a.title),
+    // Only name/transport are readable via `workspace mcp list` — the server
+    // entry JSON (and any token in it) must be re-entered at the destination.
+    mcpServerConfigsNotPortable: mcpServers.map((m) => m.name),
     autopilotWebhookTriggers: autopilots.filter((a) => a.had_webhook_trigger).map((a) => a.title),
     // Captured in the bundle for review, but `label create`/`update` have no
     // --description flag — flagged at export time so the gap is known before the
@@ -382,14 +453,24 @@ function main() {
   const args = process.argv.slice(2);
   const get = (flag) => { const i = args.indexOf(flag); return i !== -1 ? args[i + 1] : null; };
 
-  const scope     = get("--scope");
+  const rawScope  = get("--scope");
+  const rawLevel  = get("--level");
   const id        = get("--id");
   const out       = get("--out");
   const workspace = get("--workspace"); // optional: source workspace name
 
-  if (!scope || !out || (scope !== "all" && scope !== "projects" && !id)) {
-    console.error("Usage: multica-export.mjs --scope <skill|agent|squad|project|projects|autopilot|all> --id <id> --out <dir> [--workspace <name>]  (--id not needed for --scope all|projects)");
-    process.exit(1);
+  const USAGE = "Usage: multica-export.mjs --out <dir> [--level skill|agent|squad|project] [--workspace <name>]\n" +
+                "   or: multica-export.mjs --scope <skill|agent|squad|project|autopilot> --id <id> --out <dir> [--workspace <name>]\n" +
+                "  --level exports the WHOLE workspace down to that tier (default: squad); --scope exports one named resource.";
+
+  // No --scope means a whole-workspace export driven by --level (default squad).
+  const scope = rawScope ?? "workspace";
+  const level = scope === "workspace" ? (rawLevel ?? "squad") : null;
+
+  if (rawScope && rawLevel) { console.error("--scope and --level are mutually exclusive.\n" + USAGE); process.exit(1); }
+  if (!out || (scope !== "workspace" && !id)) { console.error(USAGE); process.exit(1); }
+  if (scope === "workspace" && !LEVELS.includes(level)) {
+    console.error(`Unknown level "${level}" — use ${LEVELS.join("|")}`); process.exit(1);
   }
 
   requireAuth(realExec);
@@ -404,12 +485,11 @@ function main() {
   else if (scope === "agent")  ids.agentId  = id;
   else if (scope === "squad")  ids.squadId  = id;
   else if (scope === "project")  ids.projectId = id;
-  else if (scope === "projects") { /* all projects — no id */ }
   else if (scope === "autopilot") ids.autopilotId = id;
-  else if (scope === "all")    { /* whole workspace — no id */ }
-  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad|project|projects|autopilot|all`); process.exit(1); }
+  else if (scope === "workspace") { /* whole workspace — no id */ }
+  else { console.error(`Unknown scope "${scope}" — use skill|agent|squad|project|autopilot`); process.exit(1); }
 
-  const result = exportResource({ cli, scope, ids, outDir: out, sourceWorkspaceId, fs: nodeFs });
+  const result = exportResource({ cli, scope, level, ids, outDir: out, sourceWorkspaceId, fs: nodeFs });
   console.log(JSON.stringify(result, null, 2));
 }
 

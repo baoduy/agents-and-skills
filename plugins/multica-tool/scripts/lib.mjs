@@ -59,6 +59,21 @@ export const listAgentsIncludingArchived = (cli) => cli.json(["agent", "list", "
 export const listSquads = (cli) => cli.json(["squad", "list"]);
 export const listWorkspaceMembers = (cli) => cli.json(["workspace", "member", "list"]);
 
+// --- Workspace MCP server library ------------------------------------------
+// `workspace mcp list` returns only id/name/transport — the server entry JSON
+// (command/args/env, and any token inside it) is write-only: `workspace mcp
+// add/update` take it, nothing reads it back. So the library travels as a
+// NAME + TRANSPORT roster only, and import reports each entry as needing its
+// config re-entered by hand rather than pretending it round-trips.
+export const listWorkspaceMcpServers = (cli) =>
+  (cli.json(["workspace", "mcp", "list"]) ?? []).map((s) => ({ id: s.id, name: s.name, transport: s.transport }));
+
+// Which workspace MCP servers an agent uses, and whether each is on. Keyed by
+// NAME (the server id is re-minted per workspace); `agent mcp add/enable/disable`
+// take a server id, which import resolves from the destination library by name.
+export const listAgentMcpServers = (cli, agentId) =>
+  (cli.json(["agent", "mcp", "list", agentId]) ?? []).map((s) => ({ name: s.name, enabled: !!s.enabled }));
+
 // Get-wrappers: the ONLY place that knows the raw CLI field names — an
 // explicit allow-list, so unexpected/internal CLI fields never leak into a
 // bundle. Field names mirror the CLI's own snake_case; nothing is renamed.
@@ -146,6 +161,9 @@ export function getAutopilot(cli, id) {
   const a = r.autopilot;
   return {
     id: a.id, title: a.title, description: a.description ?? "",
+    // Source status (active|paused). Import never auto-activates — it is captured
+    // so the operator can be told which autopilots were live at the source.
+    status: a.status ?? null,
     execution_mode: a.execution_mode, issue_title_template: a.issue_title_template ?? null,
     project_id: a.project_id ?? null,
     assignee_id: a.assignee_id, assignee_type: a.assignee_type,

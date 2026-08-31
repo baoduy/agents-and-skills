@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { importLabels, importProperties, parseInclude, preflight } from "../../plugins/multica-tool/scripts/multica-import.mjs";
-import { LABEL_LIST, PROPERTY_LIST, AGENT_GET, SKILL_GET, RUNTIME_LIST_SRC, PROJECT_GET_1, PROJECT_RESOURCES_1 } from "./fixtures.mjs";
+import { LABEL_LIST, PROPERTY_LIST, AGENT_GET, SKILL_GET, RUNTIME_LIST_SRC, PROJECT_GET_1, PROJECT_RESOURCES_1, WORKSPACE_MCP_LIST, AGENT_MCP_LIST } from "./fixtures.mjs";
 
 function memFs() {
   const files = {};
@@ -24,6 +24,7 @@ function exportCli() {
       if (key === "agent env get ag_SRC1") return { custom_env: {} };
       if (key === "skill get sk_SRC1") return SKILL_GET;
       if (key === "runtime list") return RUNTIME_LIST_SRC;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + key);
     },
     run: () => "",
@@ -40,6 +41,7 @@ function recordingCli({ labels = [], properties = [] } = {}) {
       const key = args.join(" ");
       if (key === "label list") return labels;
       if (key === "property list --include-archived") return properties;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + key);
     },
     run: (args) => { calls.push(args); return "{}"; },
@@ -49,24 +51,43 @@ const flagOf = (argv, flag) => argv[argv.indexOf(flag) + 1];
 
 // --- export ----------------------------------------------------------------
 
-test("export --scope project bundles workspace labels and properties, stripping server-owned ids", () => {
-  const { manifest } = exportResource({ cli: exportCli(), scope: "project", ids: { projectId: "pr_SRC1" }, outDir: "/p", sourceWorkspaceId: "ws", fs: memFs(), download: () => null });
+test("export --scope project writes labels, properties and the MCP roster to their own folders", () => {
+  const fs = memFs();
+  const { manifest } = exportResource({ cli: exportCli(), scope: "project", ids: { projectId: "pr_SRC1" }, outDir: "/p", sourceWorkspaceId: "ws", fs, download: () => null });
 
-  assert.deepEqual(manifest.labels, [
+  // Why: each object type gets its own flat folder; the manifest only points at
+  // it, so a reviewer can diff labels/properties without reading the manifest.
+  assert.equal(manifest.labels_file, "labels/labels.json");
+  assert.equal(manifest.properties_file, "properties/properties.json");
+  assert.equal(manifest.mcp_servers_file, "mcp/servers.json");
+  const labels = JSON.parse(fs.files["/p/labels/labels.json"]);
+  const properties = JSON.parse(fs.files["/p/properties/properties.json"]);
+  const mcpServers = JSON.parse(fs.files["/p/mcp/servers.json"]);
+  assert.equal(manifest.labels_count, labels.length);
+  assert.equal(manifest.properties_count, properties.length);
+  assert.equal(manifest.mcp_servers_count, mcpServers.length);
+  assert.ok(!("labels" in manifest), "the array itself lives in labels/, not inline in the manifest");
+
+  assert.deepEqual(mcpServers, [
+    { name: "shortcut", transport: "stdio" },
+    { name: "sentry", transport: "http" },
+  ], "MCP roster travels by name+transport; `id` is re-minted per workspace and the server config is unreadable");
+
+  assert.deepEqual(labels, [
     { name: "Bug", color: "#ef4444", description: "The bug issues" },
     { name: "Chore", color: "#6b7280", description: "" },
   ], "labels bundled by name+color; `id` dropped because the destination re-mints it");
 
-  const severity = manifest.properties.find((p) => p.name === "Severity");
+  const severity = properties.find((p) => p.name === "Severity");
   assert.deepEqual(severity.options, [{ name: "Critical", color: "#ef4444" }, { name: "Minor", color: "#6b7280" }],
     "option ids dropped — `property update` re-matches options BY NAME, so name+color is the portable payload");
   assert.equal(severity.icon, "flag");
   assert.ok(!("position" in severity), "position is server-assigned with no CLI setter — never bundled");
   assert.ok(!("usage_count" in severity), "usage_count is source-workspace state, not a definition");
 
-  assert.deepEqual(manifest.properties.find((p) => p.name === "Owner").options, [],
+  assert.deepEqual(properties.find((p) => p.name === "Owner").options, [],
     "a non-select property reports config.options as null — normalized to an empty list, never crashes");
-  assert.equal(manifest.properties.find((p) => p.name === "Retired").archived, true,
+  assert.equal(properties.find((p) => p.name === "Retired").archived, true,
     "archived state travels, so a retired definition does not reappear in every picker at the destination");
 });
 
@@ -79,9 +100,11 @@ test("export --scope agent bundles no taxonomy — a single agent is not a works
   const cli = exportCli();
   const { manifest } = exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/a", sourceWorkspaceId: "ws", fs: memFs(), download: () => null });
   // exportCli() throws on any call it does not expect; reaching here at all proves
-  // no label/property list call was made for this scope.
-  assert.deepEqual(manifest.labels, []);
-  assert.deepEqual(manifest.properties, []);
+  // no label/property/MCP list call was made for this scope.
+  assert.equal(manifest.labels_file, null);
+  assert.equal(manifest.properties_file, null);
+  assert.equal(manifest.mcp_servers_file, null);
+  assert.equal(manifest.labels_count, 0);
 });
 
 // --- import: labels ---------------------------------------------------------

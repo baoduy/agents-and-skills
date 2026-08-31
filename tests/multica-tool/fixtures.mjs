@@ -93,7 +93,7 @@ export const PROJECT_RESOURCES_2 = [];
 // autopilot fixtures
 export const AUTOPILOT_GET = {
   autopilot: {
-    id: "ap_SRC1", title: "Nightly Scan", description: "scan deps nightly", execution_mode: "run_only",
+    id: "ap_SRC1", title: "Nightly Scan", description: "scan deps nightly", execution_mode: "run_only", status: "active",
     issue_title_template: "[Scan] {{.Date}}", priority: null, project_id: "pr_SRC1",
     assignee_id: "ag_SRC1", assignee_type: "agent",
     subscribers: [{ user_id: "u1", user_type: "user" }, { user_id: "u_missing", user_type: "user" }],
@@ -119,7 +119,7 @@ export const AUTOPILOT_GET_SQUAD = {
 
 export const AUTOPILOT_GET_MINIMAL = {
   autopilot: {
-    id: "ap_SRC3", title: "Minimal", description: "", execution_mode: "create_issue",
+    id: "ap_SRC3", title: "Minimal", description: "", execution_mode: "create_issue", status: "paused",
     issue_title_template: null, priority: null, project_id: null,
     assignee_id: "ag_SRC2", assignee_type: "agent",
     subscribers: [],
@@ -158,4 +158,16 @@ export const PROPERTY_LIST = [
     id: "pp_SRC3", name: "Retired", type: "text", description: "", icon: "",
     config: { options: null }, position: 3, archived: true, usage_count: 3,
   },
+];
+
+// --- MCP -------------------------------------------------------------------
+// `workspace mcp list` returns only id/name/transport (the server entry JSON is
+// write-only); `agent mcp list` adds the per-agent `enabled` toggle.
+export const WORKSPACE_MCP_LIST = [
+  { id: "mcp_SRC1", name: "shortcut", transport: "stdio" },
+  { id: "mcp_SRC2", name: "sentry", transport: "http" },
+];
+export const AGENT_MCP_LIST = [
+  { id: "mcp_SRC1", name: "shortcut", transport: "stdio", enabled: true },
+  { id: "mcp_SRC2", name: "sentry", transport: "http", enabled: false },
 ];

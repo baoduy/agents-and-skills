@@ -43,6 +43,9 @@ function fakeCli(overrides = {}) {
       if (key === "skill list") return [];
       if (key === "squad list") return [];
       if (key === "project list") return [];
+      if (key === "autopilot list") return { autopilots: [] };
+      if (key === "workspace mcp list") return [];
+      if (args[0] === "agent" && args[1] === "mcp") return [];
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       return {};
@@ -54,7 +57,7 @@ function fakeCli(overrides = {}) {
 test("export excludes archived agents from workspace listing", () => {
   const fs = memFs();
   const cli = fakeCli();
-  const { manifest, archivedAgentsSkipped } = exportResource({ cli, scope: "all", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  const { manifest, archivedAgentsSkipped } = exportResource({ cli, scope: "workspace", level: "project", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
   
   assert.equal(manifest.agents.length, 1, "only active agent in manifest");
   assert.equal(manifest.agents[0].name, "Active");
@@ -155,6 +158,7 @@ test("export project lead exclusion", () => {
       if (key === "skill list") return [];
       if (key === "label list") return LABEL_LIST;
       if (key === "property list --include-archived") return PROPERTY_LIST;
+      if (key === "workspace mcp list") return [];
       return {};
     },
     run: () => "",

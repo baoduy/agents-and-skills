@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest, exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, SKILL_GET_2, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2, LABEL_LIST, PROPERTY_LIST } from "./fixtures.mjs";
+import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, SKILL_GET_2, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2, LABEL_LIST, PROPERTY_LIST, WORKSPACE_MCP_LIST, AGENT_MCP_LIST } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
@@ -17,6 +17,7 @@ function fakeCli() {
       if (key === "runtime list") return RUNTIME_LIST_SRC;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -144,6 +145,7 @@ test("export creates nested parent dirs for skill files (regression: scripts/ su
         return { id: "sk_N", name: "Nested", content: "x", config: {}, files: [{ path: "scripts/run.sh", content: "echo hi" }] };
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -243,7 +245,7 @@ test("export agent records an emoji avatar as a string and downloads no file", (
 
 test("export agent downloads an image avatar into the bundle and records avatar_file", () => {
   const fs = memFs();
-  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
+  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
   const download = (url) => { assert.equal(url, "https://cdn.example.com/uploads/pixel.png"); return Buffer.from("PNGBYTES"); };
   exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC4" }, outDir: "/img", sourceWorkspaceId: "ws", fs, download });
   const record = JSON.parse(fs.files["/img/agents/pixel.json"]);
@@ -253,7 +255,7 @@ test("export agent downloads an image avatar into the bundle and records avatar_
 
 test("export agent tolerates a failed avatar download — keeps avatar_url, writes no file", () => {
   const fs = memFs();
-  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
+  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
   exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC4" }, outDir: "/imgfail", sourceWorkspaceId: "ws", fs, download: () => null });
   const record = JSON.parse(fs.files["/imgfail/agents/pixel.json"]);
   assert.equal(record.avatar_url, "https://cdn.example.com/uploads/pixel.png", "avatar_url still recorded");
@@ -281,7 +283,7 @@ test("export squad resolves leader and member names by id and writes squad file"
   assert.equal(helper.source_id, "ag_SRC1", "source agent id recorded in manifest for mention rewriting on import");
 });
 
-test("export all collects every resource and writes a shared agent exactly once", () => {
+test("export --level squad collects every resource and writes a shared agent exactly once", () => {
   const fs = memFs();
   const cli = {
     json: (args) => {
@@ -303,11 +305,12 @@ test("export all collects every resource and writes a shared agent exactly once"
       }
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
   };
-  const { manifest } = exportResource({ cli, scope: "all", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  const { manifest } = exportResource({ cli, scope: "workspace", level: "squad", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
   assert.equal(manifest.skills.length, 1, "one skill");
   assert.equal(manifest.agents.length, 2, "ag_SRC1 + ag_SRC2 each once (ag_SRC2 shared by both squads)");
   assert.equal(manifest.squads.length, 2, "both squads present");
@@ -324,6 +327,10 @@ function projectCli() {
       const key = args.slice(0, 4).join(" ");
       const k3 = args.slice(0, 3).join(" ");
       if (k3 === "project list") return PROJECT_LIST;
+      if (k3 === "skill list") return [];
+      if (args[0] === "agent" && args[1] === "list") return [];
+      if (k3 === "squad list") return [];
+      if (k3 === "autopilot list") return { autopilots: [] };
       if (k3 === "project get pr_SRC1") return PROJECT_GET_1;
       if (k3 === "project get pr_SRC2") return PROJECT_GET_2;
       if (key === "project resource list pr_SRC1") return PROJECT_RESOURCES_1;
@@ -333,6 +340,7 @@ function projectCli() {
       if (k3 === "runtime list") return RUNTIME_LIST_SRC;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -363,10 +371,10 @@ test("export --scope project bundles the lead agent and writes the project recor
   assert.equal(fs.files["out/projects/launch.description.md"], "the launch", "project description written to projects/<slug>.description.md");
 });
 
-test("export --scope projects records an unled project with lead_name null", () => {
+test("export --level project records an unled project with lead_name null", () => {
   const fs = memFs();
   const { manifest } = exportResource({
-    cli: projectCli(), scope: "projects", ids: {},
+    cli: projectCli(), scope: "workspace", level: "project", ids: {},
     outDir: "out", sourceWorkspaceId: "ws_SRC", fs, download: () => null,
   });
   assert.equal(manifest.projects.length, 2);
@@ -377,7 +385,7 @@ test("export --scope projects records an unled project with lead_name null", () 
   assert.equal(fs.files["out/projects/backlog.description.md"], undefined, "no .description.md for an empty description");
 });
 
-test("export all prunes skills no agent references", () => {
+test("export --level squad prunes skills no agent references", () => {
   const fs = memFs();
   const cli = {
     json: (args) => {
@@ -394,11 +402,12 @@ test("export all prunes skills no agent references", () => {
       if (three === "runtime list") return RUNTIME_LIST_SRC;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
   };
-  const { manifest, pruned_skills } = exportResource({ cli, scope: "all", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  const { manifest, pruned_skills } = exportResource({ cli, scope: "workspace", level: "squad", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
   // Why: an export must not ship a skill nothing uses.
   assert.deepEqual(pruned_skills, ["Lonely"], "unreferenced skill reported as pruned");
   assert.deepEqual(manifest.skills.map((s) => s.name), ["Greet"], "orphan absent from manifest, referenced skill kept");
@@ -414,6 +423,7 @@ test("export --scope skill never prunes the requested skill", () => {
       if (three === "skill get sk_SRC2") return SKILL_GET_2;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",

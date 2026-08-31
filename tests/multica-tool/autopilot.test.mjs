@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { exportResource, buildManifest } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { importBundle, importAutopilots, preflight, parseInclude } from "../../plugins/multica-tool/scripts/multica-import.mjs";
 import { resolveScopeId, sync } from "../../plugins/multica-tool/scripts/multica-sync.mjs";
-import { AUTOPILOT_GET, AUTOPILOT_GET_SQUAD, AUTOPILOT_GET_MINIMAL, AGENT_GET, AGENT_GET_2, SKILL_GET, SQUAD_GET, SQUAD_MEMBERS, PROJECT_GET_1, WORKSPACE_MEMBERS, RUNTIME_LIST_SRC, RUNTIME_LIST_AGENT2, LABEL_LIST, PROPERTY_LIST } from "./fixtures.mjs";
+import { AUTOPILOT_GET, AUTOPILOT_GET_SQUAD, AUTOPILOT_GET_MINIMAL, AGENT_GET, AGENT_GET_2, SKILL_GET, SQUAD_GET, SQUAD_MEMBERS, PROJECT_GET_1, WORKSPACE_MEMBERS, RUNTIME_LIST_SRC, RUNTIME_LIST_AGENT2, LABEL_LIST, PROPERTY_LIST, WORKSPACE_MCP_LIST, AGENT_MCP_LIST } from "./fixtures.mjs";
 
 function memFs() {
   const files = {};
@@ -30,6 +30,7 @@ function autopilotCli(overrides = {}) {
       if (k4 === "squad member list sq_SRC1") return SQUAD_MEMBERS;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
+      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
