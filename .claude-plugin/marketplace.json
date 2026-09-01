@@ -12,7 +12,7 @@
       "name": "plugin-validator",
       "source": "./plugins/plugin-validator",
       "description": "Orchestrated validator for Claude Code plugins — validates skills, agents, commands, and hooks across every plugin under plugins/**.",
-      "version": "0.0.45",
+      "version": "0.0.46",
       "category": "tooling",
       "keywords": [
         "validation",
@@ -28,7 +28,7 @@
       "name": "multica-tool",
       "source": "./plugins/multica-tool",
       "description": "Export, import, and sync Multica skills, agents, and squads between workspaces.",
-      "version": "0.0.45",
+      "version": "0.0.46",
       "category": "workflow",
       "keywords": [
         "multica",
