@@ -9,35 +9,6 @@
   },
   "plugins": [
     {
-      "name": "tech-graph",
-      "source": "./plugins/tech-graph",
-      "description": "6-step wizard for technical diagrams (SVG/PNG) via fireworks-tech-graph",
-      "version": "0.0.36",
-      "category": "diagram",
-      "keywords": [
-        "diagram",
-        "svg",
-        "architecture",
-        "uml",
-        "flowchart"
-      ]
-    },
-    {
-      "name": "html-effectiveness",
-      "source": "./plugins/html-effectiveness",
-      "description": "Generate self-contained interactive HTML reports from 20 upstream templates via a conversational agent.",
-      "version": "0.0.36",
-      "category": "reports",
-      "keywords": [
-        "html",
-        "report",
-        "status",
-        "incident",
-        "slide-deck",
-        "decision-matrix"
-      ]
-    },
-    {
       "name": "plugin-validator",
       "source": "./plugins/plugin-validator",
       "description": "Orchestrated validator for Claude Code plugins — validates skills, agents, commands, and hooks across every plugin under plugins/**.",
@@ -51,22 +22,6 @@
         "agents",
         "commands",
         "hooks"
-      ]
-    },
-    {
-      "name": "team-share",
-      "source": "./plugins/team-share",
-      "description": "Onboard your team with an interactive setup menu: install CodeGraph, build the Understand-Anything knowledge graph, and share Claude Code settings — run any combination, all idempotent.",
-      "version": "0.0.36",
-      "category": "tooling",
-      "keywords": [
-        "onboarding",
-        "team",
-        "claude",
-        "settings",
-        "codegraph",
-        "understand-anything",
-        "git-lfs"
       ]
     },
     {
