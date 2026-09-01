@@ -8,11 +8,8 @@ Published on npm as [`@drunkcoding/agents-and-skills`](https://www.npmjs.com/pac
 
 | Plugin | Description |
 |--------|-------------|
-| [`tech-graph`](plugins/tech-graph) | 6-step wizard for technical diagrams (SVG + PNG). |
-| [`html-effectiveness`](plugins/html-effectiveness) | Conversational agent that generates self-contained interactive HTML reports from 20 templates. |
 | [`team-superpower`](plugins/team-superpower) | Shape-adaptive engineering team running the Superpowers skill chain — up to 8 roles (designer, planner, software-architect, security-engineer, backend-developer, frontend-developer, qa-engineer, reviewer); spawns 7 or 8 depending on stack (`full-stack` / `be-only` / `fe-only`) declared in `CLAUDE.md`. Test/build commands, contract publish + sync, security checklist, and CI gate before merge are all driven by the project's `CLAUDE.md` `team-superpower` block. |
 | [`plugin-validator`](plugins/plugin-validator) | Orchestrated validator that checks every plugin's skills, agents, commands, and hooks for spec compliance — runs in parallel and proposes batched fixes. |
-| [`team-share`](plugins/team-share) | Onboarding helper that shares Claude plugin settings, scaffolds `CLAUDE.md` when missing, refreshes the Understand-Anything graph, and stages the resulting repo artifacts for review. |
 | [`auto-power`](plugins/auto-power) | Single-command hands-off pipeline that wraps `obra/superpowers`. Auto-answers safe clarifying questions during spec, then runs plan → arch+sec → impl → verify → review → ff-merge with no further touchpoints. Checkpointed and resumable. Escalates on substantive failures. |
 | [`multica-tool`](plugins/multica-tool) | Export, import, and sync Multica skills, agents, and squads between workspaces. |
 
@@ -52,8 +49,8 @@ Add the marketplace once:
 Then install any plugin individually:
 
 ```text
-/plugin install tech-graph@drunkcoding
-/plugin install html-effectiveness@drunkcoding --scope local
+/plugin install plugin-validator@drunkcoding
+/plugin install multica-tool@drunkcoding --scope local
 ```
 
 Reload after install:
@@ -69,7 +66,7 @@ Only the plugin you install loads; others stay dormant.
 Install into a project's `.claude/` instead of your user profile:
 
 ```text
-/plugin install tech-graph@drunkcoding --scope project
+/plugin install plugin-validator@drunkcoding --scope project
 ```
 
 #### Manage installed plugins

@@ -26,6 +26,9 @@
     "README.md",
     "LICENSE"
   ],
+  "scripts": {
+    "build:opencode": "node plugins/multica-tool/scripts/build-dist.mjs"
+  },
   "private": false,
   "publishConfig": {
     "access": "public"

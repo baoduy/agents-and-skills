@@ -14,7 +14,6 @@ Personal Claude Code **plugin marketplace** (`drunkcoding`) published as the npm
 - `package.json` — npm metadata for `@drunkcoding/agents-and-skills`. `files` whitelist publishes **only** `plugins/**`, `.claude-plugin/marketplace.json`, `README.md`, `LICENSE`. Versions are auto-rewritten by `.github/workflows/npm-publish.yaml` (via `paulhatch/semantic-version`) — the workflow updates the root `package.json` version plus every `plugins/*/.claude-plugin/plugin.json` and the per-plugin `version` inside `marketplace.json` on push to `main`.
 - `.npmignore` — excludes `.git`, `.claude/`, `docs/`, internal markdown (`CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`). The `files` whitelist in `package.json` takes precedence.
 - `AGENTS.md` — symlink to `CLAUDE.md` for non-Claude agent runtimes. Edit `CLAUDE.md` only.
-- `plugins/tech-graph/skills/tech-graph/` — vendored from upstream `fireworks-tech-graph` via `git subtree --squash`. **Never edit files inside this path directly** — direct edits conflict on next sync. Pull upstream with `git subtree pull --prefix=plugins/tech-graph/skills/tech-graph https://github.com/yizhiyanhua-ai/fireworks-tech-graph.git main --squash`.
 
 ## Working in this repo
 

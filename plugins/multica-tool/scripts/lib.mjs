@@ -59,6 +59,21 @@ export const listAgentsIncludingArchived = (cli) => cli.json(["agent", "list", "
 export const listSquads = (cli) => cli.json(["squad", "list"]);
 export const listWorkspaceMembers = (cli) => cli.json(["workspace", "member", "list"]);
 
+// --- Workspace MCP server library ------------------------------------------
+// `workspace mcp list` returns only id/name/transport — the server entry JSON
+// (command/args/env, and any token inside it) is write-only: `workspace mcp
+// add/update` take it, nothing reads it back. So the library travels as a
+// NAME + TRANSPORT roster only, and import reports each entry as needing its
+// config re-entered by hand rather than pretending it round-trips.
+export const listWorkspaceMcpServers = (cli) =>
+  (cli.json(["workspace", "mcp", "list"]) ?? []).map((s) => ({ id: s.id, name: s.name, transport: s.transport }));
+
+// Which workspace MCP servers an agent uses, and whether each is on. Keyed by
+// NAME (the server id is re-minted per workspace); `agent mcp add/enable/disable`
+// take a server id, which import resolves from the destination library by name.
+export const listAgentMcpServers = (cli, agentId) =>
+  (cli.json(["agent", "mcp", "list", agentId]) ?? []).map((s) => ({ name: s.name, enabled: !!s.enabled }));
+
 // Get-wrappers: the ONLY place that knows the raw CLI field names — an
 // explicit allow-list, so unexpected/internal CLI fields never leak into a
 // bundle. Field names mirror the CLI's own snake_case; nothing is renamed.
@@ -137,16 +152,19 @@ export const listAutopilots = (cli) => cli.json(["autopilot", "list"]).autopilot
 
 // `autopilot get` wraps the record as {autopilot, collaborators, triggers} — only
 // autopilot + triggers are portable; collaborators/can_write/can_manage_access are
-// caller-relative and never bundled. `priority` is accepted by `autopilot
-// create`/`update` but never present in this response (verified live) — kept as a
-// field anyway so this starts round-tripping automatically if the API adds it.
+// caller-relative and never bundled. `priority` is deliberately absent: the API
+// never returns it on read, and as of multica 0.4.36 `autopilot create`/`update`
+// no longer accept `--priority` either — so it can be neither captured nor
+// restored. Import reports every autopilot under `priorityNotCaptured`.
 export function getAutopilot(cli, id) {
   const r = cli.json(["autopilot", "get", id]);
   const a = r.autopilot;
   return {
     id: a.id, title: a.title, description: a.description ?? "",
+    // Source status (active|paused). Import never auto-activates — it is captured
+    // so the operator can be told which autopilots were live at the source.
+    status: a.status ?? null,
     execution_mode: a.execution_mode, issue_title_template: a.issue_title_template ?? null,
-    priority: a.priority ?? null,
     project_id: a.project_id ?? null,
     assignee_id: a.assignee_id, assignee_type: a.assignee_type,
     subscribers: (a.subscribers ?? []).map((s) => ({ user_id: s.user_id, user_type: s.user_type })),
@@ -156,3 +174,34 @@ export function getAutopilot(cli, id) {
     })),
   };
 }
+
+// --- Workspace-scoped issue taxonomy (multica 0.4.36) -----------------------
+// Labels and custom properties are defined per WORKSPACE, not per project — the
+// CLI has no project-scoped variant of either. They are bundled with project
+// exports (and `all`) so a migrated project lands somewhere its issues can
+// actually be labelled and filled in.
+
+// `id` is kept: `label update` addresses a label by id only.
+// `resource_type`/`usage_count`/timestamps are server-owned with no CLI setter.
+// `description` IS captured, but `label create`/`update` expose no
+// `--description` flag — import reports it as unrestorable rather than dropping
+// it silently.
+export const listLabels = (cli) =>
+  (cli.json(["label", "list"]) ?? []).map((l) => ({
+    id: l.id, name: l.name, color: l.color, description: l.description ?? "",
+  }));
+
+// Archived definitions included so an archived property round-trips as archived
+// instead of silently reappearing in every picker at the destination.
+// No `id`: `property get/update/archive/unarchive` all accept `<id-or-name>`,
+// and names are what issue values reference, so name is the portable key.
+// `position`/`usage_count` are server-assigned and have no CLI setter.
+export const listProperties = (cli) =>
+  (cli.json(["property", "list", "--include-archived"]) ?? []).map((p) => ({
+    name: p.name, type: p.type, description: p.description ?? "", icon: p.icon ?? "",
+    archived: !!p.archived,
+    // Only select/multi_select carry options; every other type reports null.
+    // Option ids are re-minted at the destination — `property update` re-matches
+    // existing options BY NAME, so name+color is the whole portable payload.
+    options: (p.config?.options ?? []).map((o) => ({ name: o.name, color: o.color ?? null })),
+  }));

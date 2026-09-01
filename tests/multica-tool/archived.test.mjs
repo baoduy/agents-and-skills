@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { importAgents, preflight } from "../../plugins/multica-tool/scripts/multica-import.mjs";
-import { AGENT_GET, AGENT_GET_2, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, PROJECT_GET_1, PROJECT_LIST } from "./fixtures.mjs";
+import { AGENT_GET, AGENT_GET_2, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, PROJECT_GET_1, PROJECT_LIST, LABEL_LIST, PROPERTY_LIST } from "./fixtures.mjs";
 
 function memFs() {
   const store = {};
@@ -43,6 +43,11 @@ function fakeCli(overrides = {}) {
       if (key === "skill list") return [];
       if (key === "squad list") return [];
       if (key === "project list") return [];
+      if (key === "autopilot list") return { autopilots: [] };
+      if (key === "workspace mcp list") return [];
+      if (args[0] === "agent" && args[1] === "mcp") return [];
+      if (args.join(" ") === "label list") return LABEL_LIST;
+      if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       return {};
     },
     run: () => "",
@@ -52,7 +57,7 @@ function fakeCli(overrides = {}) {
 test("export excludes archived agents from workspace listing", () => {
   const fs = memFs();
   const cli = fakeCli();
-  const { manifest, archivedAgentsSkipped } = exportResource({ cli, scope: "all", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  const { manifest, archivedAgentsSkipped } = exportResource({ cli, scope: "workspace", level: "project", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
   
   assert.equal(manifest.agents.length, 1, "only active agent in manifest");
   assert.equal(manifest.agents[0].name, "Active");
@@ -151,6 +156,9 @@ test("export project lead exclusion", () => {
       if (key === "project resource list pr_P1") return [];
       if (key === "runtime list") return RUNTIME_LIST_SRC;
       if (key === "skill list") return [];
+      if (key === "label list") return LABEL_LIST;
+      if (key === "property list --include-archived") return PROPERTY_LIST;
+      if (key === "workspace mcp list") return [];
       return {};
     },
     run: () => "",

@@ -721,8 +721,8 @@ import { preflight } from "../../plugins/multica-tool/scripts/multica-import.mjs
 test("preflight reports counts and project incompatibilities without writing", () => {
   const cli = fullRecordingCli();
   const rep = preflight({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["skills", "agents", "projects"]), fs: bundleFs() });
-  assert.deepEqual(rep.bundle, { skills: 0, agents: 1, squads: 0, projects: 1, autopilots: 0 });
-  assert.deepEqual(rep.willImport, { skills: 0, agents: 1, squads: 0, projects: 1, autopilots: 0 });
+  assert.deepEqual(rep.bundle, { skills: 0, agents: 1, squads: 0, projects: 1, autopilots: 0, labels: 0, properties: 0 });
+  assert.deepEqual(rep.willImport, { skills: 0, agents: 1, squads: 0, projects: 1, autopilots: 0, labels: 0, properties: 0 });
   assert.ok(rep.incompatibilities.some((i) => i.type === "priority-not-settable" && i.detail.includes("Launch")));
   assert.ok(rep.incompatibilities.some((i) => i.type === "resource-not-portable" && i.detail.includes("local_directory")));
   assert.equal(cli.calls.length, 0, "dry-run performs no writes");
