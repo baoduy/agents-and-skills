@@ -382,16 +382,24 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
   const warnings = [];
   fs.mkdirSync(outDir, { recursive: true });
 
+  // Every skill body written empty, as `<skill dir>/<file>`. A missing body is
+  // indistinguishable from an empty one once it is on disk, so it is counted at
+  // the moment of writing and reported — an export that silently ships 0-byte
+  // files is how a later import wipes good skills at the destination.
+  const emptyFiles = [];
+  const writeBody = (rel, text) => {
+    fs.writeFileSync(`${outDir}/${rel}`, text ?? "");
+    if (!text) emptyFiles.push(rel);
+  };
   for (const entry of manifest.skills) {
     const s = skills.get(entry.name);
     const dir = `${outDir}/${entry.dir}`;
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(`${dir}/SKILL.md`, s.content ?? "");
+    writeBody(`${entry.dir}/SKILL.md`, s.content);
     fs.writeFileSync(`${dir}/config.json`, JSON.stringify(s.config ?? {}, null, 2));
     for (const f of s.files ?? []) {
-      const target = `${dir}/${f.path}`;
-      fs.mkdirSync(dirname(target), { recursive: true }); // f.path may be nested, e.g. scripts/foo.sh
-      fs.writeFileSync(target, f.content ?? "");
+      fs.mkdirSync(dirname(`${dir}/${f.path}`), { recursive: true }); // f.path may be nested, e.g. scripts/foo.sh
+      writeBody(`${entry.dir}/${f.path}`, f.content);
     }
   }
   // Index agent entries by name for the manifest writing loop.
@@ -483,6 +491,9 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
     // Runtime-provided skills the source had switched off on an agent. Captured
     // in the bundle, but no CLI command re-disables them — flagged here so the
     // gap is known before the migration, not discovered at the far end.
+    // Skill bodies that landed on disk as 0 bytes. Non-empty here means the
+    // bundle is NOT safe to import — see the import skill's matching guard.
+    emptyFiles,
     // The logo is captured for the record but has no CLI setter on import.
     workspaceLogoNotPortable: workspace?.avatar_url ? [workspace.name] : [],
     agentRuntimeSkillsDisabled: [...agentsById.values()]

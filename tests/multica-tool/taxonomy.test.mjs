@@ -22,7 +22,7 @@ function exportCli() {
       if (key === "project resource list pr_SRC1") return PROJECT_RESOURCES_1;
       if (key === "agent get ag_SRC1") return AGENT_GET;
       if (key === "agent env get ag_SRC1") return { custom_env: {} };
-      if (key === "skill get sk_SRC1") return SKILL_GET;
+      if (key === "skill get sk_SRC1 --with-content") return SKILL_GET;
       if (key === "runtime list") return RUNTIME_LIST_SRC;
       if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + key);

@@ -469,3 +469,19 @@ test("a single-resource export bundles no workspace settings", () => {
   assert.equal(fs.files["/one/workspace/workspace.json"], undefined);
   assert.deepEqual(res.workspaceLogoNotPortable, []);
 });
+
+// Regression, issue #55.
+test("export counts every skill body written as 0 bytes instead of reporting a clean bundle", () => {
+  const EMPTY = { id: "sk_SRC1", name: "Greet", description: "says hi", content: "", config: {}, files: [{ path: "scripts/run.sh", content: "" }, { path: "ref.md", content: "kept" }] };
+  const cli = { json: (args) => (args.slice(0, 3).join(" ") === "skill get sk_SRC1" ? EMPTY : {}), run: () => "" };
+  const fs = memFs();
+  const res = exportResource({ cli, scope: "skill", level: null, ids: { skillId: "sk_SRC1" }, outDir: "/b", sourceWorkspaceId: "ws", fs, download: () => null });
+  assert.deepEqual(res.emptyFiles.sort(), ["skills/greet/SKILL.md", "skills/greet/scripts/run.sh"]);
+  assert.equal(fs.files["/b/skills/greet/ref.md"], "kept", "a body that arrived is still written");
+});
+
+test("export reports no empty files for a bundle whose bodies all arrived", () => {
+  const fs = memFs();
+  const res = exportResource({ cli: fakeCli(), scope: "skill", level: null, ids: { skillId: "sk_SRC1" }, outDir: "/b", sourceWorkspaceId: "ws", fs, download: () => null });
+  assert.deepEqual(res.emptyFiles, []);
+});
