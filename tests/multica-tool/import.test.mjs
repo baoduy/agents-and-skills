@@ -283,6 +283,31 @@ test("importAgents passes --service-tier when set, omits it when empty", () => {
   assert.ok(!mk("").includes("--service-tier"), "empty service_tier omitted");
 });
 
+test("importAgents round-trips conversation_starters and reports disabled runtime skills", () => {
+  const rec = { ...JSON.parse(AGENT_FILE), conversation_starters: [{ label: "Hi", prompt: "say hi" }], disabled_runtime_skills: ["web-search"] };
+  const fs = { existsSync: () => true, readFileSync: () => JSON.stringify(rec), readdirSync: () => [] };
+  const calls = [];
+  const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+  const r = importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+  const create = calls.find((a) => a[1] === "create");
+  assert.equal(create[create.indexOf("--conversation-starters") + 1], '[{"label":"Hi","prompt":"say hi"}]');
+  assert.deepEqual(r.runtimeSkillsDisabled, ["Helper:web-search"]);
+});
+
+test("importAgents passes an empty conversation_starters array (clears the destination) but skips the flag for a legacy bundle", () => {
+  const mk = (rec) => {
+    const fs = { existsSync: () => true, readFileSync: () => JSON.stringify(rec), readdirSync: () => [] };
+    const calls = [];
+    const cli = { calls, json: (a) => (a[1] === "list" ? [] : {}), run: (a) => { calls.push(a); return a.includes("create") ? '{"id":"ag_NEW1"}' : "{}"; } };
+    importAgents({ cli, manifest: AGENT_MANIFEST, dir: ".", skillIdMap: new Map([["Greet", "sk_NEW1"]]), runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
+    return calls.find((a) => a[1] === "create");
+  };
+  const emptied = mk({ ...JSON.parse(AGENT_FILE), conversation_starters: [] });
+  assert.equal(emptied[emptied.indexOf("--conversation-starters") + 1], "[]");
+  const { conversation_starters, ...legacy } = { ...JSON.parse(AGENT_FILE), conversation_starters: [] };
+  assert.ok(!mk(legacy).includes("--conversation-starters"), "a bundle predating 0.4.44 never touches the destination's starters");
+});
+
 test("importAgents restores member-specific public_to only for members that exist in the destination", () => {
   const rec = { ...JSON.parse(AGENT_FILE), permission_mode: "public_to", invocation_targets: [{ target_id: "u1", target_type: "user" }, { target_id: "u_missing", target_type: "user" }] };
   const fs = { existsSync: () => true, readFileSync: () => JSON.stringify(rec), readdirSync: () => [] };
@@ -578,8 +603,8 @@ const LAUNCH_REC = {
   priority: "high", status: "in_progress", due_date: null, start_date: null,
   source_id: "pr_SRC1", lead_type: "agent", lead_name: "Helper", lead_source_id: "ag_SRC1",
   resources: [
-    { resource_type: "github_repo", resource_ref: { url: "https://github.com/x/repo.git" }, label: null },
-    { resource_type: "local_directory", resource_ref: { path: "/x" }, label: "local" },
+    { resource_type: "github_repo", resource_ref: { url: "https://github.com/x/repo.git" }, label: null, position: 0 },
+    { resource_type: "local_directory", resource_ref: { path: "/x", daemon_id: "dm_SRC" }, label: "local", position: 2 },
   ],
 };
 // recordingCli that answers project list / resource list / agent list.
@@ -594,11 +619,15 @@ function projectRecordingCli({ existingProjects = [], existingAgents = [], exist
       if (args[0] === "agent" && args[1] === "list") return existingAgents;
       return {};
     },
-    run: (args) => { calls.push(args); return args.includes("create") ? '{"id":"pr_NEW1"}' : "{}"; },
+    run: (args) => {
+      calls.push(args);
+      if (args[1] === "resource" && args[2] === "add") return '{"id":"rs_NEW1"}';
+      return args.includes("create") ? '{"id":"pr_NEW1"}' : "{}";
+    },
   };
 }
 
-test("importProjects creates the project, sets --lead to the imported agent, adds github_repo resource, reports unsupported bits", () => {
+test("importProjects creates the project, sets --lead to the imported agent, recreates every resource type, reports unsupported bits", () => {
   const fs = memFs({ "./projects/launch.json": JSON.stringify(LAUNCH_REC) });
   const cli = projectRecordingCli();
   const agentIdMap = new Map([["Helper", "ag_NEW1"]]);
@@ -608,10 +637,16 @@ test("importProjects creates the project, sets --lead to the imported agent, add
   assert.equal(create[create.indexOf("--lead") + 1], "Helper", "lead set by agent name");
   assert.equal(create[create.indexOf("--title") + 1], "Launch");
   assert.ok(!create.includes("--priority"), "priority is never passed (no CLI flag)");
-  const addRepo = cli.calls.find((a) => a[0] === "project" && a[1] === "resource" && a[2] === "add");
-  assert.equal(addRepo[addRepo.indexOf("--url") + 1], "https://github.com/x/repo.git");
+  const adds = cli.calls.filter((a) => a[0] === "project" && a[1] === "resource" && a[2] === "add");
+  assert.equal(adds.length, 2, "every resource type is recreated, not just github_repo");
+  assert.equal(adds[0][adds[0].indexOf("--ref") + 1], JSON.stringify({ url: "https://github.com/x/repo.git" }));
+  assert.equal(adds[1][adds[1].indexOf("--type") + 1], "local_directory");
+  // position 0 needs no follow-up; position 2 does.
+  const positions = cli.calls.filter((a) => a[1] === "resource" && a[2] === "update");
+  assert.equal(positions.length, 1);
+  assert.equal(positions[0][positions[0].indexOf("--position") + 1], "2");
   assert.deepEqual(r.priorityUnsupported, ["Launch"]);
-  assert.deepEqual(r.resourcesUnsupported, ["Launch:local_directory"]);
+  assert.deepEqual(r.resourcesMachineBound, ["Launch:local_directory"]);
   assert.deepEqual(r.leadUnresolved, []);
 });
 
@@ -631,13 +666,16 @@ test("importProjects updates by title and does not re-add an existing resource (
   const fs = memFs({ "./projects/launch.json": JSON.stringify(LAUNCH_REC) });
   const cli = projectRecordingCli({
     existingProjects: [{ id: "pr_TGT9", title: "Launch" }],
-    existingResources: [{ resource_type: "github_repo", resource_ref: { url: "https://github.com/x/repo.git" }, label: null }],
+    existingResources: [
+      { resource_type: "github_repo", resource_ref: { url: "https://github.com/x/repo.git" }, label: null, position: 0 },
+      { resource_type: "local_directory", resource_ref: { path: "/x", daemon_id: "dm_SRC" }, label: "local", position: 2 },
+    ],
   });
   const r = importProjects({ cli, manifest: PROJECT_MANIFEST, dir: ".", agentIdMap: new Map([["Helper", "ag_NEW1"]]), fs });
   assert.equal(r.updated, 1); assert.equal(r.created, 0);
   assert.equal(r.idMap.get("Launch"), "pr_TGT9");
   assert.ok(cli.calls.some((a) => a[0] === "project" && a[1] === "update" && a[2] === "pr_TGT9"));
-  assert.ok(!cli.calls.some((a) => a[1] === "resource" && a[2] === "add"), "existing url not re-added");
+  assert.ok(!cli.calls.some((a) => a[1] === "resource" && a[2] === "add"), "existing refs not re-added");
 });
 
 test("importProjects records leadUnresolved and omits --lead when the agent is nowhere", () => {
@@ -724,7 +762,7 @@ test("preflight reports counts and project incompatibilities without writing", (
   assert.deepEqual(rep.bundle, { skills: 0, agents: 1, squads: 0, projects: 1, autopilots: 0, labels: 0, properties: 0 });
   assert.deepEqual(rep.willImport, { skills: 0, agents: 1, squads: 0, projects: 1, autopilots: 0, labels: 0, properties: 0 });
   assert.ok(rep.incompatibilities.some((i) => i.type === "priority-not-settable" && i.detail.includes("Launch")));
-  assert.ok(rep.incompatibilities.some((i) => i.type === "resource-not-portable" && i.detail.includes("local_directory")));
+  assert.ok(rep.incompatibilities.some((i) => i.type === "resource-machine-bound" && i.detail.includes("local_directory")));
   assert.equal(cli.calls.length, 0, "dry-run performs no writes");
 });
 
@@ -733,4 +771,78 @@ test("preflight flags lead-agent-missing when projects are imported without agen
   const rep = preflight({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["projects"]), fs: bundleFs() });
   assert.equal(rep.willImport.agents, 0);
   assert.ok(rep.incompatibilities.some((i) => i.type === "lead-agent-missing" && i.detail.includes("Helper")));
+});
+
+// --- workspace settings ------------------------------------------------------
+
+import { importWorkspace } from "../../plugins/multica-tool/scripts/multica-import.mjs";
+
+const WS_MANIFEST = { version: "1", scope: "workspace", agents: [], workspace_file: "workspace/workspace.json" };
+const WS_FS = () => memFs({
+  "./manifest.json": JSON.stringify(WS_MANIFEST),
+  "./workspace/workspace.json": JSON.stringify({
+    name: "Source WS", issue_prefix: "SRC",
+    avatar_url: "https://cdn.example.com/uploads/ws-logo.webp",
+    avatar_file: "workspace/workspace.avatar.webp",
+    description_file: "workspace/workspace.description.md",
+    context_file: "workspace/workspace.context.md",
+  }),
+  "./workspace/workspace.description.md": "the source workspace",
+  "./workspace/workspace.context.md": "House rules.\nLine two.",
+});
+// Answers `workspace get` with the destination's current identity.
+function wsCli(current = { name: "Dest WS", issue_prefix: "DST" }) {
+  const calls = [];
+  return {
+    calls,
+    json: (args) => (args[0] === "workspace" && args[1] === "get" ? current : {}),
+    run: (args, opts) => { calls.push([args, opts?.input ?? null]); return "{}"; },
+  };
+}
+
+test("parseInclude keeps workspace opt-in — it can rename the destination", () => {
+  assert.ok(!parseInclude(null).has("workspace"), "never in the default set");
+  assert.ok(parseInclude("workspace").has("workspace"));
+});
+
+test("importWorkspace applies name/prefix in one call and pipes prose through stdin verbatim", () => {
+  const cli = wsCli();
+  const r = importWorkspace({ cli, manifest: WS_MANIFEST, dir: ".", fs: WS_FS() });
+  assert.equal(r.applied, true);
+  const [meta] = cli.calls[0];
+  assert.equal(meta[meta.indexOf("--name") + 1], "Source WS");
+  assert.equal(meta[meta.indexOf("--issue-prefix") + 1], "SRC");
+  const desc = cli.calls.find(([a]) => a.includes("--description-stdin"));
+  assert.equal(desc[1], "the source workspace", "prose goes over stdin, never as a flag value");
+  const ctx = cli.calls.find(([a]) => a.includes("--context-stdin"));
+  assert.equal(ctx[1], "House rules.\nLine two.", "multi-line context survives verbatim");
+  assert.ok(!cli.calls.some(([a]) => a.join(" ").includes("repo")), "the repo registry is never touched");
+});
+
+test("importWorkspace reports the rename and the unsettable logo", () => {
+  const r = importWorkspace({ cli: wsCli(), manifest: WS_MANIFEST, dir: ".", fs: WS_FS() });
+  assert.equal(r.renamedFrom, "Dest WS", "a re-run must address the workspace by its NEW name");
+  assert.deepEqual(r.logoUnsupported, ["Source WS"]);
+});
+
+test("importWorkspace reports no rename when the destination already carries that name", () => {
+  const r = importWorkspace({ cli: wsCli({ name: "Source WS", issue_prefix: "SRC" }), manifest: WS_MANIFEST, dir: ".", fs: WS_FS() });
+  assert.equal(r.renamedFrom, null);
+});
+
+test("importWorkspace is a no-op for a bundle that carries no workspace settings", () => {
+  const cli = wsCli();
+  const r = importWorkspace({ cli, manifest: { workspace_file: null }, dir: ".", fs: WS_FS() });
+  assert.equal(r.applied, false);
+  assert.equal(cli.calls.length, 0, "no writes");
+});
+
+test("preflight warns about the rename, the prefix change and the logo before any write", () => {
+  const cli = wsCli();
+  const rep = preflight({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["workspace"]), fs: WS_FS() });
+  const types = rep.incompatibilities.map((i) => i.type);
+  assert.ok(types.includes("workspace-will-be-renamed"));
+  assert.ok(types.includes("workspace-issue-prefix-change"));
+  assert.ok(types.includes("workspace-logo-not-settable"));
+  assert.equal(cli.calls.length, 0, "dry-run performs no writes");
 });

@@ -27,7 +27,7 @@
     {
       "name": "multica-tool",
       "source": "./plugins/multica-tool",
-      "description": "Export, import, and sync Multica skills, agents, and squads between workspaces.",
+      "description": "Export, import, and sync a Multica workspace — settings, skills, agents, squads, projects, autopilots, labels, properties, and the MCP roster — between workspaces.",
       "version": "0.0.45",
       "category": "workflow",
       "keywords": [
@@ -36,9 +36,12 @@
         "export",
         "import",
         "sync",
+        "workspace",
         "skills",
         "agents",
-        "squads"
+        "squads",
+        "projects",
+        "autopilots"
       ]
     }
   ]

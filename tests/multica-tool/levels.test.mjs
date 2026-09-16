@@ -2,8 +2,8 @@
 // below it (skill < agent < squad < project). Default is `squad`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { exportResource, LEVELS, levelAtLeast } from "../../plugins/multica-tool/scripts/multica-export.mjs";
-import { AGENT_GET, AGENT_GET_2, SKILL_GET, SKILL_GET_2, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2, AUTOPILOT_GET, WORKSPACE_MEMBERS, LABEL_LIST, PROPERTY_LIST, WORKSPACE_MCP_LIST, AGENT_MCP_LIST } from "./fixtures.mjs";
+import { exportResource, LEVELS, levelAtLeast, normalizeLevel } from "../../plugins/multica-tool/scripts/multica-export.mjs";
+import { AGENT_GET, AGENT_GET_2, SKILL_GET, SKILL_GET_2, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2, AUTOPILOT_GET, WORKSPACE_MEMBERS, LABEL_LIST, PROPERTY_LIST, WORKSPACE_MCP_LIST, AGENT_MCP_LIST, WORKSPACE_GET } from "./fixtures.mjs";
 
 function memFs() {
   const files = {};
@@ -40,7 +40,7 @@ function wsCli() {
       if (k3 === "workspace member list") return WORKSPACE_MEMBERS;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
-      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST;
+      if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST;
       if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
@@ -55,10 +55,12 @@ const runLevel = (level) => {
 };
 
 test("LEVELS are ordered lowest tier first and levelAtLeast compares by that order", () => {
-  assert.deepEqual(LEVELS, ["skill", "agent", "squad", "project"]);
+  assert.deepEqual(LEVELS, ["skill", "agent", "squad", "workspace"]);
   assert.equal(levelAtLeast("squad", "agent"), true);
   assert.equal(levelAtLeast("agent", "squad"), false);
-  assert.equal(levelAtLeast("project", "project"), true);
+  assert.equal(levelAtLeast("workspace", "workspace"), true);
+  assert.equal(normalizeLevel("project"), "workspace", "the old tier name still resolves");
+  assert.equal(normalizeLevel("squad"), "squad");
 });
 
 test("--level skill bundles every workspace skill and nothing above it", () => {
@@ -95,15 +97,15 @@ test("--level squad adds squads but no projects or autopilots", () => {
   assert.equal(manifest.mcp_servers_file, null);
 });
 
-test("--level project adds projects, autopilots and the workspace taxonomy", () => {
-  const { manifest, fs } = runLevel("project");
+test("--level workspace adds projects, autopilots and the workspace taxonomy", () => {
+  const { manifest, fs } = runLevel("workspace");
   assert.equal(manifest.projects.length, 2);
   assert.equal(manifest.autopilots.length, 1, "autopilots ride with the project tier");
   assert.ok(fs.files["/w/autopilots/nightly-scan.json"]);
   assert.equal(manifest.labels_file, "labels/labels.json");
   assert.equal(manifest.properties_file, "properties/properties.json");
   assert.equal(manifest.mcp_servers_file, "mcp/servers.json");
-  assert.equal(manifest.level, "project");
+  assert.equal(manifest.level, "workspace");
 });
 
 test("a squad reached twice — listed, then again as an autopilot assignee — is bundled once", () => {
@@ -111,7 +113,7 @@ test("a squad reached twice — listed, then again as an autopilot assignee — 
   // AUTOPILOT_GET assigns agent ag_SRC1, so force the squad path via a squad autopilot.
   const squadAuto = { autopilot: { ...AUTOPILOT_GET.autopilot, assignee_id: "sq_SRC1", assignee_type: "squad" }, triggers: [] };
   const patched = { ...cli, json: (args) => (args.slice(0, 3).join(" ") === "autopilot get ap_SRC1" ? squadAuto : cli.json(args)) };
-  const { manifest } = exportResource({ cli: patched, scope: "workspace", level: "project", ids: {}, outDir: "/w", sourceWorkspaceId: "ws", fs, download: () => null });
+  const { manifest } = exportResource({ cli: patched, scope: "workspace", level: "workspace", ids: {}, outDir: "/w", sourceWorkspaceId: "ws", fs, download: () => null });
   assert.deepEqual(manifest.squads.map((s) => s.name), ["Team"], "no duplicate squad entry");
 });
 
@@ -124,16 +126,16 @@ test("every exported agent carries its workspace MCP server assignments by name"
   ], "server ids are per-workspace — only name + enabled travel");
 });
 
-test("--level project reports the autopilots that were live at the source", () => {
-  const { autopilotsActiveAtSource, fs } = runLevel("project");
+test("--level workspace reports the autopilots that were live at the source", () => {
+  const { autopilotsActiveAtSource, fs } = runLevel("workspace");
   // Why: import always lands an autopilot paused, so the operator needs the list
   // of what to re-activate by hand.
   assert.deepEqual(autopilotsActiveAtSource, ["Nightly Scan"]);
   assert.equal(JSON.parse(fs.files["/w/autopilots/nightly-scan.json"]).status, "active");
 });
 
-test("--level project reports MCP server configs as unportable", () => {
-  const { mcpServerConfigsNotPortable } = runLevel("project");
+test("--level workspace reports MCP server configs as unportable", () => {
+  const { mcpServerConfigsNotPortable } = runLevel("workspace");
   // Why: `workspace mcp list` never returns a server's entry JSON, so a bundle
   // can name the servers but never recreate them.
   assert.deepEqual(mcpServerConfigsNotPortable, ["shortcut", "sentry"]);

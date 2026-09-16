@@ -95,6 +95,14 @@ export function getAgent(cli, id) {
     model: a.model, visibility: a.visibility, avatar_url: a.avatar_url ?? null,
     service_tier: a.service_tier ?? "",
     permission_mode: a.permission_mode ?? null,
+    // Chat-composer prompts (multica 0.4.44). Round-trip verbatim via
+    // `agent create/update --conversation-starters`; only label+prompt are
+    // accepted, so nothing else the server echoes is carried.
+    conversation_starters: (a.conversation_starters ?? []).map((c) => ({ label: c.label, prompt: c.prompt })),
+    // Runtime-provided skills switched off on this agent. Captured for the
+    // record only — `agent skills` manages workspace skill assignments and has
+    // no setter for these, so import reports them instead of restoring them.
+    disabled_runtime_skills: a.disabled_runtime_skills ?? [],
     invocation_targets: (a.invocation_targets ?? []).map((t) => ({ target_id: t.target_id, target_type: t.target_type })),
     max_concurrent_tasks: a.max_concurrent_tasks,
     runtime_config: a.runtime_config,
@@ -125,6 +133,24 @@ export const getSquadMembers = (cli, id) =>
     member_id: m.member_id, member_type: m.member_type, role: m.role || "member",
   }));
 
+// --- Workspace settings -----------------------------------------------------
+// The workspace's own identity: name, logo, description, context, issue prefix.
+// Deliberately NOT captured:
+//   repos    — the repo registry is checkout/machine state managed by `multica
+//              repo add/remove`, not workspace settings; it never travels.
+//   settings — always {} and no CLI setter exposes it.
+//   id/slug/created_at/updated_at — server-owned, re-minted per workspace.
+// `avatar_url` (the logo) IS captured, but `workspace update` exposes only
+// name/description/context/issue-prefix — there is no avatar setter, so import
+// reports the logo rather than restoring it.
+export function getWorkspace(cli) {
+  const w = cli.json(["workspace", "get"]);
+  return {
+    name: w.name, description: w.description ?? "", context: w.context ?? "",
+    issue_prefix: w.issue_prefix ?? "", avatar_url: w.avatar_url ?? null,
+  };
+}
+
 export const listProjects = (cli) => cli.json(["project", "list"]);
 
 export function findByTitle(list, title) {
@@ -143,9 +169,12 @@ export function getProject(cli, id) {
   };
 }
 
+// `position` is the display order and IS settable — `project resource update
+// --position`. `id`/`created_*` are server-owned and re-minted at the destination.
 export const getProjectResources = (cli, id) =>
   (cli.json(["project", "resource", "list", id]) ?? []).map((r) => ({
     resource_type: r.resource_type, resource_ref: r.resource_ref, label: r.label ?? null,
+    position: r.position ?? 0,
   }));
 
 export const listAutopilots = (cli) => cli.json(["autopilot", "list"]).autopilots ?? [];

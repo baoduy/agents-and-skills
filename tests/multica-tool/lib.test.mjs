@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { slugify, makeCli, requireAuth, resolveWorkspaceId, listRuntimes, findByName, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { getProject, getProjectResources, findByTitle } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { SKILL_GET, AGENT_GET, AGENT_ENV_GET, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST } from "./fixtures.mjs";
+import { getProject, getProjectResources, findByTitle, getWorkspace } from "../../plugins/multica-tool/scripts/lib.mjs";
+import { SKILL_GET, AGENT_GET, AGENT_ENV_GET, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST, WORKSPACE_GET } from "./fixtures.mjs";
 
 test("slugify makes filesystem-safe slugs", () => {
   assert.equal(slugify("My Cool Skill!"), "my-cool-skill");
@@ -104,6 +104,20 @@ test("getAgent captures service_tier, permission_mode, and invocation_targets", 
   assert.deepEqual(a.invocation_targets, [{ target_id: "ws_SRC", target_type: "workspace" }]);
 });
 
+test("getAgent captures conversation_starters as label+prompt only and disabled_runtime_skills", () => {
+  const cli = cliReturning({ "agent get ag_SRC1": AGENT_GET });
+  const a = getAgent(cli, "ag_SRC1");
+  assert.deepEqual(a.conversation_starters, [{ label: "Hi", prompt: "say hi" }], "server-minted option id is dropped — the CLI only accepts label+prompt");
+  assert.deepEqual(a.disabled_runtime_skills, ["web-search"]);
+});
+
+test("getAgent defaults the 0.4.44 fields for a legacy record that lacks them", () => {
+  const { conversation_starters, disabled_runtime_skills, ...legacy } = AGENT_GET;
+  const a = getAgent(cliReturning({ "agent get ag_SRC1": legacy }), "ag_SRC1");
+  assert.deepEqual(a.conversation_starters, []);
+  assert.deepEqual(a.disabled_runtime_skills, []);
+});
+
 test("getAgentCustomEnv reads custom_env via the audited agent env get command", () => {
   const cli = cliReturning({ "agent env get ag_SRC1": AGENT_ENV_GET });
   assert.deepEqual(getAgentCustomEnv(cli, "ag_SRC1"), { API_KEY: "secret-value" });
@@ -140,13 +154,24 @@ test("getProject normalizes to the allow-listed fields only", () => {
   });
 });
 
-test("getProjectResources keeps only type/ref/label", () => {
+test("getProjectResources keeps only type/ref/label/position", () => {
   const cli = { json: () => [
     { id: "r1", resource_type: "github_repo", resource_ref: { url: "https://x/repo.git" }, label: null, position: 0, workspace_id: "w" },
   ] };
   assert.deepEqual(getProjectResources(cli, "pr_SRC1"), [
-    { resource_type: "github_repo", resource_ref: { url: "https://x/repo.git" }, label: null },
+    { resource_type: "github_repo", resource_ref: { url: "https://x/repo.git" }, label: null, position: 0 },
   ]);
+});
+
+test("getWorkspace keeps the settable identity fields and the logo, and drops repos", () => {
+  const w = getWorkspace({ json: () => WORKSPACE_GET });
+  assert.deepEqual(w, {
+    name: "Source WS", description: "the source workspace",
+    context: "House rules.\nLine two.", issue_prefix: "SRC",
+    avatar_url: "https://cdn.example.com/uploads/ws-logo.webp",
+  });
+  assert.ok(!("repos" in w), "the repo registry is checkout state, never workspace settings");
+  assert.ok(!("settings" in w) && !("slug" in w) && !("id" in w), "server-owned, no CLI setter");
 });
 
 test("findByTitle returns the match and throws on duplicates", () => {
