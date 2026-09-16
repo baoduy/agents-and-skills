@@ -1,13 +1,22 @@
 import * as nodeFs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname } from "node:path";
-import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listAgentsIncludingArchived, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, listAutopilots, getAutopilot, listLabels, listProperties, listWorkspaceMcpServers, listAgentMcpServers, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
+import { slugify, getSkill, getAgent, getAgentCustomEnv, getSquad, getSquadMembers, listRuntimes, listSkills, listAgents, listAgentsIncludingArchived, listSquads, listProjects, getProject, getProjectResources, listWorkspaceMembers, listAutopilots, getAutopilot, listLabels, listProperties, listWorkspaceMcpServers, listAgentMcpServers, getWorkspace, makeCli, realExec, requireAuth, resolveWorkspaceId } from "./lib.mjs";
 
 // Export levels for a WHOLE-WORKSPACE export, lowest tier first. A level pulls
-// in its own tier plus every tier below it, so `project` is the full workspace
-// and `skill` is skills alone. Single-resource exports (`--scope <type> --id`)
-// ignore this and always bundle what that one resource needs.
-export const LEVELS = ["skill", "agent", "squad", "project"];
+// in its own tier plus every tier below it, so `workspace` is everything
+// portable and `skill` is skills alone. Single-resource exports
+// (`--scope <type> --id`) ignore this and always bundle what that one resource
+// needs.
+//
+// `workspace` is the DEFAULT: a migration that silently leaves the projects,
+// autopilots and issue taxonomy behind is the surprising outcome, not the safe
+// one. What it still never touches is deliberate — the repo registry, workspace
+// members, and issues are checkout state, identity, and live work respectively;
+// none of them are portable configuration.
+export const LEVELS = ["skill", "agent", "squad", "workspace"];
+// `project` was this tier's name before the workspace settings joined it.
+export const normalizeLevel = (level) => (level === "project" ? "workspace" : level);
 export const levelRank = (level) => LEVELS.indexOf(level);
 export const levelAtLeast = (level, tier) => levelRank(level) >= levelRank(tier);
 
@@ -78,7 +87,7 @@ export function redactAgent(a) {
   };
 }
 
-export function buildManifest({ scope, level, sourceWorkspaceId, skills, agents, squads, projects, autopilots, labels, properties, mcpServers }) {
+export function buildManifest({ scope, level, sourceWorkspaceId, skills, agents, squads, projects, autopilots, labels, properties, mcpServers, workspace }) {
   const seenSkills = new Map();
   for (const s of skills) if (!seenSkills.has(s.name)) seenSkills.set(s.name, s);
   const seenAgents = new Map();
@@ -123,6 +132,9 @@ export function buildManifest({ scope, level, sourceWorkspaceId, skills, agents,
     properties_count: (properties ?? []).length,
     mcp_servers_file: (mcpServers ?? []).length ? "mcp/servers.json" : null,
     mcp_servers_count: (mcpServers ?? []).length,
+    // The workspace's own settings — only ever present on a whole-workspace
+    // export; a single-resource export is not a workspace migration.
+    workspace_file: workspace ? "workspace/workspace.json" : null,
   };
 }
 
@@ -289,7 +301,7 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
       title: ap.title, source_id: ap.id, description: ap.description,
       status: ap.status,
       execution_mode: ap.execution_mode, issue_title_template: ap.issue_title_template,
-      priority: ap.priority, project_title, assignee_type: ap.assignee_type, assignee_name,
+      project_title, assignee_type: ap.assignee_type, assignee_name,
       subscriber_names, had_webhook_trigger: ap.triggers.some((t) => t.kind === "webhook"),
       triggers: ap.triggers.map((t) => t.kind === "webhook"
         ? { kind: "webhook", label: t.label, enabled: t.enabled }
@@ -301,7 +313,12 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
   // not per-project — three cheap list calls, bundled only where issue-bearing
   // work travels: a single `project` export, or a workspace export at level
   // `project`. Never for a lone skill/agent/squad/autopilot.
-  const wantsTaxonomy = scope === "project" || (scope === "workspace" && levelAtLeast(level, "project"));
+  // Workspace settings (name, logo, description, context, issue prefix) travel
+  // with every whole-workspace export regardless of level — they are the
+  // workspace's identity, not a tier of its contents. One cheap CLI call.
+  const workspace = scope === "workspace" ? getWorkspace(cli) : null;
+
+  const wantsTaxonomy = scope === "project" || (scope === "workspace" && levelAtLeast(level, "workspace"));
   const labels = wantsTaxonomy ? listLabels(cli) : [];
   const properties = wantsTaxonomy ? listProperties(cli) : [];
   const mcpServers = wantsTaxonomy ? listWorkspaceMcpServers(cli) : [];
@@ -316,8 +333,8 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
   else if (scope === "autopilot") autopilots.push(collectOneAutopilot(ids.autopilotId));
   else if (scope === "workspace") {
     // Tiers are cumulative: every level bundles skills; `agent` and up add every
-    // agent; `squad` and up add every squad; `project` adds projects + autopilots
-    // (plus the taxonomy above).
+    // agent; `squad` and up add every squad; `workspace` adds projects + autopilots
+    // (plus the taxonomy above). Workspace SETTINGS ride along at every level.
     for (const s of listSkills(cli)) collectSkill(cli, s.id, skills);
     if (levelAtLeast(level, "agent")) {
       for (const a of listAgents(cli)) collectAgent(cli, a.id, agentsById, skills, getProviderById());
@@ -330,7 +347,7 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
     if (levelAtLeast(level, "squad")) {
       for (const sq of listSquads(cli)) pushSquad(collectOneSquad(sq.id));
     }
-    if (levelAtLeast(level, "project")) {
+    if (levelAtLeast(level, "workspace")) {
       for (const p of listProjects(cli)) projects.push(collectProject(p.id));
       for (const ap of listAutopilots(cli)) autopilots.push(collectOneAutopilot(ap.id));
     }
@@ -359,6 +376,7 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
     labels,
     properties,
     mcpServers,
+    workspace,
   });
 
   const warnings = [];
@@ -432,6 +450,22 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
     fs.mkdirSync(`${outDir}/${dirname(rel)}`, { recursive: true });
     fs.writeFileSync(`${outDir}/${rel}`, JSON.stringify(taxonomyFiles[rel], null, 2));
   }
+  // workspace/ — the workspace's own settings. `context` and `description` are
+  // long prose, so they follow the same sibling-.md rule as every other resource.
+  if (manifest.workspace_file) {
+    const record = { ...workspace };
+    const { description, context } = record;
+    delete record.description; delete record.context;
+    fs.mkdirSync(`${outDir}/workspace`, { recursive: true });
+    if (isImageAvatar(record.avatar_url)) {
+      const rel = manifest.workspace_file.replace(/\.json$/, `.avatar${avatarExt(record.avatar_url)}`);
+      const bytes = download(record.avatar_url);
+      if (bytes && bytes.length) { fs.writeFileSync(`${outDir}/${rel}`, bytes); record.avatar_file = rel; }
+    }
+    writeSidecar(fs, outDir, manifest.workspace_file, ".description.md", description, record, "description_file");
+    writeSidecar(fs, outDir, manifest.workspace_file, ".context.md", context, record, "context_file");
+    fs.writeFileSync(`${outDir}/${manifest.workspace_file}`, JSON.stringify(record, null, 2));
+  }
   fs.writeFileSync(`${outDir}/manifest.json`, JSON.stringify(manifest, null, 2));
   return {
     manifest, warnings, pruned_skills, archivedAgentsSkipped,
@@ -446,6 +480,14 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
     // --description flag — flagged at export time so the gap is known before the
     // migration, not discovered at the far end.
     labelDescriptionsNotPortable: labels.filter((l) => l.description).map((l) => l.name),
+    // Runtime-provided skills the source had switched off on an agent. Captured
+    // in the bundle, but no CLI command re-disables them — flagged here so the
+    // gap is known before the migration, not discovered at the far end.
+    // The logo is captured for the record but has no CLI setter on import.
+    workspaceLogoNotPortable: workspace?.avatar_url ? [workspace.name] : [],
+    agentRuntimeSkillsDisabled: [...agentsById.values()]
+      .filter((a) => (a.raw.disabled_runtime_skills ?? []).length)
+      .map((a) => a.raw.name),
   };
 }
 
@@ -459,13 +501,13 @@ function main() {
   const out       = get("--out");
   const workspace = get("--workspace"); // optional: source workspace name
 
-  const USAGE = "Usage: multica-export.mjs --out <dir> [--level skill|agent|squad|project] [--workspace <name>]\n" +
+  const USAGE = "Usage: multica-export.mjs --out <dir> [--level skill|agent|squad|workspace] [--workspace <name>]\n" +
                 "   or: multica-export.mjs --scope <skill|agent|squad|project|autopilot> --id <id> --out <dir> [--workspace <name>]\n" +
-                "  --level exports the WHOLE workspace down to that tier (default: squad); --scope exports one named resource.";
+                "  --level exports the WHOLE workspace down to that tier (default: workspace); --scope exports one named resource.";
 
-  // No --scope means a whole-workspace export driven by --level (default squad).
+  // No --scope means a whole-workspace export driven by --level (default workspace).
   const scope = rawScope ?? "workspace";
-  const level = scope === "workspace" ? (rawLevel ?? "squad") : null;
+  const level = scope === "workspace" ? normalizeLevel(rawLevel ?? "workspace") : null;
 
   if (rawScope && rawLevel) { console.error("--scope and --level are mutually exclusive.\n" + USAGE); process.exit(1); }
   if (!out || (scope !== "workspace" && !id)) { console.error(USAGE); process.exit(1); }

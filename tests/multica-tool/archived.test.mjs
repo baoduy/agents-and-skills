@@ -57,7 +57,7 @@ function fakeCli(overrides = {}) {
 test("export excludes archived agents from workspace listing", () => {
   const fs = memFs();
   const cli = fakeCli();
-  const { manifest, archivedAgentsSkipped } = exportResource({ cli, scope: "workspace", level: "project", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
+  const { manifest, archivedAgentsSkipped } = exportResource({ cli, scope: "workspace", level: "workspace", ids: {}, outDir: "/all", sourceWorkspaceId: "ws", fs, download: () => null });
   
   assert.equal(manifest.agents.length, 1, "only active agent in manifest");
   assert.equal(manifest.agents[0].name, "Active");

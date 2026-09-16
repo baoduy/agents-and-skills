@@ -17,6 +17,8 @@ export const AGENT_GET = {
   runtime_config: {}, custom_args: [], runtime_id: "rt_SRC1", thinking_level: "",
   has_custom_env: true, custom_env_key_count: 1, avatar_url: "emoji:🤖",
   service_tier: "", permission_mode: "public_to",
+  conversation_starters: [{ label: "Hi", prompt: "say hi", id: "cs_SRC1" }],
+  disabled_runtime_skills: ["web-search"],
   invocation_targets: [{ target_id: "ws_SRC", target_type: "workspace" }],
   mcp_config: { mcpServers: { x: { token: "t" } } }, mcp_config_redacted: false,
   skills: [{ id: "sk_SRC1", name: "Greet", description: "says hi" }],
@@ -171,3 +173,12 @@ export const AGENT_MCP_LIST = [
   { id: "mcp_SRC1", name: "shortcut", transport: "stdio", enabled: true },
   { id: "mcp_SRC2", name: "sentry", transport: "http", enabled: false },
 ];
+
+// `workspace get` — note `repos` and `settings`, which getWorkspace must drop.
+export const WORKSPACE_GET = {
+  id: "ws_SRC", name: "Source WS", slug: "source-ws", issue_prefix: "SRC",
+  description: "the source workspace", context: "House rules.\nLine two.",
+  avatar_url: "https://cdn.example.com/uploads/ws-logo.webp",
+  repos: [{ url: "https://github.com/x/repo.git" }],
+  settings: {}, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-02T00:00:00Z",
+};

@@ -1,8 +1,10 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listAgentsIncludingArchived, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot, listLabels, listProperties, listWorkspaceMcpServers } from "./lib.mjs";
+import { listSkills, listAgents, listAgentsIncludingArchived, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot, listLabels, listProperties, listWorkspaceMcpServers, getWorkspace } from "./lib.mjs";
 
-// User-facing selectable types are agents/squads/projects/autopilots/labels/properties;
-// skills follow agents. Default stays agents,squads — everything else opts in.
+// User-facing selectable types are agents/squads/projects/autopilots/labels/
+// properties/workspace; skills follow agents. Default stays agents,squads —
+// everything else opts in. `workspace` is opt-in for a reason: it can RENAME the
+// destination workspace, which is exactly what `--workspace <name>` addresses it by.
 export function parseInclude(raw) {
   const set = new Set((raw ? raw.split(",") : ["agents", "squads"]).map((s) => s.trim()).filter(Boolean));
   if (set.has("agents")) set.add("skills");
@@ -98,6 +100,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
   const permissionUnsupported = [];    // no member target resolved in the destination
   const mcpServersUnresolved = [];     // bundled server name absent from the destination library
   const mcpServersApplyFailures = [];  // CLI rejected the enable/disable
+  const runtimeSkillsDisabled = [];    // source had runtime skills off; no CLI setter to re-disable
   // Lazy + memoized: destination member user_ids, only listed when an agent needs them.
   let destMemberIds = null;
   const getDestMemberIds = () => destMemberIds ??= new Set(listWorkspaceMembers(cli).map((m) => m.user_id));
@@ -127,6 +130,10 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     if (rec.runtime_config && Object.keys(rec.runtime_config).length) common.push("--runtime-config", JSON.stringify(rec.runtime_config));
     if (Array.isArray(rec.custom_args) && rec.custom_args.length) common.push("--custom-args", JSON.stringify(rec.custom_args));
     if (rec.service_tier) common.push("--service-tier", rec.service_tier);
+    // Always passed when the bundle carries the field (even as []), so an update
+    // clears starters the destination has but the source doesn't. Legacy bundles
+    // predating multica 0.4.44 have no key at all and leave the destination alone.
+    if (Array.isArray(rec.conversation_starters)) common.push("--conversation-starters", JSON.stringify(rec.conversation_starters));
     const match = findByName(existing, rec.name);
     let id;
     if (match && match.archived_at) {
@@ -147,6 +154,9 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
     if (rec.source_id) sourceIdMap.set(rec.source_id, id);
     const skillIds = (rec.skill_names ?? []).map((n) => skillIdMap.get(n)).filter(Boolean);
     cli.run(["agent", "skills", "set", id, "--skill-ids", skillIds.join(",")]);
+    // `agent skills` covers workspace skill assignments only — a runtime-provided
+    // skill the source had switched off cannot be re-disabled via the CLI.
+    for (const n of rec.disabled_runtime_skills ?? []) runtimeSkillsDisabled.push(`${rec.name}:${n}`);
 
     // Workspace MCP server assignments, resolved by NAME against the destination
     // library (ids are per-workspace). A server the destination doesn't have is
@@ -221,7 +231,7 @@ export function importAgents({ cli, manifest, dir, skillIdMap, runtimeMap, fs = 
       }
     }
   }
-  return { idMap, sourceIdMap, created, updated, reused, secretsApplyFailures, avatarApplyFailures, avatarUnsupported, permissionApplyFailures, permissionUnsupported, mcpServersUnresolved, mcpServersApplyFailures };
+  return { idMap, sourceIdMap, created, updated, reused, secretsApplyFailures, avatarApplyFailures, avatarUnsupported, permissionApplyFailures, permissionUnsupported, mcpServersUnresolved, mcpServersApplyFailures, runtimeSkillsDisabled };
 }
 
 // Rewrites `mention://agent/<id>` links (e.g. `[@dev-backend](mention://agent/<id>)`)
@@ -293,7 +303,7 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
 export function importProjects({ cli, manifest, dir, agentIdMap, fs = nodeFs }) {
   const idMap = new Map();
   let created = 0, updated = 0;
-  const priorityUnsupported = [], resourcesUnsupported = [], leadUnresolved = [];
+  const priorityUnsupported = [], resourcesMachineBound = [], leadUnresolved = [];
   const existing = listProjects(cli);
   // Lead resolves against just-imported agents first, then destination agents.
   let destAgentNames = null;
@@ -327,19 +337,27 @@ export function importProjects({ cli, manifest, dir, agentIdMap, fs = nodeFs }) 
     if (wantsLead && !leadOk) leadUnresolved.push(rec.title);
     if (rec.priority && rec.priority !== "none") priorityUnsupported.push(rec.title);
 
-    // Resources: recreate github_repo only, idempotent by url.
-    const existingUrls = new Set(
-      getProjectResources(cli, id).filter((r) => r.resource_type === "github_repo").map((r) => r.resource_ref?.url).filter(Boolean),
-    );
+    // Resources: `project resource add --type <t> --ref <json>` takes a generic
+    // resource_ref payload, so EVERY resource type is recreated verbatim, not just
+    // github_repo. Idempotent by (type, ref).
+    // ponytail: refKey sorts only top-level ref keys — resource_ref is flat today;
+    // if a nested ref ever ships, swap in a recursive stable stringify.
+    const refKey = (r) => `${r.resource_type}:${JSON.stringify(r.resource_ref ?? {}, Object.keys(r.resource_ref ?? {}).sort())}`;
+    const existingRefs = new Set(getProjectResources(cli, id).map(refKey));
     for (const r of rec.resources ?? []) {
-      if (r.resource_type !== "github_repo") { resourcesUnsupported.push(`${rec.title}:${r.resource_type}`); continue; }
-      const url = r.resource_ref?.url;
-      if (!url || existingUrls.has(url)) continue;
-      cli.run(["project", "resource", "add", id, "--type", "github_repo", "--url", url, ...(r.label ? ["--label", r.label] : [])]);
-      existingUrls.add(url);
+      if (existingRefs.has(refKey(r))) continue;
+      const flags = ["--type", r.resource_type, "--ref", JSON.stringify(r.resource_ref ?? {})];
+      if (r.label) flags.push("--label", r.label);
+      const added = JSON.parse(cli.run(["project", "resource", "add", id, ...flags]));
+      existingRefs.add(refKey(r));
+      // position is only settable after the fact — `resource add` has no --position.
+      if (r.position) cli.run(["project", "resource", "update", id, added.id, "--position", String(r.position)]);
+      // A ref carrying a source-machine id (local_directory's daemon_id) lands
+      // verbatim and points at a daemon the destination may not have.
+      if (r.resource_ref?.daemon_id) resourcesMachineBound.push(`${rec.title}:${r.resource_type}`);
     }
   }
-  return { idMap, created, updated, priorityUnsupported, resourcesUnsupported, leadUnresolved };
+  return { idMap, created, updated, priorityUnsupported, resourcesMachineBound, leadUnresolved };
 }
 
 // `autopilot create`/`update` only accept `--agent` (name or ID) — there is no
@@ -505,6 +523,38 @@ export function importProperties({ cli, manifest, dir, fs = nodeFs }) {
   return { created, updated, typeConflicts, archivedApplied };
 }
 
+// The workspace's own settings. `workspace update` can set name, description,
+// context and issue prefix — nothing else. The logo has no CLI setter, and the
+// repo registry is deliberately never bundled (see getWorkspace).
+//
+// description and context are long prose that must survive verbatim, so each is
+// written through its own `--*-stdin` call — only one stdin payload can be read
+// per process, and the non-stdin flags decode backslash escapes.
+export function importWorkspace({ cli, manifest, dir, fs = nodeFs }) {
+  const rel = manifest.workspace_file;
+  if (!rel || !fs.existsSync(`${dir}/${rel}`)) return { applied: false, renamedFrom: null, logoUnsupported: [] };
+  const rec = JSON.parse(fs.readFileSync(`${dir}/${rel}`, "utf8"));
+  const before = getWorkspace(cli);
+
+  const meta = [];
+  if (rec.name) meta.push("--name", rec.name);
+  if (rec.issue_prefix) meta.push("--issue-prefix", rec.issue_prefix);
+  if (meta.length) cli.run(["workspace", "update", ...meta]);
+
+  const description = readDescription(fs, dir, rec);
+  if (description) cli.run(["workspace", "update", "--description-stdin"], { input: description });
+  const context = readSidecar(fs, dir, rec, "context_file", "context");
+  if (context) cli.run(["workspace", "update", "--context-stdin"], { input: context });
+
+  return {
+    applied: true,
+    // Non-null only when the destination workspace actually changed name — the
+    // operator addressed it by the OLD name, so a re-run needs the new one.
+    renamedFrom: rec.name && rec.name !== before.name ? before.name : null,
+    logoUnsupported: rec.avatar_url ? [rec.name] : [],
+  };
+}
+
 // Workspace MCP servers named in the bundle that the destination library lacks.
 // Only name + transport ever travel (see listWorkspaceMcpServers), so these are
 // reported for manual re-entry — never created.
@@ -572,7 +622,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     : { idMap: new Map(), created: 0, updated: 0 };
   const agentRes = inc.has("agents")
     ? importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs })
-    : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, reused: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [], mcpServersUnresolved: [], mcpServersApplyFailures: [] };
+    : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, reused: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [], mcpServersUnresolved: [], mcpServersApplyFailures: [], runtimeSkillsDisabled: [] };
   // Runs after every agent exists so forward-referencing mentions resolve.
   const mentionRes = inc.has("agents")
     ? rewriteAgentMentions({ cli, manifest, dir, agentIdMap: agentRes.idMap, sourceIdMap: agentRes.sourceIdMap, fs })
@@ -593,7 +643,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     }
   }
 
-  let projectRes = { idMap: new Map(), created: 0, updated: 0, priorityUnsupported: [], resourcesUnsupported: [], leadUnresolved: [] };
+  let projectRes = { idMap: new Map(), created: 0, updated: 0, priorityUnsupported: [], resourcesMachineBound: [], leadUnresolved: [] };
   if (inc.has("projects")) {
     projectRes = importProjects({ cli, manifest, dir, agentIdMap: agentRes.idMap, fs });
   }
@@ -603,6 +653,9 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     autopilotRes = importAutopilots({ cli, manifest, dir, agentIdMap: agentRes.idMap, fs });
   }
 
+  const workspaceRes = inc.has("workspace")
+    ? importWorkspace({ cli, manifest, dir, fs })
+    : { applied: false, renamedFrom: null, logoUnsupported: [] };
   const labelRes = inc.has("labels")
     ? importLabels({ cli, manifest, dir, fs })
     : { created: 0, updated: 0, descriptionUnsupported: [] };
@@ -631,6 +684,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     permissionUnsupported: agentRes.permissionUnsupported,
     mcpServersUnresolved: agentRes.mcpServersUnresolved,
     mcpServersApplyFailures: agentRes.mcpServersApplyFailures,
+    agentRuntimeSkillsDisabled: agentRes.runtimeSkillsDisabled,
     // Bundled workspace MCP servers missing at the destination. The CLI never
     // exposes a server's entry JSON on read, so each must be re-added by hand
     // (`multica workspace mcp add <name> --server-config ...`) before its agent
@@ -638,7 +692,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     mcpServersNotCreatable: mcpServerGap({ cli, manifest, dir, fs }),
     squadsSkipped,
     priorityUnsupported: projectRes.priorityUnsupported,
-    resourcesUnsupported: projectRes.resourcesUnsupported,
+    resourcesMachineBound: projectRes.resourcesMachineBound,
     leadUnresolved: projectRes.leadUnresolved,
     autopilotProjectUnresolved: autopilotRes.projectUnresolved,
     autopilotSubscribersUnresolved: autopilotRes.subscribersUnresolved,
@@ -648,6 +702,9 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     labelDescriptionUnsupported: labelRes.descriptionUnsupported,
     propertyTypeConflicts: propertyRes.typeConflicts,
     propertiesArchived: propertyRes.archivedApplied,
+    workspaceSettingsApplied: workspaceRes.applied,
+    workspaceRenamedFrom: workspaceRes.renamedFrom,
+    workspaceLogoUnsupported: workspaceRes.logoUnsupported,
   };
 }
 
@@ -694,6 +751,13 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
         incompatibilities.push({ type: "agent-archived-will-restore", detail: `${a.name} (archived in destination — import would restore and reuse it)` });
       }
     }
+
+    for (const a of manifest.agents ?? []) {
+      const rec = JSON.parse(fs.readFileSync(`${dir}/${a.file}`, "utf8"));
+      for (const n of rec.disabled_runtime_skills ?? []) {
+        incompatibilities.push({ type: "agent-runtime-skill-disabled", detail: `${rec.name} → runtime skill "${n}" (switched off at the source; \`agent skills\` only manages workspace skills, so re-disable it by hand)` });
+      }
+    }
   }
 
   if (inc.has("projects")) {
@@ -704,8 +768,8 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
         incompatibilities.push({ type: "priority-not-settable", detail: `${rec.title} (priority "${rec.priority}")` });
       }
       for (const r of rec.resources ?? []) {
-        if (r.resource_type !== "github_repo") {
-          incompatibilities.push({ type: "resource-not-portable", detail: `${rec.title} (${r.resource_type})` });
+        if (r.resource_ref?.daemon_id) {
+          incompatibilities.push({ type: "resource-machine-bound", detail: `${rec.title} (${r.resource_type} references daemon "${r.resource_ref.daemon_id}" from the source machine — it is recreated verbatim and must be re-pointed at the destination)` });
         }
       }
       const leadAvailable = inc.has("agents") && bundleAgentNames.has(rec.lead_name);
@@ -783,6 +847,20 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     }
   }
 
+  if (inc.has("workspace") && manifest.workspace_file && fs.existsSync(`${dir}/${manifest.workspace_file}`)) {
+    const rec = JSON.parse(fs.readFileSync(`${dir}/${manifest.workspace_file}`, "utf8"));
+    const current = getWorkspace(cli);
+    if (rec.name && rec.name !== current.name) {
+      incompatibilities.push({ type: "workspace-will-be-renamed", detail: `"${current.name}" → "${rec.name}" (the destination workspace itself is renamed; --workspace addresses it by name, so a re-run needs the NEW name)` });
+    }
+    if (rec.issue_prefix && rec.issue_prefix !== current.issue_prefix) {
+      incompatibilities.push({ type: "workspace-issue-prefix-change", detail: `"${current.issue_prefix}" → "${rec.issue_prefix}" (every issue key at the destination is renumbered under the new prefix)` });
+    }
+    if (rec.avatar_url) {
+      incompatibilities.push({ type: "workspace-logo-not-settable", detail: `${rec.name} (the logo is in the bundle, but \`workspace update\` exposes only name/description/context/issue-prefix — upload it in the Multica UI)` });
+    }
+  }
+
   const secretsReminder = (manifest.agents ?? []).filter((a) => a.had_secrets).map((a) => a.name);
   return { bundle, willImport, runtimes, incompatibilities, secretsReminder };
 }
@@ -810,7 +888,7 @@ function main() {
   const dryRun    = args.includes("--dry-run");
 
   if (!dir || !workspace) {
-    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>] [--include agents,squads,projects,autopilots,labels,properties] [--dry-run]");
+    console.error("Usage: multica-import.mjs --dir <folder> --workspace <name> [--runtime-map <src=dst,...>] [--include workspace,agents,squads,projects,autopilots,labels,properties] [--dry-run]");
     process.exit(1);
   }
 

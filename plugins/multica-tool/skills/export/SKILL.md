@@ -1,12 +1,12 @@
 ---
 name: export
-description: Use when the user wants to export Multica skills, agents, squads, projects, or autopilots to a local folder for backup, version control, or cross-workspace migration. Supports whole-workspace exports by level (skill, agent, squad, project) or a single named resource.
+description: Use when the user wants to export a Multica workspace — its settings, skills, agents, squads, projects, autopilots, labels, properties, and MCP roster — to a local folder for backup, version control, or cross-workspace migration. Supports whole-workspace exports by level (skill, agent, squad, workspace) or a single named resource.
 allowed-tools: Bash, Read
 ---
 
 # export
 
-Export a Multica resource (skill, agent, squad, project, or autopilot) to a local bundle directory.
+Export a Multica workspace, or one named resource inside it, to a local bundle directory.
 
 ## Step 1 — Verify authentication
 
@@ -22,24 +22,29 @@ If `multica login` is required, surface that message verbatim and stop.
 
 There are two ways to export, and they are mutually exclusive:
 
-- **Whole workspace, by level** (`--level`) — the default shape. A level bundles its own tier plus every tier below it. Use this whenever the user asks for a workspace, a backup, or a migration.
+- **Whole workspace, by level** (`--level`) — the default shape, and the default level is the widest one. A level bundles its own tier plus every tier below it. Use this whenever the user asks for a workspace, a backup, or a migration; do **not** ask them to pick a level unless they signal they want less than everything.
 - **One named resource** (`--scope <type> --id <id>`) — for a single skill, agent, squad, project, or autopilot.
 
 ### Levels
 
-Lowest tier first; **the default level is `squad`**.
+Lowest tier first; **the default level is `workspace`** — the full portable workspace. A migration that silently leaves the projects, autopilots and issue taxonomy behind is the surprising outcome, not the safe one, so the widest level is what you get unless the user narrows it.
 
 | `--level` | Object folders written |
 |---|---|
-| `skill` | `skills/` |
-| `agent` | `skills/`, `agents/` |
-| `squad` *(default)* | `skills/`, `agents/`, `squads/` |
-| `project` | `skills/`, `agents/`, `squads/`, `projects/`, `autopilots/`, `labels/`, `properties/`, `mcp/` |
+| `skill` | `workspace/`, `skills/` |
+| `agent` | `workspace/`, `skills/`, `agents/` |
+| `squad` | `workspace/`, `skills/`, `agents/`, `squads/` |
+| `workspace` *(default)* | `workspace/`, `skills/`, `agents/`, `squads/`, `projects/`, `autopilots/`, `labels/`, `properties/`, `mcp/` |
+
+`--level project` is still accepted as the old name for `workspace`.
+
+**Never exported, at any level:** the workspace **repo registry** (checkout/machine state, managed by `multica repo`), workspace **members** (accounts, not configuration — they are referenced by name where an autopilot subscribes them, never created), and **issues** (live work, not configuration). Say so plainly if the user expects a full workspace clone.
 
 Notes on the tiers:
 
-- **Project** carries portable project metadata (title, description, icon, priority, status, dates, lead mapping) plus its attached resource records — **never issues, never members**. Workspace issue **labels**, custom **properties**, and the workspace **MCP server roster** ride along at this level.
-- **Autopilots** are bundled **only** at `--level project`. Every other level omits them.
+- **Project** carries portable project metadata (title, description, icon, priority, status, dates, lead mapping) plus its attached resource records — every resource type, with its `resource_ref` and display `position` — **never issues, never members**. Workspace issue **labels**, custom **properties**, and the workspace **MCP server roster** ride along at this level.
+- **`workspace/`** carries the workspace's own settings and rides along at **every** level — it is the workspace's identity, not a tier of its contents. A single-resource export (`--scope <type> --id`) bundles none of it.
+- **Autopilots** are bundled **only** at `--level workspace`. Every other level omits them.
 - `--level skill` keeps every workspace skill, including ones no agent references. Every higher level prunes those orphans, since the agents are what reference them.
 
 If the user asked for a single resource but did not name it, list the type and present a pick list:
@@ -70,12 +75,12 @@ Examples: `export everything from mx-workspace` → `export/mx-workspace`; `expo
 
 ## Step 4 — Run the export
 
-Whole workspace, by level (the default path — `--level` defaults to `squad`):
+Whole workspace, by level (the default path — `--level` defaults to `workspace`):
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/multica-export.mjs" \
   --out <dir> \
-  [--level skill|agent|squad|project] \
+  [--level skill|agent|squad|workspace] \
   [--workspace <workspace-name>]
 ```
 
@@ -102,6 +107,7 @@ One flat folder per object type:
 ```
 <dir>/
   manifest.json
+  workspace/workspace.json, workspace.description.md, workspace.context.md, workspace.avatar.<ext>
   skills/<slug>/SKILL.md, config.json, <skill files…>
   agents/<slug>.json, <slug>.md, <slug>.description.md, <slug>.avatar.<ext>
   squads/<slug>.json, <slug>.md, <slug>.description.md
@@ -114,9 +120,20 @@ One flat folder per object type:
 
 `manifest.json` points at `labels/`, `properties/` and `mcp/` via `labels_file`, `properties_file` and `mcp_servers_file` (with a matching `*_count`); the arrays themselves are no longer inline. Import still reads a pre-folder bundle that carried them inline.
 
+### Workspace settings
+
+Every whole-workspace export writes `workspace/workspace.json`, pointed at by `workspace_file` in the manifest:
+
+- **name**, **description**, **context**, **issue_prefix** — all four round-trip; `workspace update` sets each one.
+- **avatar_url** (the logo) — the image is downloaded into the bundle (`workspace/workspace.avatar.<ext>`, referenced by `avatar_file`), but **cannot be restored**: `workspace update` exposes only name/description/context/issue-prefix, and there is no `workspace avatar` command. Reported in `workspaceLogoNotPortable`.
+- **repos** are deliberately **excluded**. The workspace repo registry is checkout/machine state managed by `multica repo add`/`remove`, not workspace settings — it never travels.
+- `settings` (always `{}`, no CLI setter), `slug`, `id`, and the timestamps are server-owned and never bundled.
+
+`description` and `context` are externalized to `workspace.description.md` and `workspace.context.md` like every other resource's prose.
+
 ### Issue labels, custom properties, and the MCP roster
 
-`--scope project` and `--level project` also bundle the workspace's **issue labels**, **custom issue property definitions**, and the **workspace MCP server roster**, so a migrated project lands somewhere its issues can actually be labelled and filled in. All three are **workspace-scoped in Multica — there is no project-scoped label, property, or MCP server** — so what travels is the whole workspace's taxonomy, not a per-project subset. State that plainly to the user when they ask for "the project's labels".
+`--scope project` and `--level workspace` also bundle the workspace's **issue labels**, **custom issue property definitions**, and the **workspace MCP server roster**, so a migrated project lands somewhere its issues can actually be labelled and filled in. All three are **workspace-scoped in Multica — there is no project-scoped label, property, or MCP server** — so what travels is the whole workspace's taxonomy, not a per-project subset. State that plainly to the user when they ask for "the project's labels".
 
 Narrower selections (`skill`, `agent`, `squad`, `autopilot` scopes; `skill`/`agent`/`squad` levels) bundle none of the three — a single resource is not a workspace migration.
 
@@ -128,6 +145,11 @@ What travels, and what cannot:
 - **MCP servers** — `name` and `transport` only. A server's entry JSON (command/args/env, and any token inside it) is **write-only in the CLI**: `workspace mcp add`/`update` accept it, and nothing reads it back. So `mcp/servers.json` is a roster, not a copy — every entry is listed in `mcpServerConfigsNotPortable`, and each must be re-added by hand at the destination before agent assignments can attach to it.
 
 Every agent record also carries `mcp_servers` — which workspace MCP servers that agent uses, as `{name, enabled}`. This is separate from the agent's own inline `mcp_config`. Import re-links them by name against the destination library.
+
+Two more agent fields (multica 0.4.44):
+
+- **conversation_starters** — the Chat-composer prompts, as `{label, prompt}`. These round-trip fully; the server-minted option id is dropped, since `agent create`/`update` only accept label + prompt.
+- **disabled_runtime_skills** — runtime-provided skills switched off on that agent. Captured for the record, but **cannot be restored**: `agent skills` manages workspace skill assignments and has no setter for these. Every affected agent is listed in `agentRuntimeSkillsDisabled`.
 
 The script writes `manifest.json`, skill `SKILL.md` files, agent JSON files, and squad JSON files into `<dir>`. Every resource's prose fields are externalized to sibling Markdown files, never embedded in the JSON — so they are easy to read, diff, and edit:
 
@@ -153,4 +175,6 @@ Parse the JSON output from the script and report:
 - Count of labels and custom properties bundled (`manifest.labels.length`, `manifest.properties.length`), noting that both are workspace-wide, not project-specific.
 - If `autopilotsActiveAtSource` is non-empty, surface every title verbatim with: "NOTE: the following autopilots were ACTIVE at the source; every imported autopilot lands paused — re-activate each one deliberately with `multica autopilot update <id> --status active`: `<autopilot-title>`."
 - If `mcpServerConfigsNotPortable` is non-empty, surface every server name verbatim with: "NOTE: the following workspace MCP servers travelled by name and transport only — the CLI never returns a server's config on read, so re-add each one at the destination (`multica workspace mcp add <name> --server-config ...`) before importing the agents that use it: `<server-name>`."
+- If `workspaceLogoNotPortable` is non-empty, surface it with: "NOTE: the workspace logo was downloaded into `workspace/workspace.avatar.<ext>`, but the multica CLI has no command to set a workspace logo — it must be uploaded by hand in the Multica UI at the destination: `<workspace-name>`."
+- If `agentRuntimeSkillsDisabled` is non-empty, surface every agent name verbatim with: "NOTE: the following agents had runtime-provided skills switched OFF at the source. The bundle records which ones, but the multica CLI has no command to re-disable them (`agent skills` manages workspace skill assignments only) — switch them off again in the Multica UI after importing: `<agent-name>`."
 - If `labelDescriptionsNotPortable` is non-empty, surface every label name verbatim with: "NOTE: the following labels have a description that the multica CLI cannot set on import (`label create`/`update` have no `--description` flag) — re-enter it in the Multica UI at the destination: `<label-name>`."

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { redactAgent, buildManifest, exportResource } from "../../plugins/multica-tool/scripts/multica-export.mjs";
 import { getAgent } from "../../plugins/multica-tool/scripts/lib.mjs";
-import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, SKILL_GET_2, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2, LABEL_LIST, PROPERTY_LIST, WORKSPACE_MCP_LIST, AGENT_MCP_LIST } from "./fixtures.mjs";
+import { AGENT_GET, AGENT_GET_IMG, SKILL_GET, SKILL_GET_2, AGENT_GET_2, AGENT_GET_REDACTED, SQUAD_GET, SQUAD_MEMBERS, RUNTIME_LIST_SRC, AGENT_ENV_GET, PROJECT_LIST, PROJECT_GET_1, PROJECT_GET_2, PROJECT_RESOURCES_1, PROJECT_RESOURCES_2, LABEL_LIST, PROPERTY_LIST, WORKSPACE_MCP_LIST, AGENT_MCP_LIST, WORKSPACE_GET } from "./fixtures.mjs";
 
 function fakeCli() {
   return {
@@ -17,7 +17,7 @@ function fakeCli() {
       if (key === "runtime list") return RUNTIME_LIST_SRC;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
-      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -60,6 +60,13 @@ test("redactAgent embeds mcp_config and custom_env when both are usable", () => 
   assert.equal(record.max_concurrent_tasks, 6, "normalized field survives");
   assert.equal(record.had_secrets, true);
   assert.equal(record.name, "Helper");
+});
+
+test("redactAgent carries conversation_starters and disabled_runtime_skills into the record", () => {
+  const normalized = { ...getAgent(fakeCli(), "ag_SRC1"), custom_env: {}, custom_env_fetch_failed: false };
+  const { record } = redactAgent(normalized);
+  assert.deepEqual(record.conversation_starters, [{ label: "Hi", prompt: "say hi" }]);
+  assert.deepEqual(record.disabled_runtime_skills, ["web-search"]);
 });
 
 test("redactAgent leaves mcp_config/custom_env null and hadSecrets false when neither is present", () => {
@@ -145,7 +152,7 @@ test("export creates nested parent dirs for skill files (regression: scripts/ su
         return { id: "sk_N", name: "Nested", content: "x", config: {}, files: [{ path: "scripts/run.sh", content: "echo hi" }] };
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
-      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -245,7 +252,7 @@ test("export agent records an emoji avatar as a string and downloads no file", (
 
 test("export agent downloads an image avatar into the bundle and records avatar_file", () => {
   const fs = memFs();
-  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
+  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
   const download = (url) => { assert.equal(url, "https://cdn.example.com/uploads/pixel.png"); return Buffer.from("PNGBYTES"); };
   exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC4" }, outDir: "/img", sourceWorkspaceId: "ws", fs, download });
   const record = JSON.parse(fs.files["/img/agents/pixel.json"]);
@@ -255,7 +262,7 @@ test("export agent downloads an image avatar into the bundle and records avatar_
 
 test("export agent tolerates a failed avatar download — keeps avatar_url, writes no file", () => {
   const fs = memFs();
-  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
+  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
   exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC4" }, outDir: "/imgfail", sourceWorkspaceId: "ws", fs, download: () => null });
   const record = JSON.parse(fs.files["/imgfail/agents/pixel.json"]);
   assert.equal(record.avatar_url, "https://cdn.example.com/uploads/pixel.png", "avatar_url still recorded");
@@ -305,7 +312,7 @@ test("export --level squad collects every resource and writes a shared agent exa
       }
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
-      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -340,7 +347,7 @@ function projectCli() {
       if (k3 === "runtime list") return RUNTIME_LIST_SRC;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
-      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -371,10 +378,10 @@ test("export --scope project bundles the lead agent and writes the project recor
   assert.equal(fs.files["out/projects/launch.description.md"], "the launch", "project description written to projects/<slug>.description.md");
 });
 
-test("export --level project records an unled project with lead_name null", () => {
+test("export --level workspace records an unled project with lead_name null", () => {
   const fs = memFs();
   const { manifest } = exportResource({
-    cli: projectCli(), scope: "workspace", level: "project", ids: {},
+    cli: projectCli(), scope: "workspace", level: "workspace", ids: {},
     outDir: "out", sourceWorkspaceId: "ws_SRC", fs, download: () => null,
   });
   assert.equal(manifest.projects.length, 2);
@@ -402,7 +409,7 @@ test("export --level squad prunes skills no agent references", () => {
       if (three === "runtime list") return RUNTIME_LIST_SRC;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
-      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -423,7 +430,7 @@ test("export --scope skill never prunes the requested skill", () => {
       if (three === "skill get sk_SRC2") return SKILL_GET_2;
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
-      if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -433,4 +440,32 @@ test("export --scope skill never prunes the requested skill", () => {
   assert.deepEqual(pruned_skills, [], "skill scope skips the prune pass");
   assert.deepEqual(manifest.skills.map((s) => s.name), ["Lonely"], "requested lone skill survives");
   assert.ok(fs.files["/one/skills/lonely/SKILL.md"], "requested skill written");
+});
+
+// --- workspace settings ------------------------------------------------------
+
+test("a whole-workspace export writes workspace/ with prose sidecars and the downloaded logo", () => {
+  const fs = memFs();
+  const cli = projectCli();
+  const res = exportResource({ cli, scope: "workspace", level: "skill", ids: {}, outDir: "/ws", sourceWorkspaceId: "ws_SRC", fs, download: () => Buffer.from("LOGO") });
+  assert.equal(res.manifest.workspace_file, "workspace/workspace.json");
+  const rec = JSON.parse(fs.files["/ws/workspace/workspace.json"]);
+  assert.equal(rec.name, "Source WS");
+  assert.equal(rec.issue_prefix, "SRC");
+  assert.ok(!("repos" in rec), "the repo registry never travels");
+  assert.ok(!("description" in rec) && !("context" in rec), "prose is externalized, not inline");
+  assert.equal(rec.description_file, "workspace/workspace.description.md");
+  assert.equal(rec.context_file, "workspace/workspace.context.md");
+  assert.equal(fs.files["/ws/workspace/workspace.context.md"], "House rules.\nLine two.");
+  assert.equal(rec.avatar_file, "workspace/workspace.avatar.webp");
+  assert.equal(String(fs.files["/ws/workspace/workspace.avatar.webp"]), "LOGO");
+  assert.deepEqual(res.workspaceLogoNotPortable, ["Source WS"], "the logo has no CLI setter on import");
+});
+
+test("a single-resource export bundles no workspace settings", () => {
+  const fs = memFs();
+  const res = exportResource({ cli: fakeCli(), scope: "skill", level: null, ids: { skillId: "sk_SRC1" }, outDir: "/one", sourceWorkspaceId: "ws_SRC", fs, download: () => null });
+  assert.equal(res.manifest.workspace_file, null);
+  assert.equal(fs.files["/one/workspace/workspace.json"], undefined);
+  assert.deepEqual(res.workspaceLogoNotPortable, []);
 });
