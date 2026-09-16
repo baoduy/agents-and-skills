@@ -846,3 +846,34 @@ test("preflight warns about the rename, the prefix change and the logo before an
   assert.ok(types.includes("workspace-logo-not-settable"));
   assert.equal(cli.calls.length, 0, "dry-run performs no writes");
 });
+
+// Regression, issue #55: the data-loss path. A bundle exported without bodies
+// would otherwise `skill update --content-file <0-byte file>` over a good skill.
+const EMPTY_SKILL_MANIFEST = { version: "1", skills: [{ name: "Greet", dir: "skills/greet" }], agents: [] };
+
+test("importSkills SKIPS a bundle skill with an empty SKILL.md rather than wiping the destination", () => {
+  const fs = memFs({ "skills/greet/SKILL.md": "", "skills/greet/config.json": "{}" });
+  const calls = [];
+  const cli = { calls, json: () => [{ id: "sk_TGT1", name: "Greet", description: "good" }], run: (a) => { calls.push(a); return "{}"; } };
+  const r = importSkills({ cli, manifest: EMPTY_SKILL_MANIFEST, dir: ".", fs });
+  assert.deepEqual(r.emptySkipped, ["Greet"]);
+  assert.equal(r.created + r.updated, 0);
+  assert.equal(calls.length, 0, "no write of any kind reaches the destination skill");
+});
+
+test("importSkills still writes a skill whose body arrived", () => {
+  const fs = memFs({ "skills/greet/SKILL.md": "# Greet", "skills/greet/config.json": "{}" });
+  const calls = [];
+  const cli = { calls, json: () => [], run: (a) => { calls.push(a); return '{"id":"sk_NEW1"}'; } };
+  const r = importSkills({ cli, manifest: EMPTY_SKILL_MANIFEST, dir: ".", fs });
+  assert.deepEqual(r.emptySkipped, []);
+  assert.equal(r.created, 1);
+});
+
+test("preflight flags an empty skill body before any write", () => {
+  const fs = memFs({ "./manifest.json": JSON.stringify(EMPTY_SKILL_MANIFEST), "skills/greet/SKILL.md": "", "skills/greet/config.json": "{}" });
+  const cli = fullRecordingCli();
+  const rep = preflight({ cli, dir: ".", runtimeMap: new Map(), include: new Set(["skills"]), fs });
+  assert.ok(rep.incompatibilities.some((i) => i.type === "skill-body-empty" && i.detail.includes("Greet")));
+  assert.equal(cli.calls.length, 0, "dry-run performs no writes");
+});

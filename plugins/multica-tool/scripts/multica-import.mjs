@@ -56,6 +56,7 @@ function frontmatterDescription(text) {
 export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
   const idMap = new Map();
   let created = 0, updated = 0;
+  const emptySkipped = [];
   const existing = listSkills(cli);
 
   for (const s of manifest.skills) {
@@ -64,8 +65,13 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
     const configPath = `${sdir}/config.json`;
     const config = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "{}";
     const match = findByName(existing, s.name);
+    const content = fs.readFileSync(contentPath, "utf8");
+    // A skill with no body is a broken bundle, not a skill. Writing it would
+    // replace a good destination skill with an empty one, so it is SKIPPED and
+    // reported — the one case where doing less is the whole point.
+    if (!content) { emptySkipped.push(s.name); continue; }
     // Fall back to the SKILL.md frontmatter description when the manifest carries none.
-    const fmDesc = frontmatterDescription(fs.readFileSync(contentPath, "utf8"));
+    const fmDesc = frontmatterDescription(content);
     let id;
     if (match) {
       // Only fill description when the existing skill has none — don't clobber a set one.
@@ -84,7 +90,7 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
       cli.run(["skill", "files", "upsert", id, "--path", rel, "--content-file", `${sdir}/${rel}`]);
     }
   }
-  return { idMap, created, updated };
+  return { idMap, created, updated, emptySkipped };
 }
 
 // True when a resource already carries an avatar (uploaded image or emoji).
@@ -619,7 +625,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
 
   const skillRes = inc.has("skills")
     ? importSkills({ cli, manifest, dir, fs })
-    : { idMap: new Map(), created: 0, updated: 0 };
+    : { idMap: new Map(), created: 0, updated: 0, emptySkipped: [] };
   const agentRes = inc.has("agents")
     ? importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs })
     : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, reused: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [], mcpServersUnresolved: [], mcpServersApplyFailures: [], runtimeSkillsDisabled: [] };
@@ -671,6 +677,9 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     // from a plain update (an active-name match). Only agents can be reused today.
     reused: { agents: agentRes.reused },
     mentionsRewritten: mentionRes.updated,
+    // Bundle skills with an empty SKILL.md — skipped, never written over a good
+    // destination skill. Non-empty means the BUNDLE is broken; re-export it.
+    skillsEmptySkipped: skillRes.emptySkipped,
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
     squadIdMap: Object.fromEntries(squadIdMap),
@@ -729,6 +738,14 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
   };
 
   const incompatibilities = [];
+  if (inc.has("skills")) {
+    for (const s of manifest.skills ?? []) {
+      const contentPath = dir === "." ? `${s.dir}/SKILL.md` : `${dir}/${s.dir}/SKILL.md`;
+      if (!fs.existsSync(contentPath) || !fs.readFileSync(contentPath, "utf8")) {
+        incompatibilities.push({ type: "skill-body-empty", detail: `${s.name} (SKILL.md is empty in the bundle — it will be SKIPPED, not written over the destination; re-export the bundle)` });
+      }
+    }
+  }
   let runtimes = { resolved: [], unresolved: [] };
   if (inc.has("agents")) {
     const { effective, unresolved } = resolveRuntimeMap({ cli, manifest, runtimeMap });

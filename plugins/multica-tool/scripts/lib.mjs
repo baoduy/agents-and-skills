@@ -8,8 +8,21 @@ export function slugify(name) {
   return s || "unnamed";
 }
 
+// spawnSync defaults maxBuffer to 1 MiB, which `skill get --with-content` blows
+// past on any sizeable skill: the child is killed, `status` comes back null and
+// the payload is lost. Matches the 64 MiB the avatar download already allows.
 export function realExec(args, opts = {}) {
-  return spawnSync("multica", args, { encoding: "utf8", ...opts });
+  return spawnSync("multica", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, ...opts });
+}
+
+// A failed spawn reports its cause on `res.error`, not on stderr — and a
+// maxBuffer overrun or a signal kill leaves `status` null, so "multica exited
+// null" on its own is a dead end. Name the command too: which of the dozens of
+// CLI calls an export makes died is otherwise guesswork.
+export function execError(res, args) {
+  const why = res.stderr?.trim() || res.error?.message
+    || (res.signal ? `killed by ${res.signal}` : `exited ${res.status}`);
+  return `multica ${args.join(" ")}: ${why}`;
 }
 
 export function makeCli(exec, { workspaceId } = {}) {
@@ -19,13 +32,13 @@ export function makeCli(exec, { workspaceId } = {}) {
       full = [...args, "--workspace-id", workspaceId];
     }
     const res = exec(full, opts);
-    if (res.status !== 0) throw new Error(res.stderr?.trim() || `multica exited ${res.status}`);
+    if (res.status !== 0) throw new Error(execError(res, full));
     return res.stdout;
   }
   function json(args) {
     const fullArgs = workspaceId ? [...args, "--workspace-id", workspaceId, "--output", "json"] : [...args, "--output", "json"];
     const res = exec(fullArgs);
-    if (res.status !== 0) throw new Error(res.stderr?.trim() || `multica exited ${res.status}`);
+    if (res.status !== 0) throw new Error(execError(res, fullArgs));
     return JSON.parse(res.stdout);
   }
   return { run, json };
@@ -77,8 +90,13 @@ export const listAgentMcpServers = (cli, agentId) =>
 // Get-wrappers: the ONLY place that knows the raw CLI field names — an
 // explicit allow-list, so unexpected/internal CLI fields never leak into a
 // bundle. Field names mirror the CLI's own snake_case; nothing is renamed.
+// `--with-content` is REQUIRED: without it the CLI returns the skill's metadata
+// and its file PATHS, but every body — `content` and each `files[].content` —
+// comes back empty, and an export written from that is a bundle of 0-byte files
+// that still reports success. It is off by default because the response grows
+// with the skill; an export has to pay that cost.
 export function getSkill(cli, id) {
-  const s = cli.json(["skill", "get", id]);
+  const s = cli.json(["skill", "get", id, "--with-content"]);
   return {
     id: s.id, name: s.name, description: s.description,
     content: s.content ?? "", config: s.config ?? {},

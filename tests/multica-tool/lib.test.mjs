@@ -75,7 +75,7 @@ test("listRuntimes returns parsed list", () => {
 });
 
 test("getSkill trims files to {path,content}", () => {
-  const cli = cliReturning({ "skill get sk_SRC1": SKILL_GET });
+  const cli = cliReturning({ "skill get sk_SRC1 --with-content": SKILL_GET });
   const s = getSkill(cli, "sk_SRC1");
   assert.equal(s.content, "# Greet\nbody");
   assert.deepEqual(s.files, [{ path: "ref.md", content: "extra" }]);
@@ -179,4 +179,13 @@ test("findByTitle returns the match and throws on duplicates", () => {
   assert.equal(findByTitle(list, "Two").id, "b");
   assert.equal(findByTitle(list, "None"), null);
   assert.throws(() => findByTitle([{ title: "Dup" }, { title: "Dup" }], "Dup"), /Duplicate title/);
+});
+
+// Regression, issue #55: without --with-content the CLI returns metadata and file
+// PATHS but every body empty, and the export writes a bundle of 0-byte files that
+// still reports success. No test asserted the flag, which is how it shipped.
+test("getSkill asks for --with-content — the bodies are off by default", () => {
+  const seen = [];
+  getSkill({ json: (args) => { seen.push(args); return SKILL_GET; } }, "sk_SRC1");
+  assert.deepEqual(seen[0], ["skill", "get", "sk_SRC1", "--with-content"]);
 });

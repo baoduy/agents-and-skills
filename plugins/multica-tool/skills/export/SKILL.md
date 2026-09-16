@@ -170,6 +170,7 @@ Parse the JSON output from the script and report:
 - The level (or the single resource) exported.
 - Count of skills, agents, squads, projects, and autopilots exported.
 - If `pruned_skills` is non-empty, note it: "Pruned N orphan skill(s) not linked to any agent: `<name>`, …" (these are standalone workspace skills that no exported agent references — only `--scope all` produces them).
+- **If `emptyFiles` is non-empty, the bundle is BROKEN — say so first, before any other result.** Surface the count and every path verbatim with: "WARNING: N skill file(s) were written as 0 bytes. This bundle is NOT safe to import — importing it would replace good skills at the destination with empty ones. Re-run the export; if it repeats, the `multica skill get --with-content` fetch is failing: `<path>`."
 - If `warnings` is non-empty, surface every agent name verbatim with this message: "WARNING: the following agents' exported files contain custom environment variables or MCP config in PLAINTEXT — treat the export directory as sensitive (avoid committing it to a public repo, restrict file permissions, delete it once the import is done): `<agent-name>`."
 - If `autopilotWebhookTriggers` is non-empty, surface every autopilot title verbatim with: "NOTE: the following autopilots have a webhook trigger — its secret was NOT exported; a newly issued URL will be created on import: `<autopilot-title>`."
 - Count of labels and custom properties bundled (`manifest.labels.length`, `manifest.properties.length`), noting that both are workspace-wide, not project-specific.
