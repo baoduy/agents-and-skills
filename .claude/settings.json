@@ -1,12 +1,10 @@
 {
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": false
-  },
   "permissions": {
     "allow": [
       "WebSearch",
       "mcp__plugin_context-mode_context-mode__*",
       "mcp__plugin_context-mode_context-mode__ctx_execute"
     ]
-  }
+  },
+  "enabledPlugins": {}
 }
