@@ -1,7 +1,5 @@
 {
-  "enabledPlugins": {
-    "frontend-design@claude-plugins-official": false
-  },
+  "enabledPlugins": {},
   "permissions": {
     "allow": [
       "WebSearch",
