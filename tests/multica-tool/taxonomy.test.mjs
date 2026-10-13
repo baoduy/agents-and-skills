@@ -91,11 +91,6 @@ test("export --scope project writes labels, properties and the MCP roster to the
     "archived state travels, so a retired definition does not reappear in every picker at the destination");
 });
 
-test("export reports label descriptions as unportable — the CLI has no --description flag", () => {
-  const { labelDescriptionsNotPortable } = exportResource({ cli: exportCli(), scope: "project", ids: { projectId: "pr_SRC1" }, outDir: "/p", sourceWorkspaceId: "ws", fs: memFs(), download: () => null });
-  assert.deepEqual(labelDescriptionsNotPortable, ["Bug"], "only labels that actually carry a description are flagged");
-});
-
 test("export --scope agent bundles no taxonomy — a single agent is not a workspace migration", () => {
   const cli = exportCli();
   const { manifest } = exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC1" }, outDir: "/a", sourceWorkspaceId: "ws", fs: memFs(), download: () => null });
@@ -129,18 +124,13 @@ test("importLabels creates a missing label and updates an existing one by name",
   assert.equal(flagOf(create, "--name"), "Chore");
 });
 
-test("importLabels reports an unrestorable description instead of dropping it silently", () => {
-  const cli = recordingCli();
-  const r = importLabels({ cli, manifest: { labels: [{ name: "Bug", color: "#ef4444", description: "The bug issues" }] } });
-  assert.deepEqual(r.descriptionUnsupported, ["Bug"]);
-  assert.ok(!cli.calls.some((a) => a.includes("--description")),
-    "regression guard: `label create/update` reject --description in multica 0.4.36 — passing it aborts the import");
-});
-
-test("importLabels stays quiet when the destination already carries the same description", () => {
-  const cli = recordingCli({ labels: [{ id: "lb_TGT9", name: "Bug", color: "#ef4444", description: "The bug issues" }] });
-  const r = importLabels({ cli, manifest: { labels: [{ name: "Bug", color: "#ef4444", description: "The bug issues" }] } });
-  assert.deepEqual(r.descriptionUnsupported, [], "nothing is lost, so nothing is reported");
+test("importLabels applies the description on create and update", () => {
+  const cli = recordingCli({ labels: [{ id: "lb_TGT9", name: "Bug", color: "#ef4444", description: "" }] });
+  importLabels({ cli, manifest: { labels: [{ name: "Bug", color: "#ef4444", description: "The bug issues" }, { name: "Chore", color: "#6b7280", description: "" }] } });
+  const update = cli.calls.find((a) => a[1] === "update");
+  assert.equal(flagOf(update, "--description"), "The bug issues");
+  const create = cli.calls.find((a) => a[1] === "create");
+  assert.ok(!create.includes("--description"), "an empty description is never passed");
 });
 
 // --- import: properties -----------------------------------------------------
@@ -206,7 +196,6 @@ test("preflight counts taxonomy and warns before any write", () => {
   assert.equal(rep.bundle.labels, 1);
   assert.equal(rep.willImport.properties, 2);
   const types = rep.incompatibilities.map((i) => i.type);
-  assert.ok(types.includes("label-description-not-settable"));
   assert.ok(types.includes("property-type-conflict"));
   assert.ok(types.includes("property-archived"));
   assert.equal(cli.calls.length, 0, "preflight is read-only");

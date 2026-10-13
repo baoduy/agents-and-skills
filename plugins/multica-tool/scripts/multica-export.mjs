@@ -484,10 +484,6 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
     // entry JSON (and any token in it) must be re-entered at the destination.
     mcpServerConfigsNotPortable: mcpServers.map((m) => m.name),
     autopilotWebhookTriggers: autopilots.filter((a) => a.had_webhook_trigger).map((a) => a.title),
-    // Captured in the bundle for review, but `label create`/`update` have no
-    // --description flag — flagged at export time so the gap is known before the
-    // migration, not discovered at the far end.
-    labelDescriptionsNotPortable: labels.filter((l) => l.description).map((l) => l.name),
     // Runtime-provided skills the source had switched off on an agent. Captured
     // in the bundle, but no CLI command re-disables them — flagged here so the
     // gap is known before the migration, not discovered at the far end.

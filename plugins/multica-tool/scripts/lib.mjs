@@ -230,9 +230,7 @@ export function getAutopilot(cli, id) {
 
 // `id` is kept: `label update` addresses a label by id only.
 // `resource_type`/`usage_count`/timestamps are server-owned with no CLI setter.
-// `description` IS captured, but `label create`/`update` expose no
-// `--description` flag — import reports it as unrestorable rather than dropping
-// it silently.
+// `description` round-trips via `label create/update --description` (multica 0.6.x).
 export const listLabels = (cli) =>
   (cli.json(["label", "list"]) ?? []).map((l) => ({
     id: l.id, name: l.name, color: l.color, description: l.description ?? "",

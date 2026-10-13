@@ -285,8 +285,10 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
     cli.run(["squad", "update", match.id, "--leader", leaderId, "--description", squad.description ?? "", ...instr]);
     id = match.id; updated++;
   } else {
-    const out = cli.run(["squad", "create", "--name", squad.name, "--leader", leaderId, "--description", squad.description ?? "", ...instr]);
+    // `squad create` has no --instructions flag (multica 0.6.x) — set them via update.
+    const out = cli.run(["squad", "create", "--name", squad.name, "--leader", leaderId, "--description", squad.description ?? ""]);
     id = JSON.parse(out).id; created++;
+    if (instr.length) cli.run(["squad", "update", id, ...instr]);
   }
   // Avatar: squads accept only an avatar-url string (emoji or URL) via
   // `squad update`. Set it only when the target squad has none — never clobber
@@ -464,28 +466,25 @@ export function importAutopilots({ cli, manifest, dir, agentIdMap, fs = nodeFs }
   return { idMap, created, updated, projectUnresolved, subscribersUnresolved, priorityNotCaptured, webhookReissued, activeAtSource };
 }
 
-// Workspace issue labels, matched by name. Colour is the only field the CLI can
-// set besides the name — a label's description has no `--description` flag on
-// `label create`/`update` (multica 0.4.36), so it is reported, never applied.
+// Workspace issue labels, matched by name: colour and description (multica 0.6.x
+// added `--description` to `label create`/`update`).
 export function importLabels({ cli, manifest, dir, fs = nodeFs }) {
   const entries = readTaxonomy(fs, dir, manifest, "labels");
-  if (!entries.length) return { created: 0, updated: 0, descriptionUnsupported: [] };
+  if (!entries.length) return { created: 0, updated: 0 };
   const existing = listLabels(cli);
   let created = 0, updated = 0;
-  const descriptionUnsupported = [];
   for (const l of entries) {
     const match = findByName(existing, l.name);
+    const desc = l.description ? ["--description", l.description] : [];
     if (match) {
-      cli.run(["label", "update", match.id, "--color", l.color]);
+      cli.run(["label", "update", match.id, "--color", l.color, ...desc]);
       updated++;
     } else {
-      cli.run(["label", "create", "--name", l.name, "--color", l.color]);
+      cli.run(["label", "create", "--name", l.name, "--color", l.color, ...desc]);
       created++;
     }
-    // Only worth reporting when the destination doesn't already carry the same text.
-    if (l.description && match?.description !== l.description) descriptionUnsupported.push(l.name);
   }
-  return { created, updated, descriptionUnsupported };
+  return { created, updated };
 }
 
 // Workspace custom issue property definitions, matched by name — the same key
@@ -664,7 +663,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     : { applied: false, renamedFrom: null, logoUnsupported: [] };
   const labelRes = inc.has("labels")
     ? importLabels({ cli, manifest, dir, fs })
-    : { created: 0, updated: 0, descriptionUnsupported: [] };
+    : { created: 0, updated: 0 };
   const propertyRes = inc.has("properties")
     ? importProperties({ cli, manifest, dir, fs })
     : { created: 0, updated: 0, typeConflicts: [], archivedApplied: [] };
@@ -708,7 +707,6 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     autopilotPriorityNotCaptured: autopilotRes.priorityNotCaptured,
     autopilotWebhookReissued: autopilotRes.webhookReissued,
     autopilotsActiveAtSource: autopilotRes.activeAtSource,
-    labelDescriptionUnsupported: labelRes.descriptionUnsupported,
     propertyTypeConflicts: propertyRes.typeConflicts,
     propertiesArchived: propertyRes.archivedApplied,
     workspaceSettingsApplied: workspaceRes.applied,
@@ -838,14 +836,6 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
         if (!mcpAvailable(m.name)) {
           incompatibilities.push({ type: "agent-mcp-server-missing", detail: `${rec.name} → MCP server "${m.name}" (not in the destination workspace library — the assignment will be skipped)` });
         }
-      }
-    }
-  }
-
-  if (inc.has("labels")) {
-    for (const l of bundleLabels) {
-      if (l.description) {
-        incompatibilities.push({ type: "label-description-not-settable", detail: `${l.name} (the multica CLI exposes no --description flag on label create/update)` });
       }
     }
   }
