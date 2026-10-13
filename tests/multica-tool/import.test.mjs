@@ -421,7 +421,9 @@ test("importSquad creates with mapped leader and adds non-leader members by mapp
   assert.equal(newId, "sq_NEW1");
   const create = calls.find((a) => a[1] === "create");
   assert.equal(create[create.indexOf("--leader") + 1], "ag_NEW1");
-  assert.equal(create[create.indexOf("--instructions") + 1], "# Team charter\nDeliver features.", "squad instructions threaded on create");
+  assert.ok(!create.includes("--instructions"), "regression guard: `squad create` rejects --instructions in multica 0.6.x");
+  const upd = calls.find((a) => a[1] === "update" && a[2] === "sq_NEW1");
+  assert.equal(upd[upd.indexOf("--instructions") + 1], "# Team charter\nDeliver features.", "squad instructions applied via update after create");
   const adds = calls.filter((a) => a[1] === "member" && a[2] === "add");
   assert.equal(adds.length, 1, "leader is not double-added as member");
   assert.equal(adds[0][adds[0].indexOf("--member-id") + 1], "ag_NEW2");
@@ -434,9 +436,9 @@ test("importSquad rewrites agent mentions in instructions from source ids to new
   const agentIdMap = new Map([["Helper", "ag_NEW1"], ["Helper2", "ag_NEW2"]]);
   const sourceIdMap = new Map([["ag_SRC1", "ag_NEW1"], ["ag_SRC2", "ag_NEW2"]]);
   importSquad({ cli, squad, agentIdMap, sourceIdMap });
-  const create = calls.find((a) => a[1] === "create");
+  const upd = calls.find((a) => a[1] === "update" && a.includes("--instructions"));
   assert.equal(
-    create[create.indexOf("--instructions") + 1],
+    upd[upd.indexOf("--instructions") + 1],
     "Teammates:\n- [@dev-backend](mention://agent/ag_NEW1)\n- [@dev-qc](mention://agent/ag_NEW2)"
   );
 });
@@ -585,8 +587,8 @@ test("importBundle reads squad instructions from the squad .md", () => {
     },
   };
   importBundle({ cli, dir: ".", runtimeMap: new Map([["rt_SRC1", "rt_TGT1"]]), fs });
-  const squadCreate = calls.find((a) => a[0] === "squad" && a[1] === "create");
-  assert.equal(squadCreate[squadCreate.indexOf("--instructions") + 1], "# Charter from md", "squad instructions read from the .md");
+  const squadUpdate = calls.find((a) => a[0] === "squad" && a[1] === "update" && a.includes("--instructions"));
+  assert.equal(squadUpdate[squadUpdate.indexOf("--instructions") + 1], "# Charter from md", "squad instructions read from the .md");
 });
 
 import { importProjects } from "../../plugins/multica-tool/scripts/multica-import.mjs";

@@ -137,8 +137,7 @@ export const WORKSPACE_MEMBERS = [
 export const RUNTIME_LIST_AGENT2 = [{ id: "rt_TGT3", name: "Extra Runtime", provider: "claude" }];
 
 // --- workspace issue taxonomy (multica 0.4.36) ------------------------------
-// Raw `label list` output. "Bug" carries a description — the CLI has no
-// --description flag, so import must report it rather than silently drop it.
+// Raw `label list` output. "Bug" carries a description; "Chore" has none.
 export const LABEL_LIST = [
   { id: "lb_SRC1", name: "Bug", color: "#ef4444", description: "The bug issues", resource_type: "issue", usage_count: 7, workspace_id: "ws_SRC" },
   { id: "lb_SRC2", name: "Chore", color: "#6b7280", description: "", resource_type: "issue", usage_count: 0, workspace_id: "ws_SRC" },
