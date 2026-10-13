@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { listSkills, listAgents, listAgentsIncludingArchived, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot, listLabels, listProperties, listWorkspaceMcpServers, getWorkspace } from "./lib.mjs";
+import { listSkills, listSkillLabels, listSkillFiles, listSkillLabelDefs, listAgents, listAgentsIncludingArchived, listSquads, listRuntimes, listWorkspaceMembers, getSquadMembers, findByName, makeCli, realExec, requireAuth, resolveWorkspaceId, listProjects, getProjectResources, findByTitle, listAutopilots, getAutopilot, listLabels, listProperties, listWorkspaceMcpServers, getWorkspace } from "./lib.mjs";
 
 // User-facing selectable types are agents/squads/projects/autopilots/labels/
 // properties/workspace; skills follow agents. Default stays agents,squads —
@@ -44,6 +44,9 @@ function walkSkillFiles(fs, root, rel = "") {
   return out;
 }
 
+// SKILL.md and config.json are the skill record itself, never extra files.
+const isSkillBody = (rel) => rel === "SKILL.md" || rel === "config.json";
+
 // Pull `description:` out of a SKILL.md YAML frontmatter block.
 // ponytail: single-line values only (the skill frontmatter convention); folded/multi-line YAML not handled.
 function frontmatterDescription(text) {
@@ -55,9 +58,20 @@ function frontmatterDescription(text) {
 
 export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
   const idMap = new Map();
-  let created = 0, updated = 0;
+  let created = 0, updated = 0, filesDeleted = 0;
   const emptySkipped = [];
   const existing = listSkills(cli);
+  // Lazy + memoized: destination skill-type label definitions, name -> id.
+  let labelIds = null;
+  const skillLabelId = (l) => {
+    labelIds ??= new Map(listSkillLabelDefs(cli).map((d) => [d.name, d.id]));
+    if (!labelIds.has(l.name)) {
+      const desc = l.description ? ["--description", l.description] : [];
+      const out = cli.run(["label", "create", "--name", l.name, "--color", l.color, "--resource-type", "skill", ...desc]);
+      labelIds.set(l.name, JSON.parse(out).id);
+    }
+    return labelIds.get(l.name);
+  };
 
   for (const s of manifest.skills) {
     const sdir = dir === "." ? s.dir : `${dir}/${s.dir}`;
@@ -85,12 +99,30 @@ export function importSkills({ cli, manifest, dir, fs = nodeFs }) {
     }
     idMap.set(s.name, id);
     // upsert extra files (everything except SKILL.md and config.json), by relative path
+    const bundled = new Set();
     for (const rel of walkSkillFiles(fs, sdir)) {
-      if (rel === "SKILL.md" || rel === "config.json") continue;
+      if (isSkillBody(rel)) continue;
+      bundled.add(rel);
       cli.run(["skill", "files", "upsert", id, "--path", rel, "--content-file", `${sdir}/${rel}`]);
     }
+    // A matched skill may still hold files the source has since dropped — delete
+    // them so the destination mirrors the bundle instead of accumulating stale files.
+    if (match) {
+      for (const f of listSkillFiles(cli, id)) {
+        if (isSkillBody(f.path) || bundled.has(f.path)) continue;
+        cli.run(["skill", "files", "delete", id, f.id]); filesDeleted++;
+      }
+    }
+    // Skill labels, by name (legacy bundles carry no `labels` key — left alone).
+    // Additive: a label the destination added on its own is kept.
+    if (s.labels?.length) {
+      const attached = new Set(match ? listSkillLabels(cli, id).map((l) => l.name) : []);
+      for (const l of s.labels) {
+        if (!attached.has(l.name)) cli.run(["skill", "label", "add", id, skillLabelId(l)]);
+      }
+    }
   }
-  return { idMap, created, updated, emptySkipped };
+  return { idMap, created, updated, emptySkipped, filesDeleted };
 }
 
 // True when a resource already carries an avatar (uploaded image or emoji).
@@ -297,13 +329,18 @@ export function importSquad({ cli, squad, agentIdMap, sourceIdMap }) {
     cli.run(["squad", "update", id, "--avatar-url", squad.avatar_url]);
   }
 
-  // Add non-leader members, skipping any already present so re-runs are idempotent.
-  const present = new Set(getSquadMembers(cli, id).map((m) => m.member_id));
+  // Add non-leader members; an already-present member only gets its role
+  // re-applied when it drifted, so re-runs stay idempotent.
+  const present = new Map(getSquadMembers(cli, id).map((m) => [m.member_id, m.role]));
   for (const m of squad.members) {
     if (m.agent_name === squad.leader_name) continue;
     const memberId = agentIdMap.get(m.agent_name);
-    if (!memberId || present.has(memberId)) continue;
-    cli.run(["squad", "member", "add", id, "--member-id", memberId, "--role", m.role, "--type", "agent"]);
+    if (!memberId) continue;
+    if (!present.has(memberId)) {
+      cli.run(["squad", "member", "add", id, "--member-id", memberId, "--role", m.role, "--type", "agent"]);
+    } else if (m.role && present.get(memberId) !== m.role) {
+      cli.run(["squad", "member", "set-role", id, "--member-id", memberId, "--role", m.role, "--member-type", "agent"]);
+    }
   }
   return { newId: id, created, updated };
 }
@@ -446,20 +483,36 @@ export function importAutopilots({ cli, manifest, dir, agentIdMap, fs = nodeFs }
     }
     idMap.set(rec.title, id);
 
-    // Triggers are additive and idempotent by kind+label — a re-import never
-    // duplicates a trigger already present on the matched autopilot. Webhook
-    // triggers are always reissued fresh (new secret), never copied from the bundle.
+    // Triggers are matched by kind+label — a re-import never duplicates one. A
+    // matched trigger gets its schedule/enabled state re-applied when it drifted.
+    // Webhook triggers are always reissued fresh (new secret), never copied.
     const existingTriggers = match ? getAutopilot(cli, id).triggers : [];
-    const present = new Set(existingTriggers.map((t) => `${t.kind}:${t.label ?? ""}`));
+    const present = new Map(existingTriggers.map((t) => [`${t.kind}:${t.label ?? ""}`, t]));
     for (const t of rec.triggers ?? []) {
-      if (present.has(`${t.kind}:${t.label ?? ""}`)) continue;
+      const cur = present.get(`${t.kind}:${t.label ?? ""}`);
+      const enabled = t.enabled !== false; // legacy bundles without the field stay enabled
+      if (cur) {
+        const flags = [];
+        if (t.kind === "schedule" && t.cron_expression && cur.cron_expression !== t.cron_expression) flags.push("--cron", t.cron_expression);
+        if (t.kind === "schedule" && t.timezone && cur.timezone !== t.timezone) flags.push("--timezone", t.timezone);
+        // --enabled always rides along: its CLI default is true, so an update
+        // without it could silently re-enable a trigger that is off.
+        if (flags.length || cur.enabled !== enabled) cli.run(["autopilot", "trigger-update", id, cur.id, ...flags, `--enabled=${enabled}`]);
+        continue;
+      }
       const flags = ["--kind", t.kind];
       if (t.kind === "schedule") {
         flags.push("--cron", t.cron_expression);
         if (t.timezone) flags.push("--timezone", t.timezone);
       }
       if (t.label) flags.push("--label", t.label);
-      cli.run(["autopilot", "trigger-add", id, ...flags]);
+      const added = cli.run(["autopilot", "trigger-add", id, ...flags]);
+      // `trigger-add` has no --enabled flag, so a trigger off at the source is
+      // switched off right after — otherwise it fires once the autopilot is activated.
+      if (!enabled) {
+        const tr = JSON.parse(added);
+        cli.run(["autopilot", "trigger-update", id, tr.id ?? tr.trigger?.id, "--enabled=false"]);
+      }
       if (t.kind === "webhook") webhookReissued.push(rec.title);
     }
   }
@@ -624,7 +677,7 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
 
   const skillRes = inc.has("skills")
     ? importSkills({ cli, manifest, dir, fs })
-    : { idMap: new Map(), created: 0, updated: 0, emptySkipped: [] };
+    : { idMap: new Map(), created: 0, updated: 0, emptySkipped: [], filesDeleted: 0 };
   const agentRes = inc.has("agents")
     ? importAgents({ cli, manifest, dir, skillIdMap: skillRes.idMap, runtimeMap: effective, fs })
     : { idMap: new Map(), sourceIdMap: new Map(), created: 0, updated: 0, reused: 0, secretsApplyFailures: [], avatarApplyFailures: [], avatarUnsupported: [], permissionApplyFailures: [], permissionUnsupported: [], mcpServersUnresolved: [], mcpServersApplyFailures: [], runtimeSkillsDisabled: [] };
@@ -679,6 +732,8 @@ export function importBundle({ cli, dir, runtimeMap, include, fs = nodeFs }) {
     // Bundle skills with an empty SKILL.md — skipped, never written over a good
     // destination skill. Non-empty means the BUNDLE is broken; re-export it.
     skillsEmptySkipped: skillRes.emptySkipped,
+    // Destination skill files removed because the bundle no longer carries them.
+    skillFilesDeleted: skillRes.filesDeleted,
     skillIdMap: Object.fromEntries(skillRes.idMap),
     agentIdMap: Object.fromEntries(agentRes.idMap),
     squadIdMap: Object.fromEntries(squadIdMap),
@@ -737,10 +792,22 @@ export function preflight({ cli, dir, runtimeMap, include, fs = nodeFs }) {
 
   const incompatibilities = [];
   if (inc.has("skills")) {
+    const destSkills = (manifest.skills ?? []).length ? listSkills(cli) : [];
     for (const s of manifest.skills ?? []) {
-      const contentPath = dir === "." ? `${s.dir}/SKILL.md` : `${dir}/${s.dir}/SKILL.md`;
+      const sdir = dir === "." ? s.dir : `${dir}/${s.dir}`;
+      const contentPath = `${sdir}/SKILL.md`;
       if (!fs.existsSync(contentPath) || !fs.readFileSync(contentPath, "utf8")) {
         incompatibilities.push({ type: "skill-body-empty", detail: `${s.name} (SKILL.md is empty in the bundle — it will be SKIPPED, not written over the destination; re-export the bundle)` });
+        continue;
+      }
+      // Read-only mirror of importSkills' stale-file cleanup on a matched skill.
+      const match = findByName(destSkills, s.name);
+      if (!match) continue;
+      const bundled = new Set(walkSkillFiles(fs, sdir));
+      for (const f of listSkillFiles(cli, match.id)) {
+        if (!isSkillBody(f.path) && !bundled.has(f.path)) {
+          incompatibilities.push({ type: "skill-file-will-delete", detail: `${s.name} → ${f.path} (exists at the destination but not in the bundle — import deletes it)` });
+        }
       }
     }
   }

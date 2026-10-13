@@ -100,7 +100,7 @@ export function buildManifest({ scope, level, sourceWorkspaceId, skills, agents,
     // null for a single-resource export; the requested tier for a workspace export.
     level: level ?? null,
     source_workspace_id: sourceWorkspaceId,
-    skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, source_id: s.source_id })),
+    skills: [...seenSkills.values()].map((s) => ({ name: s.name, dir: `skills/${slugify(s.name)}`, source_id: s.source_id, labels: s.labels ?? [] })),
     agents: [...seenAgents.values()].map((a) => ({ name: a.name, file: `agents/${slugify(a.name)}.json`, source_id: a.source_id, source_runtime_id: a.source_runtime_id, source_runtime_provider: a.source_runtime_provider ?? null, skill_names: a.skill_names, had_secrets: !!a.had_secrets })),
     squads: (squads ?? []).map((squad) => {
       const file = `squads/${slugify(squad.name)}.json`;
@@ -368,7 +368,7 @@ export function exportResource({ cli, scope, level, ids, outDir, sourceWorkspace
 
   const manifest = buildManifest({
     scope, level, sourceWorkspaceId,
-    skills: [...skills.values()].map((s) => ({ name: s.name, source_id: s.id })),
+    skills: [...skills.values()].map((s) => ({ name: s.name, source_id: s.id, labels: s.labels })),
     agents: [...agentsById.values()].map((a) => ({ name: a.raw.name, source_id: a.raw.id, source_runtime_id: a.raw.runtime_id, source_runtime_provider: a.raw.source_runtime_provider, skill_names: a.skill_names, had_secrets: a.red.hadSecrets })),
     squads,
     projects,

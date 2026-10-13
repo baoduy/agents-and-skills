@@ -101,8 +101,18 @@ export function getSkill(cli, id) {
     id: s.id, name: s.name, description: s.description,
     content: s.content ?? "", config: s.config ?? {},
     files: (s.files ?? []).map((f) => ({ path: f.path, content: f.content })),
+    // Skill-type labels (multica 0.6.x). `skill get` omits them; travel by name,
+    // carrying the definition so import can create a missing one.
+    labels: listSkillLabels(cli, id).map(({ name, color, description }) => ({ name, color, description: description ?? "" })),
   };
 }
+
+const arr = (v) => (Array.isArray(v) ? v : []);
+export const listSkillLabels = (cli, skillId) => arr(cli.json(["skill", "label", "list", skillId]));
+// Destination-side lookups for skill import: id + path of every stored file.
+export const listSkillFiles = (cli, skillId) => arr(cli.json(["skill", "files", "list", skillId]));
+// Workspace label definitions of resource type `skill` (`label list` defaults to issue).
+export const listSkillLabelDefs = (cli) => arr(cli.json(["label", "list", "--resource-type", "skill"]));
 
 export function getAgent(cli, id) {
   const a = cli.json(["agent", "get", id]);
@@ -216,7 +226,9 @@ export function getAutopilot(cli, id) {
     assignee_id: a.assignee_id, assignee_type: a.assignee_type,
     subscribers: (a.subscribers ?? []).map((s) => ({ user_id: s.user_id, user_type: s.user_type })),
     triggers: (r.triggers ?? []).map((t) => ({
-      kind: t.kind, label: t.label ?? null, enabled: !!t.enabled,
+      // Destination-side only (trigger-update addresses by id); never bundled —
+      // collectOneAutopilot rebuilds each trigger from an explicit field list.
+      id: t.id, kind: t.kind, label: t.label ?? null, enabled: !!t.enabled,
       cron_expression: t.cron_expression ?? null, timezone: t.timezone ?? null,
     })),
   };
