@@ -1,5 +1,5 @@
 {
   "name": "multica-tool",
-  "version": "0.0.50",
+  "version": "0.0.51",
   "description": "Export, import, and sync a Multica workspace — settings, skills, agents, squads, projects, autopilots, labels, properties, and the MCP roster — between workspaces."
 }
