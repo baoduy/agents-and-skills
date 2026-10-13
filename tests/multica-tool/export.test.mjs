@@ -18,6 +18,7 @@ function fakeCli() {
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -153,6 +154,7 @@ test("export creates nested parent dirs for skill files (regression: scripts/ su
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -252,7 +254,7 @@ test("export agent records an emoji avatar as a string and downloads no file", (
 
 test("export agent downloads an image avatar into the bundle and records avatar_file", () => {
   const fs = memFs();
-  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
+  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; if (args[0] === "skill" && args[1] === "label") return []; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
   const download = (url) => { assert.equal(url, "https://cdn.example.com/uploads/pixel.png"); return Buffer.from("PNGBYTES"); };
   exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC4" }, outDir: "/img", sourceWorkspaceId: "ws", fs, download });
   const record = JSON.parse(fs.files["/img/agents/pixel.json"]);
@@ -262,7 +264,7 @@ test("export agent downloads an image avatar into the bundle and records avatar_
 
 test("export agent tolerates a failed avatar download — keeps avatar_url, writes no file", () => {
   const fs = memFs();
-  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
+  const cli = { json: (args) => { const k = args.slice(0, 3).join(" "); if (k === "agent get ag_SRC4") return AGENT_GET_IMG; if (k === "runtime list") return RUNTIME_LIST_SRC; if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST; if (args[0] === "skill" && args[1] === "label") return []; throw new Error("unexpected " + args.join(" ")); }, run: () => "" };
   exportResource({ cli, scope: "agent", ids: { agentId: "ag_SRC4" }, outDir: "/imgfail", sourceWorkspaceId: "ws", fs, download: () => null });
   const record = JSON.parse(fs.files["/imgfail/agents/pixel.json"]);
   assert.equal(record.avatar_url, "https://cdn.example.com/uploads/pixel.png", "avatar_url still recorded");
@@ -313,6 +315,7 @@ test("export --level squad collects every resource and writes a shared agent exa
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -348,6 +351,7 @@ function projectCli() {
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -410,6 +414,7 @@ test("export --level squad prunes skills no agent references", () => {
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
@@ -431,6 +436,7 @@ test("export --scope skill never prunes the requested skill", () => {
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",

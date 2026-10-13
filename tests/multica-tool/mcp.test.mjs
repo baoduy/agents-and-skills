@@ -38,6 +38,7 @@ function destCli({ destLibrary = [], failEnableFor = null } = {}) {
       if (key === "agent list --include-archived") return [];
       if (key === "workspace member list") return [];
       if (args[0] === "workspace" && args[1] === "mcp") return destLibrary;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + key);
     },
     run: (args) => {

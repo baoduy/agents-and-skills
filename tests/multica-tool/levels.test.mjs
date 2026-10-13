@@ -42,6 +42,7 @@ function wsCli() {
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       if (args[0] === "workspace" && args[1] === "get") return WORKSPACE_GET; if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST;
       if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",

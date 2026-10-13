@@ -25,6 +25,7 @@ function exportCli() {
       if (key === "skill get sk_SRC1 --with-content") return SKILL_GET;
       if (key === "runtime list") return RUNTIME_LIST_SRC;
       if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + key);
     },
     run: () => "",
@@ -42,6 +43,7 @@ function recordingCli({ labels = [], properties = [] } = {}) {
       if (key === "label list") return labels;
       if (key === "property list --include-archived") return properties;
       if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + key);
     },
     run: (args) => { calls.push(args); return "{}"; },

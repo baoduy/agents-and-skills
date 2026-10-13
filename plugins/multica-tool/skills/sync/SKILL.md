@@ -51,6 +51,7 @@ Parse the JSON output and report:
 
 - Created and updated counts for skills, agents, squads, projects, and autopilots.
 - Name-to-ID maps (`skillIdMap`, `agentIdMap`).
+- If `skillFilesDeleted` is non-zero, say how many destination skill files were deleted because the source skill no longer has them.
 - `squadIdMap`: name-to-ID map for every squad synced.
 - `autopilotIdMap`: name-to-ID map for every autopilot synced. Importing always creates a new autopilot **paused**, regardless of source status; a re-sync updates the existing one by title without reactivating or duplicating it, and never re-adds a trigger already present.
 - If `autopilotProjectUnresolved`, `autopilotSubscribersUnresolved`, or `autopilotPriorityNotCaptured` is non-empty, surface each entry verbatim as an "applied best-effort" note (project/subscribers skipped when unmatched by name in the destination; priority can never be captured — a platform gap, not a bug here).

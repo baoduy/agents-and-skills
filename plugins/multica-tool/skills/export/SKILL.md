@@ -38,6 +38,8 @@ Lowest tier first; **the default level is `workspace`** — the full portable wo
 
 `--level project` is still accepted as the old name for `workspace`.
 
+Every skill carries its **skill-type labels** (name, colour, description) on its `manifest.skills[]` entry, so they travel wherever the skill does.
+
 **Never exported, at any level:** the workspace **repo registry** (checkout/machine state, managed by `multica repo`), workspace **members** (accounts, not configuration — they are referenced by name where an autopilot subscribes them, never created), and **issues** (live work, not configuration). Say so plainly if the user expects a full workspace clone.
 
 Notes on the tiers:

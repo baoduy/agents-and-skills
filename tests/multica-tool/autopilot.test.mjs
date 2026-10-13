@@ -31,6 +31,7 @@ function autopilotCli(overrides = {}) {
       if (args.join(" ") === "label list") return LABEL_LIST;
       if (args.join(" ") === "property list --include-archived") return PROPERTY_LIST;
       if (args[0] === "workspace" && args[1] === "mcp") return WORKSPACE_MCP_LIST; if (args[0] === "agent" && args[1] === "mcp") return AGENT_MCP_LIST;
+      if (args[0] === "skill" && args[1] === "label") return [];
       throw new Error("unexpected " + args.join(" "));
     },
     run: () => "",
